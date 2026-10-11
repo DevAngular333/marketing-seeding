@@ -1,0 +1,12 @@
+{
+  "title": "Jang Growth",
+  "description": "Dashboard local theo dõi tăng trưởng, nội dung, phân phối và bằng chứng xuất bản từ dữ liệu thật.",
+  "language": "vi",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

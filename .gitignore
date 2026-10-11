@@ -1,0 +1,41 @@
+# Local runtime state, credentials, logs and evidence
+.agentic/
+.local/
+.env
+.env.*
+!.env.example
+*.log
+*.pid.json
+*.writer.lock
+operator-token
+automation-token
+evidence/
+
+# Generated campaign and lead data
+content/
+*marketing-seeding-feed*.json
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# Installed dependencies and generated UI output/backups
+node_modules/
+ui/node_modules/
+ui/dist/
+ui/.rollbacks/
+
+# Local verification evidence tied to this machine
+docs/VERIFICATION-2026-10-07.md
+
+# Figma-hosted workspace launch instructions do not apply to cloned local builds
+ui/AGENTS.md
+ui/CLAUDE.md
+ui/.figma/make/*
+!ui/.figma/make/site.json
+
+# Keep only bundles currently referenced by public/index.html
+public/assets/*
+!public/assets/index-DNqX5qeD.js
+!public/assets/index-Drr5DD2i.css

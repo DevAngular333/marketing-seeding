@@ -1,0 +1,22 @@
+{
+  "name": "jang-agentic-global-seeding",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "init": "node src/cli.mjs init",
+    "bootstrap:r19": "node src/cli.mjs bootstrap-r19",
+    "status": "node src/cli.mjs status",
+    "test": "node --test test/*.test.mjs",
+    "soak": "node scripts/soak.mjs",
+    "setup:cloakbrowser": "pnpm.cmd install"
+  },
+  "optionalDependencies": {
+    "cloakbrowser": "^0.6.0",
+    "playwright-core": "^1.56.0"
+  }
+}
