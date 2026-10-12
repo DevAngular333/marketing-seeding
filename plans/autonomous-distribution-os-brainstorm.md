@@ -154,12 +154,23 @@ Lý do: đây là "coordinated inauthentic behavior" — Meta, Reddit, LinkedIn,
 6. **CLI/MCP foundation:** tách lớp service dùng chung → bọc thành CLI `dos` (mọi thao tác ở mục 3b) + MCP server cùng schema. Dashboard chuyển sang read-only.
 7. Bọc auto-gtm, System One (bộ câu hỏi marketing) và jev-browser thành subcommand/MCP tool của cùng bề mặt `dos`, thay vì 4 công cụ rời.
 
+**Bổ sung từ Astra review 2026-10-12** (`plans/reports/astra-architecture-review-20261012.md`, verdict GO-WITH-CHANGES; NO-GO cho L2–L4 và email send thật đến khi xong các mục dưới):
+
+8. **Evidence authority (F01):** thêm `EvidenceRecord` do collector tin cậy tạo (subject/account/externalId/content binding). Metric nhập tay chỉ là attestation, không tự nâng thành `verified`. Tổng trên dashboard chỉ tính evidence đủ điều kiện.
+9. **Quyền chung cho mọi bề mặt (F02, F09):** capability check nằm ở command boundary dùng chung cho HTTP, CLI và MCP (không chỉ allowlist HTTP). Approval gắn với account identity + hash nội dung/asset + version rules/consent + thời hạn. Read API có auth và projection đã che dữ liệu lead/hội thoại.
+10. **Consent đi xuyên hệ thống (F03):** registry consent theo người nhận + mục đích; auto-gtm outbox kiểm tra lại grant và campaign epoch ngay trước khi gọi provider; không có grant hoặc không đọc được registry → chặn. "Email hợp lệ" hay comment không phải opt-in.
+11. **Kill switch + intent bền vững chuyển từ P1 lên P0 (F04):** queue kiểm tra campaign paused/kill epoch; persistent intent/outbox; trạng thái `submission_unknown` + reconcile read-only; không retry khi có thể đã gửi.
+12. **Adapter thực thi có allowlist (F05):** không dùng `jev-browser` chung chung làm tay thực thi. Mỗi adapter có allowlist hành động/account/target, journal bắt buộc (lỗi ghi journal → fail closed) và verifier bắt buộc.
+13. **Hợp đồng điểm System One (F06):** điểm chỉ là tín hiệu tư vấn. Chuẩn hóa theo rubric, tách confidence, có hạn dùng; model lỗi/unknown/abstain → về hàng duyệt. Veto deterministic luôn thắng model.
+
 ### P1 — Đăng thật, đo thật (L1 → L2) trên 1 kênh
 1. Chọn 1 kênh pilot (đề xuất Threads vì có API publish chính thức).
 2. Publisher adapter: nhận post đã duyệt → đăng → trả về permalink + external ID.
 3. Verifier: mở permalink công khai (không đăng nhập), chụp screenshot, hash, gắn vào post.
-4. Metric collector thật cho kênh pilot (API insights hoặc jev-browser đọc counter hiển thị).
-5. Kill switch: một lệnh dừng mọi publish; tự dừng khi gặp login wall / CAPTCHA / bài bị gỡ.
+4. Metric collector thật cho kênh pilot (API insights hoặc jev-browser đọc counter hiển thị); checkpoint 1h/24h/72h là job bền vững theo `publishedAt`, có trạng thái due/overdue/missing (F13).
+5. Kill switch (đã có từ P0-11) được nối vào adapter: tự dừng khi gặp login wall / CAPTCHA / bài bị gỡ.
+6. Store: một daemon ghi duy nhất cho pilot; chuyển sang SQLite transactional command/outbox trước khi chạy nhiều worker (F07).
+7. Dữ liệu nhạy cảm: audit `auto-gtm/storage/_people.parquet` (đang được Git track), chuyển sang data root riêng quyền 0600, có chính sách giữ/xóa (F10).
 
 ### P2 — Nối auto-gtm và System One vào vòng lặp
 1. auto-gtm xuất feed thật (ICP, pain, từ khóa, cộng đồng gợi ý) → seeding đọc làm input cho story.
@@ -199,11 +210,11 @@ Nguyên tắc chung: **một con số chỉ được tính khi có nguồn kiể
 
 | Phase | Đạt khi |
 |---|---|
-| P0 | State không còn bản ghi nào không có `provenance` hợp lệ; dashboard hiển thị 0 khi chưa có dữ liệu thật; registry có ≥ 3 sản phẩm `ready` (3d-blender, origami-cad, svg-animation); **100% thao tác ở mục 3b chạy được bằng `dos … --json` và bằng MCP tool tương ứng; dashboard không còn nút ghi dữ liệu** |
+| P0 | State không còn bản ghi nào không có `provenance` hợp lệ; dashboard hiển thị 0 khi chưa có dữ liệu thật; registry có ≥ 3 sản phẩm `ready` (3d-blender, origami-cad, svg-animation); **100% thao tác ở mục 3b chạy được bằng `dos … --json` và bằng MCP tool tương ứng; dashboard không còn nút ghi dữ liệu**; **các P0 của Astra review (F01–F06, F09) đều có test âm chứng minh bị chặn: metric tự nhập không thành `verified`, CLI/MCP không vượt quyền, email không consent bị chặn, campaign paused không publish được, adapter thiếu journal thì fail closed, điểm model lỗi → về hàng duyệt** |
 | P1 | ≥ 5 bài thật trên kênh pilot trong 7 ngày; 100% có permalink mở được ở trình duyệt chưa đăng nhập + screenshot hash; metric 1h/24h/72h được ghi tự động cho 100% bài; 0 lần tài khoản bị hạn chế; kill switch dừng được trong < 1 phút (đã thử) |
 | P2 | 100% draft đi qua Gate System One và lưu điểm; comment thật được phân loại tự động trong < 4h kể từ khi xuất hiện; ≥ 1 lead thật đi từ comment → auto-gtm với consent được ghi |
 | P3 | 3 kênh chạy theo lịch 14 ngày liên tục; thời gian Jang bỏ ra ≤ 15 phút/ngày (chỉ duyệt ngoại lệ); 0 vi phạm luật cộng đồng bị gỡ bài; báo cáo hằng ngày gửi đủ 14/14 ngày |
-| P4 | Planner chọn chu kỳ tiếp theo không cần người; CTR hoặc lead/bài của 2 tuần sau cao hơn 2 tuần đầu với mẫu đủ lớn (ghi rõ n); UTM ghi nhận click thật vào landing |
+| P4 | Planner chọn chu kỳ tiếp theo không cần người; thí nghiệm CTR/lead có estimand, mẫu, randomization và stop rule khai báo trước — kết quả báo cáo kèm n và khoảng tin cậy, thiếu mẫu ghi `INCONCLUSIVE` (không phải fail) (F14); UTM ghi nhận click thật vào landing |
 | P5 | Chạy 30 ngày không can thiệp kỹ thuật; thêm 1 sản phẩm mới trong < 10 phút chỉ bằng registry; khôi phục từ backup thành công khi thử |
 
 ### Tiêu chí tổng của Autonomous Distribution OS
