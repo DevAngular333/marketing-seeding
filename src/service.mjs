@@ -1924,6 +1924,7 @@ export class SeedingService {
       if (input.content !== undefined) post.content = String(input.content).trim();
       if (input.assetPath !== undefined) post.assetPath = input.assetPath || null;
       if (verifiedAssetHash !== undefined) post.assetSha256 = verifiedAssetHash;
+      if (input.audience !== undefined) post.audience = requiredText(input.audience, "post audience");
       if (input.language !== undefined) post.language = input.language;
       if (input.externalId !== undefined) post.externalId = String(input.externalId || "").trim() || null;
       if (!post.content) throw new Error("Post content is required");

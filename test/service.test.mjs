@@ -43,6 +43,14 @@ test("R19 bootstrap is idempotent and does not fabricate publication evidence", 
   assert.equal(new Set(state.posts.map((post) => post.content)).size, 7);
 });
 
+test("post audience can be updated independently through the service", async () => {
+  const { service, post } = await fixture("seeding-post-audience-test-");
+  const before = { content: post.content, assetPath: post.assetPath, targetId: post.targetId, status: post.status };
+  const updated = await service.updatePost(post.id, { audience: "public" }, "operator");
+  assert.equal(updated.audience, "public");
+  assert.deepEqual({ content: updated.content, assetPath: updated.assetPath, targetId: updated.targetId, status: updated.status }, before);
+});
+
 test("verified artifact to grounded story to channel drafts stays draft-only", async () => {
   const { productRepo, service, campaign, target } = await fixture("seeding-pipeline-test-");
   await writeFile(path.join(productRepo, "preview.mp4"), "video-fixture", "utf8");
