@@ -139,7 +139,8 @@ export function validateExecutionReceiptV1(input) {
       mediaReadyMs: Number(input.telemetry?.mediaReadyMs ?? 0),
       preSubmitVerifyMs: Number(input.telemetry?.preSubmitVerifyMs ?? 0),
       cleanupMs: Number(input.telemetry?.cleanupMs ?? 0),
-      totalDryRunMs: Number(input.telemetry?.totalDryRunMs ?? 0)
+      totalDryRunMs: Number(input.telemetry?.totalDryRunMs ?? 0),
+      domClickFallbacks: Number(input.telemetry?.domClickFallbacks ?? 0)
     },
     verificationGates: input.verificationGates && typeof input.verificationGates === "object"
       ? Object.fromEntries(Object.entries(input.verificationGates).filter(([, value]) => typeof value === "boolean"))

@@ -66,11 +66,7 @@ export function classifyLinkedInComposerState(result) {
   return "NOT_COMPOSER";
 }
 
-async function waitForComposer(browser, pageId, timeoutMs = 8_000) {
-  if (typeof browser.waitForExpression === "function") {
-    await browser.waitForExpression(pageId, `(${COMPOSER_EXPRESSION}).confirmed === true`, timeoutMs).catch(() => undefined);
-    return browser.evaluate(pageId, COMPOSER_EXPRESSION);
-  }
+async function sampleComposerState(browser, pageId, timeoutMs) {
   const started = Date.now();
   let state;
   do {
@@ -80,6 +76,55 @@ async function waitForComposer(browser, pageId, timeoutMs = 8_000) {
     await new Promise((resolve) => setTimeout(resolve, 250));
   } while (Date.now() - started < timeoutMs);
   return state;
+}
+
+async function waitForComposer(browser, pageId, timeoutMs = 8_000) {
+  const started = Date.now();
+  if (typeof browser.waitForExpression === "function") {
+    const expression = `(${COMPOSER_EXPRESSION}).confirmed === true`;
+    await browser.waitForExpression(pageId, expression, timeoutMs).catch(() => undefined);
+    const state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
+    if (classifyLinkedInComposerState(state) === "CONFIRMED") return state;
+    const remaining = Math.max(0, timeoutMs - (Date.now() - started));
+    return remaining ? sampleComposerState(browser, pageId, remaining) : state;
+  }
+  return sampleComposerState(browser, pageId, timeoutMs);
+}
+
+const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
+  const visible = (node) => Boolean(node && node.getClientRects().length);
+  const host = location.hostname.toLowerCase().replace(/^www\\./, '');
+  const path = location.pathname.replace(/\\/$/, '').toLowerCase() || '/';
+  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter(visible);
+  const candidates = Array.from(document.querySelectorAll('button,[role="button"]')).filter((node) => {
+    if (!visible(node) || node.disabled || node.getAttribute('aria-disabled') === 'true') return false;
+    const labels = [node.getAttribute('aria-label') || '', node.innerText || ''].map((value) => value.trim());
+    return labels.some((label) => /^(?:start a post|bắt đầu bài đăng)$/i.test(label));
+  });
+  if (host !== 'linkedin.com' || path !== '/feed' || dialogs.length !== 0 || candidates.length !== 1) {
+    return { clicked: false, reason: 'composer_trigger_fallback_precondition_failed' };
+  }
+  candidates[0].click();
+  return { clicked: true };
+})()`;
+
+export async function openLinkedInComposer(browser, pageId, trigger, { mountTimeoutMs = 8_000 } = {}) {
+  await browser.click(pageId, trigger);
+  let state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
+  if (classifyLinkedInComposerState(state) === "CONFIRMED") return { state, domFallbackUsed: false };
+
+  // If a dialog/route has started mounting, wait for that same surface. Never
+  // click again while an ambiguous or partial composer is present.
+  const mounting = state?.routeCompatible === true || state?.dialogCount > 0 || state?.editorCount > 0;
+  if (mounting) return { state: await waitForComposer(browser, pageId, mountTimeoutMs), domFallbackUsed: false };
+
+  // Some ORCA hosts acknowledge a semantic click on this custom LinkedIn DIV
+  // without dispatching a DOM event. A narrowly-scoped DOM click is allowed only
+  // after proving the feed is still open and the unique composer trigger remains.
+  const fallback = await browser.evaluate(pageId, COMPOSER_TRIGGER_DOM_CLICK);
+  if (fallback?.clicked !== true) return { state, domFallbackUsed: false };
+  state = await waitForComposer(browser, pageId, mountTimeoutMs);
+  return { state, domFallbackUsed: true };
 }
 
 function safeEvidence(value) {
@@ -152,8 +197,8 @@ export class LinkedInReadinessProvider {
       const snapshot = await this.browser.snapshot(pageId);
       const trigger = findComposerTrigger(snapshot);
       if (!trigger) return { state: "BLOCKED", reasonCode: "composer_trigger_missing", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
-      await this.browser.click(pageId, trigger);
-      const composer = await waitForComposer(this.browser, pageId);
+      const opened = await openLinkedInComposer(this.browser, pageId, trigger);
+      const composer = opened.state;
       const composerClassification = classifyLinkedInComposerState(composer);
       if (composerClassification !== "CONFIRMED") {
         await this.browser.pressEscape(pageId).catch(() => undefined);

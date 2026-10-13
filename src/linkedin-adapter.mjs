@@ -4,7 +4,7 @@ import { open } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { findComposerTrigger, LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
-import { linkedInReadinessExpressions } from "./linkedin-readiness.mjs";
+import { linkedInReadinessExpressions, openLinkedInComposer } from "./linkedin-readiness.mjs";
 
 
 function refOf(line) {
@@ -225,8 +225,8 @@ export class LinkedInAdapter {
   }
 
   async openComposer(context) {
-    const snapshot = await this.#openComposer(context.request, context.pageId, context.expectedIdentityUrl);
-    return { ...context, snapshot };
+    const opened = await this.#openComposer(context.request, context.pageId, context.expectedIdentityUrl);
+    return { ...context, snapshot: opened.snapshot, domClickFallbackUsed: opened.domFallbackUsed };
   }
 
   async fillContent(context) {
@@ -324,14 +324,13 @@ export class LinkedInAdapter {
     const snapshot = await this.browser.snapshot(pageId);
     const trigger = findComposerTrigger(snapshot);
     if (!trigger) throw Object.assign(new Error("LinkedIn post composer trigger was not uniquely found"), { code: "UNKNOWN_COMPOSER" });
-    await this.browser.click(pageId, trigger);
-    const state = await waitFor(this.browser, pageId, linkedInReadinessExpressions().composer, (value) => value?.dialogCount > 0 || value?.route === true, 10_000);
+    const { state, domFallbackUsed } = await openLinkedInComposer(this.browser, pageId, trigger);
     if (state.linkedinDomain !== true || state.route !== true || state.dialogCount !== 1 || state.editorCount !== 1 || state.audience !== true || state.postButton !== true || state.mediaControl !== true || state.advertisingControls !== 0) {
       throw Object.assign(new Error("LinkedIn composer structure is not confirmed"), { code: "UNKNOWN_COMPOSER" });
     }
     const audience = await this.browser.evaluate(pageId, AUDIENCE_EXPRESSION(request.audience));
     if (audience.dialogCount !== 1 || audience.audienceMatch !== true) throw Object.assign(new Error("LinkedIn audience does not match the approved campaign audience"), { code: "TARGET_MISMATCH" });
-    return this.browser.snapshot(pageId);
+    return { snapshot: await this.browser.snapshot(pageId), domFallbackUsed };
   }
 
   async #fillContent(request, pageId, snapshot) {
@@ -404,6 +403,7 @@ export class LinkedInAdapter {
       await timed("navigationMs", () => this.navigate(lifecycleContext));
       lifecycleContext = await timed("targetVerifyMs", () => this.verifyTarget(lifecycleContext));
       lifecycleContext = await timed("composerOpenMs", () => this.openComposer(lifecycleContext));
+      phaseTimings.domClickFallbacks = lifecycleContext.domClickFallbackUsed ? 1 : 0;
       lifecycleContext = await timed("contentFillMs", () => this.fillContent(lifecycleContext));
       lifecycleContext = await this.attachMedia(lifecycleContext);
       phaseTimings.mediaAttachMs = lifecycleContext.media?.mediaAttachMs || 0;
@@ -425,8 +425,8 @@ export class LinkedInAdapter {
       intentPersisted = lifecycleContext.intentPersisted === true;
       submitted = lifecycleContext.submitted === true;
       const verification = await this.verifyPublished(lifecycleContext);
-      if (verification.state !== "CONFIRMED") return { submitState: "UNKNOWN", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN" };
-      return { ...verification, submitState: "CONFIRMED", startedAt, finishedAt: verification.publicationEvidence.verifiedAt, gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, errorClassification: "NONE", recoveryClassification: "NONE" };
+      if (verification.state !== "CONFIRMED") return { submitState: "UNKNOWN", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN" };
+      return { ...verification, submitState: "CONFIRMED", startedAt, finishedAt: verification.publicationEvidence.verifiedAt, gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings, errorClassification: "NONE", recoveryClassification: "NONE" };
     } catch (error) {
       if (pageId && !submitted && !intentPersisted) {
         const cleanupStarted = Date.now();

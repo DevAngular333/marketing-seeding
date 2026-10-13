@@ -400,3 +400,42 @@ test("LinkedIn adapter waits for the authenticated shell after navigation instea
   assert.ok(identityChecks >= 2);
   assert.equal(phase, "feed");
 });
+
+test("LinkedIn composer trigger uses one verified DOM fallback when ORCA reports a click without dispatching it", async () => {
+  let phase = "feed";
+  let fallbackClicks = 0;
+  let postClicks = 0;
+  const request = {
+    executionId: "exec-click-fallback", jobId: "job-click-fallback", campaignId: "campaign-click-fallback", platform: "linkedin",
+    accountId: "account-1", profileId: "profile-1", target: { targetId: "target-1", url: "https://www.linkedin.com/feed/" },
+    audience: "public", content: { contentId: "content-1", sha256: createHash("sha256").update("draft").digest("hex"), payload: "draft" }, media: []
+  };
+  const browser = {
+    async listTabs() { return [{ id: "page-1", profileId: "profile-1", url: "https://www.linkedin.com/feed/" }]; },
+    async showTab() { return { pageId: "page-1", profileId: "profile-1", url: "https://www.linkedin.com/feed/" }; },
+    async navigate() {}, async waitForUrl() {}, async waitForFeed() {},
+    async snapshot() { return phase === "feed" ? '- button "Start a post" [ref=trigger]' : '- textbox "Post editor" [ref=editor]\\n- button "Post" [ref=post]'; },
+    async evaluate(_id, expression) {
+      if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: true };
+      if (expression.includes("candidates[0].click()")) { fallbackClicks += 1; phase = "composer"; return { clicked: true }; }
+      if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: phase === "composer", routeCompatible: phase === "composer", dialogCount: phase === "composer" ? 1 : 0, editorCount: phase === "composer" ? 1 : 0, audience: phase === "composer", postButton: phase === "composer", mediaControl: phase === "composer", advertisingControls: 0, confirmed: phase === "composer" };
+      if (expression.includes('const expected = "public"')) return { dialogCount: 1, audienceMatch: true };
+      if (expression.includes("contenteditable") && expression.includes("editorCount")) return { dialogCount: 1, editorCount: 1, text: "draft" };
+      if (expression.includes("const expected = new URL")) return { domain: true, targetMatched: true };
+      return {};
+    },
+    async click(_id, ref) { assert.equal(ref, "trigger"); /* host acknowledged but dispatched no DOM click */ },
+    async fill() {},
+    async keypress(_id, key) { if (key === "Escape") phase = "feed"; else if (key === "Enter") postClicks += 1; }
+  };
+  const result = await new LinkedInAdapter(browser).execute(request, {
+    dryRun: true,
+    expectedIdentityUrl: "https://www.linkedin.com/in/owner"
+  });
+  assert.equal(result.submitState, "NOT_STARTED");
+  assert.equal(result.gates.composerConfirmed, true);
+  assert.equal(result.telemetry.domClickFallbacks, 1);
+  assert.equal(fallbackClicks, 1);
+  assert.equal(postClicks, 0);
+  assert.equal(phase, "feed");
+});
