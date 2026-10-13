@@ -196,8 +196,12 @@ export class LinkedInAdapter {
     if (expected.pathname.replace(/\/$/, "").toLowerCase() !== "/feed") throw Object.assign(new Error("This LinkedIn adapter currently supports the authenticated member feed target only"), { code: "TARGET_MISMATCH" });
     if (!expectedIdentityUrl) throw Object.assign(new Error("Expected LinkedIn account identity is not configured"), { code: "ACCOUNT_MISMATCH" });
     const identityPath = new URL(expectedIdentityUrl).pathname;
-    await this.browser.navigate(pageId, request.target.url);
-    await this.browser.waitForUrl(pageId, request.target.url, 15_000);
+    // The stored LinkedIn target may carry shareActive=true for the legacy UI
+    // route. Navigating to it opens the composer before the deterministic
+    // adapter state machine starts and can strand the URL wait. Acquire the
+    // authenticated feed first; openComposer owns the separate compose step.
+    await this.browser.navigate(pageId, LINKEDIN_FEED_URL_FOR_READINESS);
+    await this.browser.waitForUrl(pageId, LINKEDIN_FEED_URL_FOR_READINESS, 15_000);
     const actual = await this.browser.showTab(pageId);
     if (actual.profileId !== request.profileId) throw Object.assign(new Error("Profile changed during navigation"), { code: "ACCOUNT_MISMATCH" });
     await waitForLinkedInIdentity(this.browser, pageId, identityPath);

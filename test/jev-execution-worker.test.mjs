@@ -69,6 +69,7 @@ test("JEV worker runs a dry-run to the pre-submit boundary and records a non-ter
       submitCalls += 0;
       return {
         submitState: "NOT_STARTED", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+        errorClassification: "NONE", gates: { passed: true },
         durationMs: 10, browserCommands: 12, computerUseCalls: 0, retries: 0
       };
     }
@@ -81,6 +82,25 @@ test("JEV worker runs a dry-run to the pre-submit boundary and records a non-ter
   assert.equal(result.receipt.telemetry.browserCommands, 12);
   assert.equal(submitCalls, 0);
   assert.deepEqual(fixture.calls.map(([name]) => name), ["lease", "readiness", "prepare", "started", "receipt", "release"]);
+});
+
+test("JEV worker reports a failed no-submit dry-run truthfully", async () => {
+  const fixture = executionFixture();
+  const adapter = {
+    async execute() {
+      return {
+        submitState: "NOT_STARTED", errorClassification: "TIMEOUT", recoveryClassification: "RECOVERABLE",
+        reasonCode: "page_load_timeout", gates: { passed: false },
+        startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), durationMs: 1
+      };
+    }
+  };
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), workerId: "worker-timeout", env: {} });
+  const result = await worker.run("exec-1", { dryRun: true });
+  assert.equal(result.status, "DRY_RUN_FAILED");
+  assert.equal(result.receipt.submitState, "NOT_STARTED");
+  assert.equal(result.receipt.errorClassification, "TIMEOUT");
+  assert.equal(result.receipt.verificationGates.passed, false);
 });
 
 test("JEV worker refuses live execution unless exact one-job opt-in is present", async () => {
@@ -269,7 +289,7 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
   const calls = [];
   const request = {
     executionId: "exec-dry", jobId: "job-dry", campaignId: "campaign-dry", platform: "linkedin",
-    accountId: "account-1", profileId: "profile-1", target: { targetId: "target-1", url: "https://www.linkedin.com/feed/" },
+    accountId: "account-1", profileId: "profile-1", target: { targetId: "target-1", url: "https://www.linkedin.com/feed/?shareActive=true" },
     audience: "public", content: { contentId: "content-1", sha256: createHash("sha256").update("approved draft").digest("hex"), payload: "approved draft" },
     media: [{ artifactId: "artifact-1", reference: mediaPath, sha256: mediaHash, type: "video/mp4" }]
   };
@@ -277,7 +297,7 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     async listTabs() { return [{ id: "page-1", profileId: "profile-1", url: "https://www.linkedin.com/feed/" }]; },
     async showTab() { return { pageId: "page-1", profileId: "profile-1", url: "https://www.linkedin.com/feed/" }; },
     async navigate(_id, url) { calls.push(["navigate", url]); },
-    async waitForUrl() {},
+    async waitForUrl(_id, url) { calls.push(["wait-url", url]); },
     async waitForFeed() {},
     async snapshot() {
       if (phase === "feed") return '- button "Start a post" [ref=trigger]';
@@ -309,6 +329,9 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     const result = await adapter.execute(request, { dryRun: true, expectedIdentityUrl: "https://www.linkedin.com/in/owner" });
     assert.equal(result.submitState, "NOT_STARTED");
     assert.equal(result.gates.mediaPreviewConfirmed, true, JSON.stringify(result));
+    assert.deepEqual(calls.filter(([name]) => name === "navigate" || name === "wait-url"), [
+      ["navigate", "https://www.linkedin.com/feed/"], ["wait-url", "https://www.linkedin.com/feed/"]
+    ]);
     assert.deepEqual(calls.filter(([name, ref]) => name === "click" && ref === "post"), []);
     assert.ok(calls.some(([name]) => name === "upload"));
     assert.equal(phase, "feed");

@@ -149,7 +149,9 @@ export class JevExecutionWorker {
       };
       const receipt = this.#receipt(context.requestRow, context.request, result, { dryRun });
       await this.service.recordExecutionReceipt(executionId, receipt, `jev-worker:${this.workerId}`);
-      return { status: dryRun ? "DRY_RUN_COMPLETE" : receipt.submitState, executionId, receipt };
+      const gateValues = Object.values(receipt.verificationGates || {});
+      const dryRunPassed = receipt.submitState === "NOT_STARTED" && receipt.errorClassification === "NONE" && gateValues.length > 0 && gateValues.every((value) => value === true);
+      return { status: dryRun ? (dryRunPassed ? "DRY_RUN_COMPLETE" : "DRY_RUN_FAILED") : receipt.submitState, executionId, receipt };
     } finally {
       clearInterval(heartbeat);
       await this.service.releaseExecutionLease(lease.id, lease.token);
