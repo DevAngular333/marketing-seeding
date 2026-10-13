@@ -7,6 +7,21 @@ import { createHash } from "node:crypto";
 import { JevExecutionWorker } from "../src/jev-execution-worker.mjs";
 import { LinkedInAdapter } from "../src/linkedin-adapter.mjs";
 import { linkedInReadinessExpressions } from "../src/linkedin-readiness.mjs";
+import { PLATFORM_CAPABILITIES, PlatformAdapterRegistry } from "../src/platform-registries.mjs";
+
+function adapterRegistry(entries) {
+  const registry = new PlatformAdapterRegistry();
+  for (const [platform, adapter] of Object.entries(entries)) {
+    registry.register(platform, {
+      contractVersion: 1,
+      capabilities: Object.fromEntries(PLATFORM_CAPABILITIES.map((capability) => [capability, false])),
+      async execute() { throw new Error("Test adapter execute() was not configured"); },
+      async reconcile() { return { submitState: "UNKNOWN", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() }; },
+      ...adapter
+    });
+  }
+  return registry;
+}
 
 function executionFixture(overrides = {}) {
   const now = new Date().toISOString();
@@ -21,7 +36,7 @@ function executionFixture(overrides = {}) {
   const requestRow = { executionId: "exec-1", jobId: "job-1", attempt: 1, state: "REQUEST_READY", submitState: "NOT_STARTED", request };
   const context = {
     requestRow, request, post: { id: "job-1", status: "queued" }, target: { profileId: "profile-1" },
-    account: { status: "enabled", health: "healthy", profileId: "profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/owner" },
+    account: { status: "enabled", health: "healthy", accountId: "account-1", profileId: "profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/owner" },
     authorization: { allowLiveExecution: false }
   };
   const calls = [];
@@ -50,7 +65,7 @@ test("JEV worker runs a dry-run to the pre-submit boundary and records a non-ter
     async execute(_request, options) {
       assert.equal(options.dryRun, true);
       assert.equal(options.liveEnabled, false);
-      assert.equal(options.expectedIdentityUrl, fixture.context.account.expectedIdentityUrl);
+      assert.equal(options.account.expectedIdentityUrl, fixture.context.account.expectedIdentityUrl);
       submitCalls += 0;
       return {
         submitState: "NOT_STARTED", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
@@ -58,7 +73,7 @@ test("JEV worker runs a dry-run to the pre-submit boundary and records a non-ter
       };
     }
   };
-  const worker = new JevExecutionWorker({ service: fixture.service, adapters: { linkedin: adapter }, workerId: "worker-a", env: {} });
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), workerId: "worker-a", env: {} });
   const result = await worker.run("exec-1");
   assert.equal(result.status, "DRY_RUN_COMPLETE");
   assert.equal(result.receipt.dryRun, true);
@@ -73,7 +88,7 @@ test("JEV worker refuses live execution unless exact one-job opt-in is present",
   let adapterCalls = 0;
   const worker = new JevExecutionWorker({
     service: fixture.service,
-    adapters: { linkedin: { async execute() { adapterCalls += 1; } } },
+    adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }),
     workerId: "worker-a", env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_LIVE_EXECUTION_ID: "other-exec" }
   });
   const result = await worker.run("exec-1", { dryRun: false });
@@ -105,7 +120,7 @@ test("campaign-authorized autonomous live mode applies to non-test jobs only wit
     }
   };
   const worker = new JevExecutionWorker({
-    service: fixture.service, adapters: { linkedin: adapter },
+    service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }),
     env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED: "true" }
   });
   const result = await worker.run("exec-1", { dryRun: false });
@@ -118,7 +133,7 @@ test("campaign-authorized autonomous live mode applies to non-test jobs only wit
 test("worker lease collision stops before readiness or adapter calls", async () => {
   const fixture = executionFixture({ service: { async acquireExecutionLease() { return { acquired: false, reason: "execution_lease_held" }; } } });
   let adapterCalls = 0;
-  const worker = new JevExecutionWorker({ service: fixture.service, adapters: { linkedin: { async execute() { adapterCalls += 1; } } } });
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }) });
   const result = await worker.run("exec-1");
   assert.equal(result.status, "LEASE_BUSY");
   assert.equal(adapterCalls, 0);
@@ -142,12 +157,105 @@ test("uncertain submit is reconciled without invoking the publishing method agai
       };
     }
   };
-  const worker = new JevExecutionWorker({ service: fixture.service, adapters: { linkedin: adapter } });
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }) });
   const result = await worker.reconcile("exec-1");
   assert.equal(result.status, "UNKNOWN");
   assert.equal(reconcileCalls, 1);
   assert.equal(executeCalls, 0);
   assert.deepEqual(fixture.calls.map(([name]) => name), ["lease", "reconcile-attempt", "release"]);
+});
+
+test("worker executes a non-LinkedIn adapter without reading LinkedIn identity fields and never redispatches after submit", async () => {
+  const fixture = executionFixture();
+  fixture.request.platform = "test_social";
+  fixture.request.target.url = "https://social.example/feed";
+  Object.defineProperty(fixture.context.account, "expectedIdentityUrl", { get() { throw new Error("worker must not inspect platform-specific identity fields"); } });
+  fixture.context.authorization.allowLiveExecution = true;
+  let executeCalls = 0;
+  const adapter = {
+    async execute(_request, context) {
+      executeCalls += 1;
+      assert.equal(context.account, fixture.context.account);
+      assert.equal(context.liveEnabled, true);
+      await context.beforeSubmitIntent({ all: true });
+      await context.onSubmitSent();
+      return { submitState: "SUBMIT_SENT", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), durationMs: 1 };
+    }
+  };
+  const originalMarkSent = fixture.service.markExecutionSubmitSent;
+  fixture.service.markExecutionSubmitSent = async (...args) => {
+    await originalMarkSent(...args);
+    fixture.requestRow.state = "SUBMIT_SENT";
+    fixture.requestRow.submitState = "SUBMIT_SENT";
+  };
+  const worker = new JevExecutionWorker({
+    service: fixture.service, adapterRegistry: adapterRegistry({ test_social: adapter }),
+    env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_LIVE_EXECUTION_ID: "exec-1" }
+  });
+  const first = await worker.run("exec-1", { dryRun: false });
+  const second = await worker.run("exec-1", { dryRun: false });
+  assert.equal(first.status, "SUBMIT_SENT");
+  assert.equal(second.status, "NOT_DISPATCHABLE");
+  assert.equal(executeCalls, 1);
+  assert.equal(fixture.calls.filter(([name]) => name === "lease").length, 1);
+  assert.equal(fixture.calls.filter(([name]) => name === "release").length, 1);
+  assert.equal(fixture.calls.filter(([name]) => name === "intent").length, 1);
+  assert.equal(fixture.calls.filter(([name]) => name === "sent").length, 1);
+});
+
+test("worker returns an explicit unsupported-platform result without acquiring a lease", async () => {
+  const fixture = executionFixture();
+  fixture.request.platform = "test_social";
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: new PlatformAdapterRegistry() });
+  const result = await worker.run("exec-1");
+  assert.equal(result.status, "PLATFORM_UNSUPPORTED");
+  assert.equal(result.reasonCode, "adapter_not_registered");
+  assert.equal(fixture.calls.some(([name]) => name === "lease"), false);
+});
+
+test("generic reconciliation invokes a non-LinkedIn verifier and records confirmation without submit", async () => {
+  const fixture = executionFixture();
+  fixture.request.platform = "test_social";
+  fixture.request.target.url = "https://social.example/feed";
+  fixture.requestRow.state = "SUBMIT_RESULT_UNKNOWN";
+  fixture.requestRow.submitState = "UNKNOWN";
+  fixture.service.pendingExecutionReconciliations = async () => [fixture.requestRow];
+  let executeCalls = 0;
+  let verifyCalls = 0;
+  const worker = new JevExecutionWorker({
+    service: fixture.service,
+    adapterRegistry: adapterRegistry({ test_social: {
+      async execute() { executeCalls += 1; throw new Error("reconciliation must not resubmit"); },
+      async reconcile() {
+        verifyCalls += 1;
+        if (verifyCalls === 1) return {
+          startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+          publicationVerification: { state: "UNKNOWN", reasonCode: "not_visible_yet" }
+        };
+        const verifiedAt = new Date().toISOString();
+        return {
+          startedAt: verifiedAt, finishedAt: verifiedAt,
+          publicationVerification: {
+            state: "CONFIRMED", publicationUrl: "https://social.example/posts/1", verifiedAt,
+            verificationEvidence: {
+              verifiedAt, accountMatched: true, targetMatched: true, contentHashMatched: true, mediaHashMatched: true,
+              accountId: "account-1", profileId: "profile-1", targetId: "target-1", contentHash: "a".repeat(64),
+              mediaHash: null, verificationMethod: "test_social_fake", evidenceReference: "test-social:1"
+            }
+          }
+        };
+      }
+    } })
+  });
+  const first = await worker.reconcilePendingOnce();
+  const second = await worker.reconcilePendingOnce();
+  assert.equal(first[0].status, "UNKNOWN");
+  assert.equal(second[0].status, "CONFIRMED");
+  assert.equal(verifyCalls, 2);
+  assert.equal(executeCalls, 0);
+  const receipt = fixture.calls.find(([name]) => name === "receipt")?.[1];
+  assert.equal(receipt.publicationUrl, "https://social.example/posts/1");
+  assert.equal(receipt.publicationEvidence.verificationMethod, "test_social_fake");
 });
 
 test("LinkedIn adapter dry-run fills and verifies a draft, then closes without clicking Post", async () => {

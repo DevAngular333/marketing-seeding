@@ -12,6 +12,7 @@ import { LinkedInReadinessProvider } from "./linkedin-readiness.mjs";
 import { configuredReadinessTtlMs } from "./readiness.mjs";
 import { LinkedInAdapter } from "./linkedin-adapter.mjs";
 import { JevExecutionWorker } from "./jev-execution-worker.mjs";
+import { PlatformAdapterRegistry, ReadinessProviderRegistry } from "./platform-registries.mjs";
 
 async function loadLocalEnv() {
   try {
@@ -49,11 +50,15 @@ const store = new JsonStore(stateFile, { requireLease: true });
 await store.acquireWriterLease();
 const readinessTtlMs = configuredReadinessTtlMs();
 const orcaBrowser = new OrcaCliClient();
+const readinessProviderRegistry = new ReadinessProviderRegistry();
+readinessProviderRegistry.register("linkedin", new LinkedInReadinessProvider(orcaBrowser, { ttlMs: readinessTtlMs }));
 const service = new SeedingService(store, {
   readinessTtlMs,
-  readinessProviders: { linkedin: new LinkedInReadinessProvider(orcaBrowser, { ttlMs: readinessTtlMs }) }
+  readinessProviderRegistry
 });
-const jevWorker = new JevExecutionWorker({ service, adapters: { linkedin: new LinkedInAdapter(orcaBrowser) }, workerId: `jev-server-${process.pid}` });
+const platformAdapterRegistry = new PlatformAdapterRegistry();
+platformAdapterRegistry.register("linkedin", new LinkedInAdapter(orcaBrowser));
+const jevWorker = new JevExecutionWorker({ service, adapterRegistry: platformAdapterRegistry, workerId: `jev-server-${process.pid}` });
 let initializedState;
 try {
   initializedState = await service.init();
@@ -130,13 +135,13 @@ function scheduleJevExecution(delayMs = 5_000) {
       if (shouldExecute) {
         if (autonomousLive && !liveExecutionId) {
           const results = await jevWorker.runReadyOnce({ dryRun: false });
-          process.stdout.write(`JEV autonomous cycle ${JSON.stringify({ jobs: results.length, confirmed: results.filter((item) => item.status === "CONFIRMED").length, unknown: results.filter((item) => item.status === "UNKNOWN").length, reconciliations: reconciliations.length })}\n`);
+          process.stdout.write(`JEV autonomous cycle ${JSON.stringify({ jobs: results.length, confirmed: results.filter((item) => item.status === "CONFIRMED").length, unknown: results.filter((item) => item.status === "UNKNOWN").length, unsupported: results.filter((item) => item.status === "PLATFORM_UNSUPPORTED").length, reconciliations: reconciliations.length })}\n`);
         } else {
           const result = await jevWorker.run(executionId, { dryRun: !liveExecutionId });
           process.stdout.write(`JEV execution ${JSON.stringify({ executionId, status: result.status, submitState: result.receipt?.submitState || null, reconciliations: reconciliations.length })}\n`);
         }
       } else if (reconciliations.length > 0) {
-        process.stdout.write(`JEV reconciliation ${JSON.stringify({ executions: reconciliations.length, confirmed: reconciliations.filter((item) => item.status === "CONFIRMED").length })}\n`);
+        process.stdout.write(`JEV reconciliation ${JSON.stringify({ executions: reconciliations.length, confirmed: reconciliations.filter((item) => item.status === "CONFIRMED").length, unsupported: reconciliations.filter((item) => item.status === "PLATFORM_UNSUPPORTED").length })}\n`);
       }
     } catch (error) {
       process.stderr.write(`JEV cycle stopped ${JSON.stringify({ executionId: executionId || null, reason: error.code || "worker_error" })}\n`);

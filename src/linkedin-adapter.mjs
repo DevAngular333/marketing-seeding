@@ -118,20 +118,31 @@ export class LinkedInPublicationVerifier {
     if (!result?.found || !result.contentMatched || !result.authorMatched || !result.mediaMatched || !result.publicationUrl) return { state: "UNKNOWN", reasonCode: "publication_evidence_incomplete" };
     const url = new URL(result.publicationUrl);
     if (!/(^|\.)linkedin\.com$/i.test(url.hostname) || url.pathname === "/") return { state: "UNKNOWN", reasonCode: "publication_permalink_invalid" };
-    return {
-      state: "CONFIRMED", publicationUrl: url.toString(),
-      publicationEvidence: {
+    const verificationEvidence = {
         verifiedAt: new Date().toISOString(), accountMatched: result.authorMatched === true, targetMatched: true,
         contentHashMatched: true, mediaHashMatched: true,
         accountId: request.accountId, profileId: request.profileId, targetId: request.target.targetId,
         contentHash: request.content.sha256, mediaHash: request.media[0]?.sha256 || null,
         verificationMethod: "linkedin_feed_dom", evidenceReference: `linkedin-publication:${createHash("sha256").update(url.toString()).digest("hex").slice(0, 20)}`
-      }
-    };
+      };
+    return { state: "CONFIRMED", publicationUrl: url.toString(), publicationReference: verificationEvidence.evidenceReference, verifiedAt: verificationEvidence.verifiedAt, verificationEvidence, publicationEvidence: verificationEvidence };
   }
 }
 
 export class LinkedInAdapter {
+  platform = "linkedin";
+  contractVersion = 1;
+  capabilities = Object.freeze({
+    supportsText: true,
+    supportsImage: true,
+    supportsVideo: true,
+    supportsAudienceSelection: true,
+    supportsDirectFileAttach: true,
+    supportsPublicationVerification: true,
+    supportsPermalinkDiscovery: true,
+    supportsReconciliation: true
+  });
+
   constructor(browser, { verifier = new LinkedInPublicationVerifier(browser), mediaTimeoutMs = 60_000 } = {}) {
     this.browser = browser;
     this.verifier = verifier;
@@ -167,11 +178,83 @@ export class LinkedInAdapter {
     if (identity.securityChallenge) throw Object.assign(new Error("LinkedIn security challenge requires human action"), { code: "SECURITY_CHALLENGE" });
     if (identity.loginRequired || !identity.sessionAuthenticated) throw Object.assign(new Error("LinkedIn authentication is required"), { code: "AUTH_REQUIRED" });
     if (!identity.identityVerified) throw Object.assign(new Error("LinkedIn account identity is ambiguous or mismatched"), { code: "ACCOUNT_MISMATCH" });
-    const target = await this.browser.evaluate(pageId, TARGET_EXPRESSION(request.target.url));
-    if (!target.domain || !target.targetMatched) throw Object.assign(new Error("LinkedIn destination does not match the approved target"), { code: "TARGET_MISMATCH" });
   }
 
-  async reconcile(request, { expectedIdentityUrl } = {}) {
+  async prepareExecution(request, { account } = {}) {
+    const page = await this.#getPage(request);
+    return {
+      request,
+      account,
+      pageId: page.pageId,
+      expectedIdentityUrl: account?.identityReference || account?.expectedIdentityUrl || null
+    };
+  }
+
+  async navigate(context) {
+    await this.#verifyIdentity(context.request, context.pageId, context.expectedIdentityUrl);
+    return context;
+  }
+
+  async verifyTarget(context) {
+    const result = await this.browser.evaluate(context.pageId, TARGET_EXPRESSION(context.request.target.url));
+    if (!result.domain || !result.targetMatched) throw Object.assign(new Error("LinkedIn destination does not match the approved target"), { code: "TARGET_MISMATCH" });
+    return { ...context, targetVerified: true };
+  }
+
+  async openComposer(context) {
+    const snapshot = await this.#openComposer(context.request, context.pageId, context.expectedIdentityUrl);
+    return { ...context, snapshot };
+  }
+
+  async fillContent(context) {
+    const snapshot = await this.#fillContent(context.request, context.pageId, context.snapshot);
+    return { ...context, snapshot };
+  }
+
+  async attachMedia(context) {
+    const media = await this.#attachMedia(context.request, context.pageId, context.snapshot);
+    return { ...context, media };
+  }
+
+  async verifyPreSubmit(context) {
+    const media = context.media || { mediaHashMatched: true, mediaPreviewConfirmed: true };
+    const gates = {
+      authorizationValid: true, readinessFresh: true, accountMatch: true, profileMatch: true, targetMatch: context.targetVerified === true,
+      contentHashMatch: true, mediaHashMatch: media.mediaHashMatched, audienceMatch: true,
+      composerConfirmed: true, mediaPreviewConfirmed: media.mediaPreviewConfirmed,
+      noDuplicateReceipt: true, noExistingConfirmedPublication: true
+    };
+    const submit = findRef(await this.browser.snapshot(context.pageId), /button\s+["'](?:post|Ä‘Äƒng bÃ i|share)["']/i);
+    if (!submit || Object.values(gates).some((passed) => passed !== true)) throw Object.assign(new Error("LinkedIn pre-submit checks did not pass"), { code: "PRE_SUBMIT_GATE_FAILED" });
+    return { ...context, gates, submitRef: submit };
+  }
+
+  async submit(context, { beforeSubmitIntent, onSubmitSent } = {}) {
+    if (typeof beforeSubmitIntent !== "function" || typeof onSubmitSent !== "function") throw new Error("Live submit requires durable intent and submit-state callbacks");
+    await beforeSubmitIntent(context.gates);
+    context.intentPersisted = true;
+    await this.browser.click(context.pageId, context.submitRef);
+    context.submitted = true;
+    await onSubmitSent();
+    await this.browser.waitForFeed(context.pageId);
+    return context;
+  }
+
+  async verifyPublished(context) {
+    return this.verifier.verify(context.request, context.pageId, { expectedIdentityUrl: context.expectedIdentityUrl });
+  }
+
+  async cleanup(context) {
+    if (context?.pageId) await this.#safeClose(context.pageId);
+    return context;
+  }
+
+  async recover(context) {
+    if (context?.pageId && !context.intentPersisted && !context.submitted) await this.cleanup(context);
+    return context;
+  }
+
+  async reconcile(request, { account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl } = {}) {
     const startedAt = new Date().toISOString();
     const began = Date.now();
     const commandStart = this.browser.browserCommandCount?.() ?? 0;
@@ -272,47 +355,45 @@ export class LinkedInAdapter {
     return snapshot;
   }
 
-  async execute(request, { dryRun = true, liveEnabled = false, beforeSubmitIntent, onSubmitSent, expectedIdentityUrl } = {}) {
+  async execute(request, { dryRun = true, liveEnabled = false, beforeSubmitIntent, onSubmitSent, account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl } = {}) {
     const startedAt = new Date().toISOString();
     const began = Date.now();
     let pageId;
+    let lifecycleContext;
     let intentPersisted = false;
     let submitted = false;
     let computerUseCalls = 0;
     const commandStart = this.browser.browserCommandCount?.() ?? 0;
     try {
-      if (request.platform !== "linkedin") throw Object.assign(new Error("LinkedInAdapter received another platform"), { code: "PLATFORM_MISMATCH" });
-      const page = await this.#getPage(request);
-      pageId = page.pageId;
-      await this.#verifyIdentity(request, pageId, expectedIdentityUrl);
-      const snapshot = await this.#openComposer(request, pageId, expectedIdentityUrl);
-      const afterFill = await this.#fillContent(request, pageId, snapshot);
-      const media = await this.#attachMedia(request, pageId, afterFill);
-      const gates = {
-        authorizationValid: true, readinessFresh: true, accountMatch: true, profileMatch: true, targetMatch: true,
-        contentHashMatch: true, mediaHashMatch: media.mediaHashMatched, audienceMatch: true,
-        composerConfirmed: true, mediaPreviewConfirmed: media.mediaPreviewConfirmed,
-        noDuplicateReceipt: true, noExistingConfirmedPublication: true
-      };
+      if (request.platform !== this.platform) throw Object.assign(new Error("LinkedInAdapter received another platform"), { code: "PLATFORM_MISMATCH" });
+      const boundAccount = account || (expectedIdentityUrl ? { identityReference: expectedIdentityUrl } : null);
+      lifecycleContext = await this.prepareExecution(request, { account: boundAccount });
+      pageId = lifecycleContext.pageId;
+      await this.navigate(lifecycleContext);
+      lifecycleContext = await this.verifyTarget(lifecycleContext);
+      lifecycleContext = await this.openComposer(lifecycleContext);
+      lifecycleContext = await this.fillContent(lifecycleContext);
+      lifecycleContext = await this.attachMedia(lifecycleContext);
+      const media = lifecycleContext.media;
+      const gates = (await this.verifyPreSubmit({ ...lifecycleContext, media })).gates;
+      lifecycleContext.gates = gates;
       const submit = findRef(await this.browser.snapshot(pageId), /button\s+["'](?:post|đăng bài|share)["']/i);
       if (!submit) throw Object.assign(new Error("LinkedIn Post button is not uniquely identified"), { code: "UNKNOWN_COMPOSER" });
       if (dryRun) {
-        await this.#safeClose(pageId);
+        await this.cleanup(lifecycleContext);
         return { submitState: "NOT_STARTED", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began };
       }
       if (!liveEnabled || typeof beforeSubmitIntent !== "function" || typeof onSubmitSent !== "function") throw new Error("Live publish is disabled; dry-run is the default");
-      await beforeSubmitIntent(gates);
-      intentPersisted = true;
-      await this.browser.click(pageId, submit);
-      submitted = true;
-      await onSubmitSent();
-      await this.browser.waitForFeed(pageId);
-      const verification = await this.verifier.verify(request, pageId, { expectedIdentityUrl });
+      lifecycleContext.submitRef = submit;
+      await this.submit(lifecycleContext, { beforeSubmitIntent, onSubmitSent });
+      intentPersisted = lifecycleContext.intentPersisted === true;
+      submitted = lifecycleContext.submitted === true;
+      const verification = await this.verifyPublished(lifecycleContext);
       if (verification.state !== "CONFIRMED") return { submitState: "UNKNOWN", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN" };
       return { ...verification, submitState: "CONFIRMED", startedAt, finishedAt: verification.publicationEvidence.verifiedAt, gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, errorClassification: "NONE", recoveryClassification: "NONE" };
     } catch (error) {
-      if (pageId && !submitted && !intentPersisted) await this.#safeClose(pageId).catch(() => undefined);
-      const uncertain = intentPersisted || submitted;
+      if (pageId && !submitted && !intentPersisted) await this.recover(lifecycleContext, error).catch(() => undefined);
+      const uncertain = intentPersisted || submitted || lifecycleContext?.intentPersisted === true || lifecycleContext?.submitted === true;
       const code = String(error.code || "unknown").toUpperCase();
       const errorClassification = code === "AUTH_REQUIRED" || code === "SECURITY_CHALLENGE" ? "AUTH_REQUIRED"
         : code === "ACCOUNT_MISMATCH" || code === "IDENTITY_AMBIGUOUS" ? "ACCOUNT_MISMATCH"

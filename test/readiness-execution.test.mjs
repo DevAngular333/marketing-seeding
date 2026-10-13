@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { JsonStore } from "../src/store.mjs";
@@ -388,4 +388,21 @@ test("LinkedIn readiness uses the bound ORCA profile and stops before content or
   assert.equal(calls.filter((call) => call.startsWith("click:")).length, 1);
   assert.ok(calls.includes("escape"));
   assert.equal(calls.some((call) => call === "fill" || call === "submit"), false);
+});
+
+test("pending reconciliation selection includes registered and unregistered platforms", async () => {
+  const { directory, service } = await fixture();
+  try {
+    await service.store.mutate("test", "mixed_platform_reconciliation_fixture", (state) => {
+      state.executionRequests.push(
+        { executionId: "exec-test-social", state: "SUBMIT_RESULT_UNKNOWN", reconciliationAttempts: 0, request: { platform: "test_social" } },
+        { executionId: "exec-linkedin", state: "SUBMIT_SENT", reconciliationAttempts: 0, request: { platform: "linkedin" } },
+        { executionId: "exec-done", state: "CONFIRMED", reconciliationAttempts: 0, request: { platform: "test_social" } }
+      );
+    });
+    const pending = await service.pendingExecutionReconciliations({ minIntervalMs: 0 });
+    assert.deepEqual(pending.map((item) => item.executionId).sort(), ["exec-linkedin", "exec-test-social"]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

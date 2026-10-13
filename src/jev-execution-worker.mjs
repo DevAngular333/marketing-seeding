@@ -1,4 +1,5 @@
 import { validateExecutionReceiptV1 } from "./execution-contracts.mjs";
+import { normalizePublicationVerification, PlatformAdapterRegistry } from "./platform-registries.mjs";
 
 function readinessResult(request) {
   return {
@@ -20,10 +21,11 @@ function recoveryClass(result) {
 }
 
 export class JevExecutionWorker {
-  constructor({ service, adapters, workerId = `jev-${process.pid}`, env = process.env, leaseMs = 120_000, now = () => new Date() } = {}) {
+  constructor({ service, adapterRegistry, workerId = `jev-${process.pid}`, env = process.env, leaseMs = 120_000, now = () => new Date() } = {}) {
     if (!service) throw new Error("JEV worker requires the control-plane service");
     this.service = service;
-    this.adapters = adapters instanceof Map ? adapters : new Map(Object.entries(adapters || {}));
+    if (!(adapterRegistry instanceof PlatformAdapterRegistry)) throw new Error("JEV worker requires a PlatformAdapterRegistry");
+    this.adapterRegistry = adapterRegistry;
     this.workerId = String(workerId).trim();
     if (!this.workerId) throw new Error("workerId is required");
     this.env = env;
@@ -38,6 +40,11 @@ export class JevExecutionWorker {
   }
 
   #receipt(requestRow, request, result, { dryRun = false, reconciliation = false } = {}) {
+    const verification = result.publicationVerification || result.publicationEvidence || result.publicationUrl || result.publicationReference
+      ? normalizePublicationVerification(result.publicationVerification || result)
+      : null;
+    const submitState = String(result.submitState || (verification?.state === "CONFIRMED" ? "CONFIRMED" : verification?.state === "UNKNOWN" ? "UNKNOWN" : verification?.state === "FAILED" ? "FAILED" : "FAILED")).toUpperCase();
+    const receiptResult = { ...result, submitState };
     const finishedAt = result.finishedAt || this.now().toISOString();
     const startedAt = result.startedAt || finishedAt;
     return validateExecutionReceiptV1({
@@ -48,14 +55,14 @@ export class JevExecutionWorker {
       startedAt,
       finishedAt,
       readinessResult: result.readinessResult || readinessResult(request),
-      submitState: result.submitState || "FAILED",
+      submitState,
       dryRun,
-      publicationUrl: result.publicationUrl || null,
-      publicationReference: result.publicationReference || null,
-      publicationEvidence: result.publicationEvidence || undefined,
+      publicationUrl: verification?.publicationUrl || result.publicationUrl || null,
+      publicationReference: verification?.publicationReference || result.publicationReference || null,
+      publicationEvidence: verification?.verificationEvidence || result.publicationEvidence || undefined,
       reconciliation,
-      errorClassification: errorClass(result, dryRun),
-      recoveryClassification: recoveryClass(result),
+      errorClassification: errorClass(receiptResult, dryRun),
+      recoveryClassification: recoveryClass(receiptResult),
       telemetry: {
         durationMs: Math.max(0, Math.trunc(result.durationMs || Date.parse(finishedAt) - Date.parse(startedAt) || 0)),
         browserCommands: Math.max(0, Math.trunc(result.browserCommands || 0)),
@@ -70,6 +77,8 @@ export class JevExecutionWorker {
     if (initial.requestRow.state !== "REQUEST_READY" || initial.requestRow.submitState !== "NOT_STARTED") {
       return { status: "NOT_DISPATCHABLE", executionId, state: initial.requestRow.state };
     }
+    const adapter = this.adapterRegistry.resolve(initial.request.platform);
+    if (!adapter) return { status: "PLATFORM_UNSUPPORTED", executionId, platform: initial.request.platform, reasonCode: "adapter_not_registered" };
     const leaseResult = await this.service.acquireExecutionLease(executionId, this.workerId, { leaseMs: this.leaseMs });
     if (!leaseResult.acquired) return { status: "LEASE_BUSY", executionId, reason: leaseResult.reason };
     const lease = leaseResult.lease;
@@ -85,8 +94,7 @@ export class JevExecutionWorker {
     }, Math.max(1_000, Math.floor(this.leaseMs / 3)));
     heartbeat.unref?.();
     try {
-      if (initial.request.platform !== "linkedin") return { status: "UNSUPPORTED_PLATFORM", executionId, platform: initial.request.platform };
-      if (!initial.account || initial.account.status !== "enabled" || initial.account.profileId !== initial.request.profileId || !initial.account.expectedIdentityUrl) {
+      if (!initial.account || initial.account.status !== "enabled" || initial.account.profileId !== initial.request.profileId || initial.account.accountId !== initial.request.accountId) {
         return { status: "HUMAN_REQUIRED", executionId, reasonCode: "account_profile_binding_invalid" };
       }
 
@@ -100,8 +108,6 @@ export class JevExecutionWorker {
       }
       if (leaseLost) return { status: "LEASE_LOST", executionId };
       const context = await this.service.executionContext(executionId);
-      const adapter = this.adapters.get(context.request.platform);
-      if (!adapter) return { status: "ADAPTER_UNAVAILABLE", executionId, platform: context.request.platform };
       const liveEnabled = !dryRun && this.#liveEnabled(executionId, context);
       if (!dryRun && !liveEnabled) return { status: "LIVE_NOT_AUTHORIZED", executionId };
       await this.service.markExecutionStarted(executionId, lease, { dryRun });
@@ -109,7 +115,7 @@ export class JevExecutionWorker {
       const result = await adapter.execute(context.request, {
         dryRun,
         liveEnabled,
-        expectedIdentityUrl: context.account.expectedIdentityUrl,
+        account: context.account,
         beforeSubmitIntent: (verifiedGates) => {
           if (leaseLost) throw Object.assign(new Error("Execution lease was lost before submit"), { code: "LEASE_LOST" });
           return this.service.beginExecutionSubmitIntent(executionId, lease, {
@@ -148,17 +154,17 @@ export class JevExecutionWorker {
     if (!["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(initial.requestRow.state)) {
       return { status: "NOT_RECONCILABLE", executionId, state: initial.requestRow.state };
     }
+    const adapter = this.adapterRegistry.resolve(initial.request.platform);
+    if (!adapter) return { status: "PLATFORM_UNSUPPORTED", executionId, platform: initial.request.platform, reasonCode: "adapter_not_registered" };
     const leaseResult = await this.service.acquireExecutionLease(executionId, this.workerId, { leaseMs: this.leaseMs, mode: "reconcile" });
     if (!leaseResult.acquired) return { status: "LEASE_BUSY", executionId, reason: leaseResult.reason };
     const lease = leaseResult.lease;
     try {
       await this.service.markExecutionReconciliationAttempt(executionId);
       const context = await this.service.executionContext(executionId);
-      const adapter = this.adapters.get(context.request.platform);
-      if (!adapter || typeof adapter.reconcile !== "function") return { status: "VERIFIER_UNAVAILABLE", executionId };
-      const result = await adapter.reconcile(context.request, { expectedIdentityUrl: context.account?.expectedIdentityUrl });
+      const result = await adapter.reconcile(context.request, { account: context.account });
       const receipt = this.#receipt(context.requestRow, context.request, result, { reconciliation: true });
-      if (!(result.submitState === "UNKNOWN" && context.requestRow.state === "SUBMIT_RESULT_UNKNOWN")) {
+      if (!(receipt.submitState === "UNKNOWN" && context.requestRow.state === "SUBMIT_RESULT_UNKNOWN")) {
         await this.service.recordExecutionReceipt(executionId, receipt, `jev-worker:${this.workerId}`);
       }
       return { status: receipt.submitState, executionId, receipt };

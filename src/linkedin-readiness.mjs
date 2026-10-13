@@ -56,7 +56,8 @@ export class LinkedInReadinessProvider {
   async checkReadiness(context) {
     const checkedAt = new Date();
     try {
-      if (!context.profileId || !context.expectedIdentityUrl) {
+      const identityReference = context.identityReference || context.expectedIdentityUrl;
+      if (!context.profileId || !identityReference) {
         return { state: "HUMAN_REQUIRED", reasonCode: "account_identity_not_configured", retryable: false, recoveryClassification: "HUMAN_REQUIRED", checkedAt: checkedAt.toISOString() };
       }
       const profile = (await this.browser.listProfiles()).find((item) => (typeof item === "string" ? item : item.id || item.profileId) === context.profileId);
@@ -91,7 +92,7 @@ export class LinkedInReadinessProvider {
         tab = await this.browser.showTab(pageId);
       }
 
-      let contextState = await this.browser.evaluate(pageId, CONTEXT_EXPRESSION(linkedInPath(context.expectedIdentityUrl)));
+      let contextState = await this.browser.evaluate(pageId, CONTEXT_EXPRESSION(linkedInPath(identityReference)));
       if (contextState.securityChallenge) {
         return { state: "HUMAN_REQUIRED", reasonCode: "security_challenge", retryable: false, recoveryClassification: "HUMAN_REQUIRED", checkedAt: checkedAt.toISOString() };
       }
@@ -116,7 +117,7 @@ export class LinkedInReadinessProvider {
       }
       await this.browser.pressEscape(pageId);
       await this.browser.waitForFeed(pageId);
-      contextState = await this.browser.evaluate(pageId, CONTEXT_EXPRESSION(linkedInPath(context.expectedIdentityUrl)));
+      contextState = await this.browser.evaluate(pageId, CONTEXT_EXPRESSION(linkedInPath(identityReference)));
       const composerClosed = contextState.feedReachable && contextState.identityVerified && contextState.sessionAuthenticated;
       if (!composerClosed) return { state: "UNKNOWN", reasonCode: "composer_close_unverified", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       const finishedAt = new Date();

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { defaultPlatformPolicies } from "./platform-policies.mjs";
 
 export const DEFAULT_READINESS_TTL_MS = 5 * 60 * 1000;
 export const MAX_READINESS_TTL_MS = 60 * 60 * 1000;
@@ -36,7 +37,7 @@ export function readinessBinding({ platform, accountId, profileId, targetId }) {
   });
 }
 
-export function normalizeExecutionAccount(input, now = new Date()) {
+export function normalizeExecutionAccount(input, now = new Date(), platformPolicies = defaultPlatformPolicies) {
   const platform = required(input.platform, "account platform");
   const accountId = required(input.accountId, "account accountId");
   const profileId = required(input.profileId, "account profileId");
@@ -45,31 +46,25 @@ export function normalizeExecutionAccount(input, now = new Date()) {
   const health = String(input.health || "unknown");
   if (!accountHealthStates.has(health)) throw new Error("Unsupported account health state");
 
-  let expectedIdentityUrl = null;
-  if (input.expectedIdentityUrl) {
-    let url;
-    try { url = new URL(String(input.expectedIdentityUrl)); } catch { throw new Error("expectedIdentityUrl must be a valid HTTPS URL"); }
-    if (url.protocol !== "https:" || !/(^|\.)linkedin\.com$/i.test(url.hostname) || !/^\/(?:in|company)\/[^/]+\/?$/i.test(url.pathname)) {
-      throw new Error("LinkedIn expectedIdentityUrl must identify an /in/ or /company/ profile URL");
-    }
-    url.search = "";
-    url.hash = "";
-    expectedIdentityUrl = url.toString();
-  }
-  if (platform === "linkedin" && !expectedIdentityUrl) throw new Error("LinkedIn accounts require expectedIdentityUrl for identity verification");
+  const identityReference = platformPolicies.normalizeIdentityUrl(platform, input.identityReference ?? input.expectedIdentityUrl);
 
   return {
     id: `${platform}:${accountId}`,
     platform,
     accountId,
     profileId,
-    expectedIdentityUrl,
+    identityReference,
+    expectedIdentityUrl: identityReference,
     status,
     health,
     lastReadinessAt: input.lastReadinessAt && Number.isFinite(Date.parse(input.lastReadinessAt)) ? new Date(input.lastReadinessAt).toISOString() : null,
     createdAt: input.createdAt || now.toISOString(),
     updatedAt: now.toISOString()
   };
+}
+
+export function executionAccountIdentityReference(account) {
+  return String(account?.identityReference || account?.expectedIdentityUrl || "").trim() || null;
 }
 
 function assertNoSecrets(value, path = "result") {

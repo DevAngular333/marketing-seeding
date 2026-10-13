@@ -7,8 +7,10 @@ import { approvalFingerprint, assertReplyCanSend, assertTransition, evaluateQueu
 import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs";
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
 import { campaignAuthorizationFingerprint, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
-import { classifyReadinessError, configuredReadinessTtlMs, executionAccountKey, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
+import { classifyReadinessError, configuredReadinessTtlMs, executionAccountIdentityReference, executionAccountKey, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
 import { createExecutionRequestV1, validateExecutionReceiptV1 } from "./execution-contracts.mjs";
+import { defaultPlatformPolicies } from "./platform-policies.mjs";
+import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
 const MAX_GROUNDING_BYTES = 2_000_000;
@@ -22,15 +24,6 @@ const PRODUCT_REPOS = Object.freeze({
   "design-os-code2flow": "vibe-code",
   "design-os-svg-animation": "svg-animation"
 });
-const CHANNEL_HOSTS = Object.freeze({
-  facebook_group: ["facebook.com"],
-  threads: ["threads.net", "threads.com"],
-  reddit: ["reddit.com"],
-  product_hunt: ["producthunt.com"],
-  indie_hackers: ["indiehackers.com"],
-  linkedin: ["linkedin.com", "lnkd.in"]
-});
-
 const R19_CONTENT = `Final R19 - AI-assisted Blender automotive animation
 
 I've finished this 4-second Full-HD test for a GT race-car education concept.
@@ -250,26 +243,18 @@ function canonicalPublicationUrl(value) {
   return parsed;
 }
 
-function normalizedHost(value) {
-  return String(value || "").toLowerCase().replace(/^www\./, "");
-}
-
-function channelUrl(channel, value, label = "Target URL") {
+function channelUrl(channel, value, label = "Target URL", platformPolicies = defaultPlatformPolicies) {
   const parsed = canonicalPublicationUrl(value);
-  const allowed = CHANNEL_HOSTS[channel];
-  if (allowed && !allowed.includes(normalizedHost(parsed.hostname))) {
-    throw new Error(`${label} must use an allowlisted ${channel} hostname`);
-  }
-  if (channel === "reddit" && !(/^\/r\/[^/]+|^\/user\/[^/]+/i.test(parsed.pathname))) {
-    throw new Error("Reddit target URL must identify a specific subreddit or user profile");
+  if (platformPolicies.has(channel) && !platformPolicies.allowsTargetUrl(channel, parsed.toString())) {
+    throw new Error(platformPolicies.targetUrlError(channel, parsed.toString()) || `${label} must use an allowlisted ${channel} hostname`);
   }
   return parsed.toString();
 }
 
-function requirePublicationEvidence(input, target) {
+function requirePublicationEvidence(input, target, platformPolicies = defaultPlatformPolicies) {
   const evidence = String(input.evidence || "").trim();
   if (!evidence) throw new Error("Published transition requires verification evidence");
-  const publication = new URL(channelUrl(target.channel, input.publicationUrl, "Publication URL"));
+  const publication = new URL(channelUrl(target.channel, input.publicationUrl, "Publication URL", platformPolicies));
   const targetUrl = canonicalPublicationUrl(target.url);
   const canonicalPath = (url) => `${url.origin}${url.pathname.replace(/\/+$/, "") || "/"}`.toLowerCase();
   if (publication.pathname === "/" || canonicalPath(publication) === canonicalPath(targetUrl)) {
@@ -399,20 +384,16 @@ function normalizeScheduleMode(value) {
   return requested;
 }
 
-function normalizeCommunityMembership(input) {
+function normalizeCommunityMembership(input, platformPolicies = defaultPlatformPolicies) {
   const productRepo = requiredText(input.productRepo, "productRepo");
   if (!PRODUCT_REPOS[productRepo]) throw new Error(`Unsupported productRepo: ${productRepo}`);
   const track = input.track === undefined ? PRODUCT_REPOS[productRepo] : String(input.track || "").trim();
   if (!PRODUCT_TRACKS.has(track) || PRODUCT_REPOS[productRepo] !== track) throw new Error("Community track must match productRepo");
   const platform = requiredText(input.platform, "platform").toLowerCase();
-  if (!CHANNEL_HOSTS[platform] && platform !== "facebook" && platform !== "linkedin") throw new Error(`Unsupported community platform: ${platform}`);
+  if (!platformPolicies.has(platform)) throw new Error(`Unsupported community platform: ${platform}`);
   const communityName = requiredText(input.communityName, "communityName");
   const communityUrl = optionalHttpUrl(input.communityUrl || input.url, "communityUrl");
-  if (communityUrl) {
-    const host = new URL(communityUrl).hostname.replace(/^www\./, "").toLowerCase();
-    const allowedHosts = platform === "facebook" || platform === "facebook_group" ? CHANNEL_HOSTS.facebook_group : platform === "linkedin" ? CHANNEL_HOSTS.linkedin : CHANNEL_HOSTS[platform] || [];
-    if (allowedHosts.length && !allowedHosts.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))) throw new Error("communityUrl host does not match platform");
-  }
+  if (communityUrl && !platformPolicies.allowsCommunityUrl(platform, communityUrl)) throw new Error("communityUrl host does not match platform");
   const membershipStatus = String(input.membershipStatus || "unknown").trim();
   if (!COMMUNITY_MEMBERSHIP_STATES.has(membershipStatus)) throw new Error(`Unsupported membershipStatus: ${membershipStatus}`);
   const postStatus = String(input.postStatus || "unknown").trim();
@@ -497,11 +478,12 @@ export function buildTrafficPulse(post, snapshots = [], interactions = [], now =
 export class SeedingService {
   constructor(store, options = {}) {
     this.store = store;
+    this.platformPolicies = options.platformPolicies || defaultPlatformPolicies;
     this.readinessTtlMs = options.readinessTtlMs ?? configuredReadinessTtlMs();
     this.maxReadinessAttempts = options.maxReadinessAttempts ?? MAX_READINESS_ATTEMPTS;
-    this.readinessProviders = options.readinessProviders instanceof Map
-      ? options.readinessProviders
-      : new Map(Object.entries(options.readinessProviders || {}));
+    this.readinessProviders = options.readinessProviderRegistry instanceof ReadinessProviderRegistry
+      ? options.readinessProviderRegistry
+      : new ReadinessProviderRegistry(options.readinessProviders || {});
     this.readinessTimeoutMs = options.readinessTimeoutMs ?? 20_000;
     this.readinessInFlight = new Set();
   }
@@ -586,16 +568,6 @@ export class SeedingService {
           locale: "en"
         },
         {
-          id: "target_linkedin_global",
-          channel: "linkedin",
-          name: "LinkedIn professional audience",
-          url: "https://www.linkedin.com/feed/?shareActive=true",
-          accountId: "linkedin_primary",
-          status: "needs_review",
-          rulesStatus: "not_required",
-          locale: "en"
-        },
-        {
           id: "target_email_opt_in",
           channel: "email",
           name: "Consent-based product updates",
@@ -610,9 +582,10 @@ export class SeedingService {
           notes: "Placeholder only. Keep inactive until consent source and unsubscribe evidence are reviewed."
         }
       ];
-      for (const target of targets) addSeedDefaults(state.targets, { createdAt, ...target });
+      const allTargets = [...targets, ...this.platformPolicies.defaultTargets()];
+      for (const target of allTargets) addSeedDefaults(state.targets, { createdAt, ...target });
 
-      const posts = targets.map((target) => ({
+      const posts = allTargets.map((target) => ({
         id: `post_r19_${target.channel}`,
         campaignId: "campaign_r19_gt_course_validation",
         targetId: target.id,
@@ -1043,7 +1016,7 @@ export class SeedingService {
       const context = {
         jobId: post.id, campaignId: post.campaignId, platform: target.channel,
         accountId: target.accountId, profileId: target.profileId, targetId: target.id,
-        targetUrl: target.url, expectedIdentityUrl: account.expectedIdentityUrl
+        targetUrl: target.url, identityReference: executionAccountIdentityReference(account)
       };
       if (!force && isReadinessFresh(target.readiness, context, new Date(), this.readinessTtlMs)) {
         const readiness = normalizeReadinessResult({
@@ -1075,10 +1048,10 @@ export class SeedingService {
         if (current.jobLifecycle.at(-1)?.state !== "READINESS_CHECKING") current.jobLifecycle.push({ state: "READINESS_CHECKING", at: nowIso(), attempt });
       });
 
-      const provider = this.readinessProviders.get(target.channel);
+      const provider = this.readinessProviders.resolve(target.channel);
       let providerResult;
       if (!provider || typeof provider.checkReadiness !== "function") {
-        providerResult = { state: "UNKNOWN", reasonCode: "readiness_provider_unavailable", retryable: false, recoveryClassification: "UNKNOWN" };
+        providerResult = { state: "BLOCKED", reasonCode: "readiness_provider_not_registered", retryable: false, recoveryClassification: "NONE" };
       } else {
         try {
           providerResult = await Promise.race([
@@ -1257,7 +1230,6 @@ export class SeedingService {
   async pendingExecutionReconciliations({ now = Date.now(), minIntervalMs = 60_000, maxAttempts = 10 } = {}) {
     const state = await this.store.read();
     return (state.executionRequests || []).filter((item) => ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(item.state))
-      .filter((item) => item.request?.platform === "linkedin")
       .filter((item) => Number(item.reconciliationAttempts || 0) < maxAttempts)
       .filter((item) => !Number.isFinite(Date.parse(item.lastReconciliationAt || "")) || now - Date.parse(item.lastReconciliationAt) >= minIntervalMs);
   }
@@ -1552,7 +1524,7 @@ export class SeedingService {
   }
 
   async registerExecutionAccount(input, actor = "operator") {
-    const account = normalizeExecutionAccount(input);
+    const account = normalizeExecutionAccount(input, new Date(), this.platformPolicies);
     const result = await this.store.mutate(actor, "execution_account_registered", (state) => {
       const collision = (state.executionAccounts || []).find((item) => item.platform === account.platform && item.profileId === account.profileId && item.id !== account.id && item.status === "enabled");
       if (collision) throw new Error(`Browser profile ${account.profileId} is already bound to another ${account.platform} account`);
@@ -1805,7 +1777,7 @@ export class SeedingService {
         id: randomUUID(),
         channel: input.channel,
         name: String(input.name || "").trim(),
-        url: channelUrl(input.channel, input.url),
+        url: channelUrl(input.channel, input.url, "Target URL", this.platformPolicies),
         accountId: String(input.accountId || "").trim(),
         profileId: String(input.profileId || "").trim() || null,
         status: input.status || "needs_review",
@@ -1864,7 +1836,7 @@ export class SeedingService {
       if (input.status === "active" && target.readiness.state !== "ready") {
         throw new Error("Target cannot become active until readiness state is ready");
       }
-      target.url = channelUrl(target.channel, target.url);
+      target.url = channelUrl(target.channel, target.url, "Target URL", this.platformPolicies);
       if (CHANNELS[target.channel]?.requiresConsent && target.status === "active" &&
           (!String(target.consentBasis || "").trim() || !String(target.audienceSource || "").trim() || !String(target.unsubscribeMechanism || "").trim())) {
         throw new Error("Active email targets require consentBasis, audienceSource and unsubscribeMechanism");
@@ -1899,7 +1871,7 @@ export class SeedingService {
   }
 
   async createCommunityMembership(input, actor = "operator") {
-    const normalized = normalizeCommunityMembership(input);
+    const normalized = normalizeCommunityMembership(input, this.platformPolicies);
     const result = await this.store.mutate(actor, "community_membership_recorded", (state) => {
       state.communityMemberships ||= [];
       const existing = state.communityMemberships.find((item) => item.productRepo === normalized.productRepo && item.platform === normalized.platform && item.communityUrl === normalized.communityUrl && item.communityName === normalized.communityName);
@@ -1918,7 +1890,7 @@ export class SeedingService {
     const result = await this.store.mutate(actor, "community_membership_updated", (state) => {
       state.communityMemberships ||= [];
       const membership = requireItem(state.communityMemberships, membershipId, "Community membership");
-      const normalized = normalizeCommunityMembership({ ...membership, ...input });
+      const normalized = normalizeCommunityMembership({ ...membership, ...input }, this.platformPolicies);
       Object.assign(membership, normalized, { updatedAt: nowIso() });
       return membership;
     });
@@ -2000,7 +1972,7 @@ export class SeedingService {
       let publicationEvidence = null;
       if (input.status === "published") {
         const target = requireItem(state.targets, post.targetId, "Target");
-        publicationEvidence = requirePublicationEvidence(input, target);
+        publicationEvidence = requirePublicationEvidence(input, target, this.platformPolicies);
       }
       const at = nowIso();
       state.publicationAttempts ||= [];
@@ -2088,7 +2060,7 @@ export class SeedingService {
         throw new Error("Browser observation requires a published post with a permalink");
       }
       const target = requireItem(state.targets, post.targetId, "Target");
-      const observedUrl = channelUrl(target.channel, input.observedUrl, "Observed URL");
+      const observedUrl = channelUrl(target.channel, input.observedUrl, "Observed URL", this.platformPolicies);
       const comparableUrl = (value) => {
         const parsed = canonicalPublicationUrl(value);
         return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "") || "/"}`;
