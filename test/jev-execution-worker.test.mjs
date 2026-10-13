@@ -286,6 +286,7 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     },
     async evaluate(_id, expression) {
       if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: phase === "feed" };
+      if (expression.includes("candidates[0].click()")) { phase = "composer"; return { clicked: true }; }
       if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: true, dialogCount: phase === "feed" ? 0 : 1, editorCount: phase === "feed" ? 0 : 1, audience: true, postButton: true, mediaControl: true, advertisingControls: 0 };
       if (expression.includes("const expected = \"public\"")) return { dialogCount: 1, audienceMatch: true };
       if (expression.includes("contenteditable") && expression.includes("editorCount")) return { dialogCount: 1, editorCount: 1, text: "approved draft" };
@@ -376,6 +377,7 @@ test("LinkedIn adapter waits for the authenticated shell after navigation instea
         identityChecks += 1;
         return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: hydrated, identityVerified: hydrated, feedReachable: hydrated };
       }
+      if (expression.includes("candidates[0].click()")) { phase = "composer"; return { clicked: true }; }
       if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: true, routeCompatible: true, dialogCount: phase === "feed" ? 0 : 1, editorCount: phase === "feed" ? 0 : 1, audience: true, postButton: true, mediaControl: true, advertisingControls: 0, confirmed: phase !== "feed" };
       if (expression.includes('const expected = "public"')) return { dialogCount: 1, audienceMatch: true };
       if (expression.includes("contenteditable") && expression.includes("editorCount")) return { dialogCount: 1, editorCount: 1, text: "draft" };
@@ -401,9 +403,9 @@ test("LinkedIn adapter waits for the authenticated shell after navigation instea
   assert.equal(phase, "feed");
 });
 
-test("LinkedIn composer trigger uses one verified DOM fallback when ORCA reports a click without dispatching it", async () => {
+test("LinkedIn composer trigger uses one strictly guarded direct DOM activation when ORCA click dispatch is unavailable", async () => {
   let phase = "feed";
-  let fallbackClicks = 0;
+  let directActivations = 0;
   let postClicks = 0;
   const request = {
     executionId: "exec-click-fallback", jobId: "job-click-fallback", campaignId: "campaign-click-fallback", platform: "linkedin",
@@ -417,14 +419,14 @@ test("LinkedIn composer trigger uses one verified DOM fallback when ORCA reports
     async snapshot() { return phase === "feed" ? '- button "Start a post" [ref=trigger]' : '- textbox "Post editor" [ref=editor]\\n- button "Post" [ref=post]'; },
     async evaluate(_id, expression) {
       if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: true };
-      if (expression.includes("candidates[0].click()")) { fallbackClicks += 1; phase = "composer"; return { clicked: true }; }
+      if (expression.includes("candidates[0].click()")) { directActivations += 1; phase = "composer"; return { clicked: true }; }
       if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: phase === "composer", routeCompatible: phase === "composer", dialogCount: phase === "composer" ? 1 : 0, editorCount: phase === "composer" ? 1 : 0, audience: phase === "composer", postButton: phase === "composer", mediaControl: phase === "composer", advertisingControls: 0, confirmed: phase === "composer" };
       if (expression.includes('const expected = "public"')) return { dialogCount: 1, audienceMatch: true };
       if (expression.includes("contenteditable") && expression.includes("editorCount")) return { dialogCount: 1, editorCount: 1, text: "draft" };
       if (expression.includes("const expected = new URL")) return { domain: true, targetMatched: true };
       return {};
     },
-    async click(_id, ref) { assert.equal(ref, "trigger"); /* host acknowledged but dispatched no DOM click */ },
+    async click(_id, ref) { assert.fail(`unexpected semantic click: ${ref}`); },
     async fill() {},
     async keypress(_id, key) { if (key === "Escape") phase = "feed"; else if (key === "Enter") postClicks += 1; }
   };
@@ -435,7 +437,7 @@ test("LinkedIn composer trigger uses one verified DOM fallback when ORCA reports
   assert.equal(result.submitState, "NOT_STARTED");
   assert.equal(result.gates.composerConfirmed, true);
   assert.equal(result.telemetry.domClickFallbacks, 1);
-  assert.equal(fallbackClicks, 1);
+  assert.equal(directActivations, 1);
   assert.equal(postClicks, 0);
   assert.equal(phase, "feed");
 });

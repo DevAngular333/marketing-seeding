@@ -587,11 +587,12 @@ test("LinkedIn readiness uses the bound ORCA profile and stops before content or
     async navigate(id, url) { calls.push(`navigate:${id}:${url}`); },
     async waitForFeed() { calls.push("wait"); },
     async evaluate(_id, expression) {
-      calls.push(expression.includes("const expectedPath") ? "context" : "composer");
+      calls.push(expression.includes("const expectedPath") ? "context" : expression.includes("candidates[0].click()") ? "composer-trigger-dom" : "composer");
       if (expression.includes("const expectedPath")) return {
         linkedinDomain: true, loginRequired: false, securityChallenge: false,
         sessionAuthenticated: true, identityVerified: true, feedReachable: true
       };
+      if (expression.includes("candidates[0].click()")) return { clicked: true };
       return { linkedinDomain: true, route: true, dialogCount: 1, editorCount: 1, audience: true, postButton: true, mediaControl: true, advertisingControls: 0 };
     },
     async snapshot() { calls.push("snapshot"); return '- button "Start a post" [ref=e10]'; },
@@ -605,7 +606,8 @@ test("LinkedIn readiness uses the bound ORCA profile and stops before content or
   });
   assert.equal(result.state, "READY");
   assert.equal(result.capabilities.composerAvailable, true);
-  assert.equal(calls.filter((call) => call.startsWith("click:")).length, 1);
+  assert.equal(calls.filter((call) => call === "composer-trigger-dom").length, 1);
+  assert.equal(calls.filter((call) => call.startsWith("click:")).length, 0);
   assert.ok(calls.includes("escape"));
   assert.equal(calls.some((call) => call === "fill" || call === "submit"), false);
 });
@@ -724,7 +726,8 @@ test("LinkedIn composer confirmation accepts contenteditable plus audience and s
 
 test("LinkedIn readiness waits for an asynchronously mounted composer before classifying it", async () => {
   let phase = "feed";
-  let waitExpression;
+  let composerChecks = 0;
+  let triggerActivations = 0;
   const browser = {
     async listProfiles() { return [{ id: "linkedin-profile-1" }]; },
     async listTabs() { return [{ id: "page-1", profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }]; },
@@ -734,16 +737,15 @@ test("LinkedIn readiness waits for an asynchronously mounted composer before cla
         linkedinDomain: true, loginRequired: false, securityChallenge: false,
         sessionAuthenticated: true, identityVerified: true, feedReachable: true
       };
+      if (expression.includes("candidates[0].click()")) { triggerActivations += 1; phase = "loading"; return { clicked: true }; }
+      composerChecks += 1;
+      if (phase === "loading" && composerChecks >= 2) phase = "composer";
       return phase === "composer"
         ? { linkedinDomain: true, route: false, routeCompatible: true, dialogCount: 1, editorCount: 1, audience: true, postButton: true, mediaControl: true, closeControl: true, advertisingControls: 0, confirmed: true }
         : { linkedinDomain: true, route: false, routeCompatible: false, dialogCount: 1, editorCount: 0, audience: false, postButton: false, mediaControl: false, closeControl: true, advertisingControls: 0, confirmed: false };
     },
     async snapshot() { return '- button "Start a post" [ref=e10]'; },
-    async click() { phase = "loading"; },
-    async waitForExpression(_id, expression, timeoutMs) {
-      waitExpression = { expression, timeoutMs };
-      phase = "composer";
-    },
+    async click() { assert.fail("composer trigger should use the verified direct DOM activation"); },
     async pressEscape() { phase = "feed"; },
     async waitForFeed() {}
   };
@@ -751,8 +753,8 @@ test("LinkedIn readiness waits for an asynchronously mounted composer before cla
     platform: "linkedin", profileId: "linkedin-profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/test-owner"
   });
   assert.equal(result.state, "READY");
-  assert.match(waitExpression.expression, /confirmed === true/);
-  assert.equal(waitExpression.timeoutMs, 8_000);
+  assert.equal(triggerActivations, 1);
+  assert.ok(composerChecks >= 2);
 });
 
 test("LinkedIn readiness reports UNKNOWN for a partially loaded composer after bounded wait", async () => {
@@ -765,6 +767,7 @@ test("LinkedIn readiness reports UNKNOWN for a partially loaded composer after b
         linkedinDomain: true, loginRequired: false, securityChallenge: false,
         sessionAuthenticated: true, identityVerified: true, feedReachable: true
       };
+      if (expression.includes("candidates[0].click()")) return { clicked: true };
       return { linkedinDomain: true, route: false, routeCompatible: false, dialogCount: 1, editorCount: 1, audience: false, postButton: false, mediaControl: false, closeControl: true, advertisingControls: 0, confirmed: false };
     },
     async snapshot() { return '- button "Start a post" [ref=e10]'; },

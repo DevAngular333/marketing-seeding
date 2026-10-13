@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import { open } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { findComposerTrigger, LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
+import { LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
 import { linkedInReadinessExpressions, openLinkedInComposer } from "./linkedin-readiness.mjs";
 
 
@@ -321,10 +321,7 @@ export class LinkedInAdapter {
   async #openComposer(request, pageId, expectedIdentityUrl) {
     const feed = await this.browser.evaluate(pageId, linkedInReadinessExpressions().context(new URL(expectedIdentityUrl).pathname));
     if (!feed.sessionAuthenticated || !feed.identityVerified) throw Object.assign(new Error("LinkedIn session/account verification failed"), { code: "ACCOUNT_MISMATCH" });
-    const snapshot = await this.browser.snapshot(pageId);
-    const trigger = findComposerTrigger(snapshot);
-    if (!trigger) throw Object.assign(new Error("LinkedIn post composer trigger was not uniquely found"), { code: "UNKNOWN_COMPOSER" });
-    const { state, domFallbackUsed } = await openLinkedInComposer(this.browser, pageId, trigger);
+    const { state, domFallbackUsed } = await openLinkedInComposer(this.browser, pageId);
     if (state.linkedinDomain !== true || state.route !== true || state.dialogCount !== 1 || state.editorCount !== 1 || state.audience !== true || state.postButton !== true || state.mediaControl !== true || state.advertisingControls !== 0) {
       throw Object.assign(new Error("LinkedIn composer structure is not confirmed"), { code: "UNKNOWN_COMPOSER" });
     }

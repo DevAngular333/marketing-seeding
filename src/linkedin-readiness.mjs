@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { classifyReadinessError } from "./readiness.mjs";
-import { findComposerTrigger, LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
+import { LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
 
 const CONTEXT_EXPRESSION = (expectedPath) => `(() => {
   const path = location.pathname || '';
@@ -78,19 +78,6 @@ async function sampleComposerState(browser, pageId, timeoutMs) {
   return state;
 }
 
-async function waitForComposer(browser, pageId, timeoutMs = 8_000) {
-  const started = Date.now();
-  if (typeof browser.waitForExpression === "function") {
-    const expression = `(${COMPOSER_EXPRESSION}).confirmed === true`;
-    await browser.waitForExpression(pageId, expression, timeoutMs).catch(() => undefined);
-    const state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
-    if (classifyLinkedInComposerState(state) === "CONFIRMED") return state;
-    const remaining = Math.max(0, timeoutMs - (Date.now() - started));
-    return remaining ? sampleComposerState(browser, pageId, remaining) : state;
-  }
-  return sampleComposerState(browser, pageId, timeoutMs);
-}
-
 const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
   const visible = (node) => Boolean(node && node.getClientRects().length);
   const host = location.hostname.toLowerCase().replace(/^www\\./, '');
@@ -108,24 +95,15 @@ const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
   return { clicked: true };
 })()`;
 
-export async function openLinkedInComposer(browser, pageId, trigger, { mountTimeoutMs = 8_000 } = {}) {
-  await browser.click(pageId, trigger);
+export async function openLinkedInComposer(browser, pageId, { mountTimeoutMs = 8_000 } = {}) {
+  // ORCA's current click command acknowledges this custom role=button without
+  // dispatching a page click. Use the accessible label and strict feed/dialog
+  // preconditions to activate that one control directly through the browser DOM.
+  const activation = await browser.evaluate(pageId, COMPOSER_TRIGGER_DOM_CLICK);
   let state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
-  if (classifyLinkedInComposerState(state) === "CONFIRMED") return { state, domFallbackUsed: false };
-
-  // If a dialog/route has started mounting, wait for that same surface. Never
-  // click again while an ambiguous or partial composer is present.
-  const mounting = state?.routeCompatible === true || state?.dialogCount > 0 || state?.editorCount > 0;
-  if (mounting) return { state: await waitForComposer(browser, pageId, mountTimeoutMs), domFallbackUsed: false };
-
-  // Some ORCA hosts acknowledge a semantic click on this custom LinkedIn DIV
-  // without dispatching a DOM event. A narrowly-scoped DOM click is allowed only
-  // after proving the feed is still open and the unique composer trigger remains.
-  const fallback = await browser.evaluate(pageId, COMPOSER_TRIGGER_DOM_CLICK);
-  if (fallback?.clicked !== true) return { state, domFallbackUsed: false };
-  state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
-  if (classifyLinkedInComposerState(state) === "CONFIRMED") return { state, domFallbackUsed: true };
-  state = await waitForComposer(browser, pageId, mountTimeoutMs);
+  if (classifyLinkedInComposerState(state) === "CONFIRMED") return { state, domFallbackUsed: activation?.clicked === true };
+  if (activation?.clicked !== true) return { state, domFallbackUsed: false, reasonCode: activation?.reason || "composer_trigger_not_activated" };
+  state = await sampleComposerState(browser, pageId, mountTimeoutMs);
   return { state, domFallbackUsed: true };
 }
 
@@ -196,11 +174,9 @@ export class LinkedInReadinessProvider {
         return { state: "UNKNOWN", reasonCode: "linkedin_feed_unavailable", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       }
 
-      const snapshot = await this.browser.snapshot(pageId);
-      const trigger = findComposerTrigger(snapshot);
-      if (!trigger) return { state: "BLOCKED", reasonCode: "composer_trigger_missing", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
-      const opened = await openLinkedInComposer(this.browser, pageId, trigger);
+      const opened = await openLinkedInComposer(this.browser, pageId);
       const composer = opened.state;
+      if (opened.reasonCode) return { state: "BLOCKED", reasonCode: "composer_trigger_missing", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       const composerClassification = classifyLinkedInComposerState(composer);
       if (composerClassification !== "CONFIRMED") {
         await this.browser.pressEscape(pageId).catch(() => undefined);
