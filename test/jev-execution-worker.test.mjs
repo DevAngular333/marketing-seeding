@@ -307,6 +307,7 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     async evaluate(_id, expression) {
       if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: phase === "feed" };
       if (expression.includes("candidates[0].click()")) { phase = "composer"; return { clicked: true }; }
+      if (expression.includes("mediaControlClick")) { calls.push(["media-control-dom-fallback"]); phase = "file"; return { mediaControlClick: true, dialogCount: 1, editorCount: 1, controlCount: 1 }; }
       if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: true, dialogCount: phase === "feed" ? 0 : 1, editorCount: phase === "feed" ? 0 : 1, audience: true, postButton: true, mediaControl: true, advertisingControls: 0 };
       if (expression.includes("const expected = \"public\"")) return { dialogCount: 1, audienceMatch: true };
       if (expression.includes("contenteditable") && expression.includes("editorCount")) return { dialogCount: 1, editorCount: 1, text: "approved draft" };
@@ -317,7 +318,6 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     async click(_id, ref) {
       calls.push(["click", ref]);
       if (ref === "trigger") phase = "composer";
-      else if (ref === "media") phase = "file";
       else if (ref === "post") { postClickCount += 1; phase = "submitted"; }
     },
     async fill(_id, ref, value) { calls.push(["fill", ref, value]); },
@@ -334,6 +334,7 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     ]);
     assert.deepEqual(calls.filter(([name, ref]) => name === "click" && ref === "post"), []);
     assert.ok(calls.some(([name]) => name === "upload"));
+    assert.ok(calls.some(([name]) => name === "media-control-dom-fallback"));
     assert.equal(phase, "feed");
     assert.equal(result.computerUseCalls, 0);
 

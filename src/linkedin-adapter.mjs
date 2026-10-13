@@ -113,6 +113,19 @@ const MEDIA_STATE_EXPRESSION = `(() => {
   return { dialogCount: dialogs.length, fileCount: file?.files?.length || 0, filename: file?.files?.[0]?.name || '', videoCount: videos.length, imageCount: images.length, uploadError: /upload failed|couldn't upload|cannot upload|upload error|tải lên thất bại/i.test(body) };
 })()`;
 
+const MEDIA_CONTROL_CLICK_EXPRESSION = `(() => {
+  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter((node) => node.getClientRects().length);
+  const dialog = dialogs.length === 1 ? dialogs[0] : null;
+  const editors = dialog ? Array.from(dialog.querySelectorAll('[role="textbox"],textarea,[contenteditable="true"]')).filter((node) => node.getClientRects().length) : [];
+  const inputs = dialog ? Array.from(dialog.querySelectorAll('input[type="file"]')) : [];
+  const controls = dialog ? Array.from(dialog.querySelectorAll('button,[role="button"]')).filter((node) => node.getClientRects().length && /photo|video|media|phương tiện truyền thông|ảnh/i.test([node.getAttribute('aria-label') || '', node.innerText || ''].join(' '))) : [];
+  if (dialogs.length !== 1 || editors.length !== 1 || controls.length !== 1 || inputs.length !== 0) {
+    return { mediaControlClick: false, dialogCount: dialogs.length, editorCount: editors.length, controlCount: controls.length, fileInputCount: inputs.length };
+  }
+  controls[0].click();
+  return { mediaControlClick: true, dialogCount: dialogs.length, editorCount: editors.length, controlCount: controls.length };
+})()`;
+
 const FEED_VERIFICATION_EXPRESSION = (content, mediaExpected, expectedIdentityUrl) => `(() => {
   const expected = ${JSON.stringify(content)}.trim();
   const expectedIdentityPath = new URL(${JSON.stringify(expectedIdentityUrl)}).pathname.replace(/\\/$/, '').toLowerCase();
@@ -354,8 +367,15 @@ export class LinkedInAdapter {
     const mediaButton = findRef(snapshot, /button.*(?:photo|video|media|phương tiện truyền thông|ảnh)/i);
     if (!mediaButton) throw Object.assign(new Error("LinkedIn media control is not uniquely identified"), { code: "MEDIA_MISMATCH" });
     await this.browser.click(pageId, mediaButton);
-    const fileSnapshot = await this.browser.snapshot(pageId);
-    const fileInput = findRef(fileSnapshot, /(?:file|upload).*(?:input|button)|input.*file/i);
+    let fileSnapshot = await this.browser.snapshot(pageId);
+    let fileInput = findRef(fileSnapshot, /(?:file|upload).*(?:input|button)|input.*file/i);
+    if (!fileInput) {
+      const fallback = await this.browser.evaluate(pageId, MEDIA_CONTROL_CLICK_EXPRESSION).catch(() => ({ mediaControlClick: false }));
+      if (fallback.mediaControlClick === true) {
+        fileSnapshot = await this.browser.snapshot(pageId);
+        fileInput = findRef(fileSnapshot, /(?:file|upload).*(?:input|button)|input.*file/i);
+      }
+    }
     if (!fileInput) throw Object.assign(new Error("ORCA did not expose a direct file input for the composer"), { code: "UPLOAD_ERROR" });
     await this.browser.upload(pageId, fileInput, media.path);
     const mediaAttachMs = Date.now() - attachStarted;
