@@ -22,14 +22,28 @@ const COMPOSER_EXPRESSION = `(() => {
   const visible = (node) => Boolean(node && node.getClientRects().length);
   const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter(visible);
   const editors = dialogs.flatMap((dialog) => Array.from(dialog.querySelectorAll('[contenteditable="true"],[role="textbox"]')).filter(visible));
-  const labels = dialogs.flatMap((dialog) => Array.from(dialog.querySelectorAll('button,[role="button"],input,[role="combobox"]')).filter(visible).map((node) => [node.getAttribute('aria-label') || '', node.innerText || '', node.getAttribute('placeholder') || ''].join(' ')));
-  const has = (pattern) => labels.some((label) => pattern.test(label));
-  const advertisingControls = labels.filter((label) => /budget|billing|campaign|ad account|boost|sponsor|ngân sách|thanh toán|chiến dịch|tài khoản quảng cáo|quảng bá/i.test(label)).length;
-  const route = location.pathname.replace(/\\/$/, '').toLowerCase() === '/sharing/compose';
+  const controls = dialogs.flatMap((dialog) => Array.from(dialog.querySelectorAll('button,[role="button"],input,[role="combobox"]')).filter(visible).map((node) => ({
+    ariaLabel: (node.getAttribute('aria-label') || '').trim(),
+    text: (node.innerText || '').replace(/\\s+/g, ' ').trim(),
+    placeholder: (node.getAttribute('placeholder') || '').trim(),
+    role: (node.getAttribute('role') || '').trim().toLowerCase(),
+    tag: (node.tagName || '').toLowerCase()
+  })));
+  const fields = (control) => [control.ariaLabel, control.text, control.placeholder].filter(Boolean);
+  const has = (pattern) => controls.some((control) => fields(control).some((field) => pattern.test(field)));
+  const advertisingControls = controls.filter((control) => fields(control).some((field) => /budget|billing|campaign|ad account|boost|sponsor|ngân sách|thanh toán|chiến dịch|tài khoản quảng cáo|quảng bá/i.test(field))).length;
+  const path = location.pathname.replace(/\\/$/, '').toLowerCase() || '/';
+  const route = path === '/sharing/compose';
+  const feedWithComposerSurface = /\\/feed$/i.test(path) && dialogs.length === 1;
+  const routeCompatible = route || feedWithComposerSurface;
   const audience = has(/post to|audience|mọi người|đăng cho|anyone|everyone/i);
-  const postButton = has(/^(đăng bài|post|publish)$/i);
-  const mediaControl = has(/media|photo|video|phương tiện truyền thông|ảnh|video/i);
-  return { linkedinDomain: /(^|\\.)linkedin\\.com$/i.test(location.hostname), route, dialogCount: dialogs.length, editorCount: editors.length, audience, postButton, mediaControl, advertisingControls };
+  const postButton = controls.some((control) => control.tag === 'button' && fields(control).some((field) => /^(đăng bài|post|publish)(?:$|[\\s.…])/i.test(field)));
+  const mediaControl = has(/media|photo|video|phương tiện truyền thông|ảnh/i);
+  const closeControl = has(/close|dismiss|cancel|hủy|đóng/i);
+  const linkedinDomain = /(^|\\.)linkedin\\.com$/i.test(location.hostname);
+  const confirmed = linkedinDomain && routeCompatible && dialogs.length === 1 && editors.length === 1 && audience && postButton && advertisingControls === 0;
+  const signalCount = [routeCompatible, dialogs.length === 1, editors.length === 1, audience, postButton, mediaControl, closeControl].filter(Boolean).length;
+  return { linkedinDomain, route, routeCompatible, dialogCount: dialogs.length, editorCount: editors.length, audience, postButton, mediaControl, closeControl, advertisingControls, signalCount, confirmed };
 })()`;
 
 function linkedInPath(value) {
@@ -37,9 +51,29 @@ function linkedInPath(value) {
   return url.pathname.replace(/\/$/, "").toLowerCase() || "/";
 }
 
-function confirmedComposer(result) {
-  return result?.linkedinDomain === true && result.route === true && result.dialogCount === 1 && result.editorCount === 1 &&
-    result.audience === true && result.postButton === true && result.mediaControl === true && result.advertisingControls === 0;
+export function classifyLinkedInComposerState(result) {
+  const routeCompatible = result?.routeCompatible === true || result?.route === true;
+  if (result?.confirmed === true || (result?.linkedinDomain === true && routeCompatible && result?.dialogCount === 1 && result?.editorCount === 1 && result?.audience === true && result?.postButton === true && result?.advertisingControls === 0)) return "CONFIRMED";
+  if (result?.dialogCount === 0 && result?.route !== true && result?.editorCount === 0) return "NOT_COMPOSER";
+  const composerEvidence = result?.editorCount > 0 || result?.audience === true || result?.postButton === true || result?.mediaControl === true;
+  if (result?.route === true || composerEvidence) return "UNKNOWN";
+  return "NOT_COMPOSER";
+}
+
+async function waitForComposer(browser, pageId, timeoutMs = 8_000) {
+  if (typeof browser.waitForExpression === "function") {
+    await browser.waitForExpression(pageId, `(${COMPOSER_EXPRESSION}).confirmed === true`, timeoutMs).catch(() => undefined);
+    return browser.evaluate(pageId, COMPOSER_EXPRESSION);
+  }
+  const started = Date.now();
+  let state;
+  do {
+    state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
+    if (classifyLinkedInComposerState(state) === "CONFIRMED") return state;
+    if (Date.now() - started >= timeoutMs) return state;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  } while (Date.now() - started < timeoutMs);
+  return state;
 }
 
 function safeEvidence(value) {
@@ -110,10 +144,15 @@ export class LinkedInReadinessProvider {
       const trigger = findComposerTrigger(snapshot);
       if (!trigger) return { state: "BLOCKED", reasonCode: "composer_trigger_missing", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       await this.browser.click(pageId, trigger);
-      const composer = await this.browser.evaluate(pageId, COMPOSER_EXPRESSION);
-      if (!confirmedComposer(composer)) {
+      const composer = await waitForComposer(this.browser, pageId);
+      const composerClassification = classifyLinkedInComposerState(composer);
+      if (composerClassification !== "CONFIRMED") {
         await this.browser.pressEscape(pageId).catch(() => undefined);
-        return { state: "BLOCKED", reasonCode: "composer_not_confirmed", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
+        return {
+          state: composerClassification === "UNKNOWN" ? "UNKNOWN" : "BLOCKED",
+          reasonCode: composerClassification === "UNKNOWN" ? "composer_state_incomplete" : "composer_not_confirmed",
+          retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString()
+        };
       }
       await this.browser.pressEscape(pageId);
       await this.browser.waitForFeed(pageId);

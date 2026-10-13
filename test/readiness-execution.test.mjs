@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { runInNewContext } from "node:vm";
 import { JsonStore } from "../src/store.mjs";
 import { SeedingService } from "../src/service.mjs";
 import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { contentSha256, validateExecutionReceiptV1, validateExecutionRequestV1 } from "../src/execution-contracts.mjs";
 import { isReadinessFresh, normalizeReadinessResult } from "../src/readiness.mjs";
-import { LinkedInReadinessProvider } from "../src/linkedin-readiness.mjs";
+import { classifyLinkedInComposerState, LinkedInReadinessProvider, linkedInReadinessExpressions } from "../src/linkedin-readiness.mjs";
 
 async function fixture({ provider, readinessAgeMs = 10_000, readinessTtlMs = 5_000, maxReadinessAttempts = 2, schedule, maxConcurrency = 2, allowLiveExecution = true } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pr2-readiness-test-"));
@@ -469,6 +470,130 @@ test("LinkedIn readiness uses the bound ORCA profile and stops before content or
   assert.equal(calls.filter((call) => call.startsWith("click:")).length, 1);
   assert.ok(calls.includes("escape"));
   assert.equal(calls.some((call) => call === "fill" || call === "submit"), false);
+});
+
+function evaluateLinkedInComposer({ dialog = false, editor = false, audience = false, post = false, media = false, close = false, path = "/feed/" } = {}) {
+  const visible = { getClientRects: () => [{}] };
+  const makeControl = (tagName, text, ariaLabel = "") => ({
+    ...visible, tagName,
+    innerText: text,
+    getAttribute(name) { return name === "aria-label" ? ariaLabel : null; }
+  });
+  const controls = [
+    ...(audience ? [makeControl("BUTTON", "Everyone")] : []),
+    ...(post ? [makeControl("BUTTON", "Post")] : []),
+    ...(media ? [makeControl("BUTTON", "Add media")] : []),
+    ...(close ? [makeControl("BUTTON", "", "Close") ] : [])
+  ];
+  const editorNode = { ...visible };
+  const dialogNode = {
+    ...visible,
+    querySelectorAll(selector) {
+      if (selector === '[contenteditable="true"],[role="textbox"]') return editor ? [editorNode] : [];
+      if (selector === 'button,[role="button"],input,[role="combobox"]') return controls;
+      return [];
+    }
+  };
+  const document = {
+    querySelectorAll(selector) {
+      return selector === 'dialog,[role="dialog"]' && dialog ? [dialogNode] : [];
+    }
+  };
+  return runInNewContext(linkedInReadinessExpressions().composer, {
+    document,
+    location: { hostname: "www.linkedin.com", pathname: path }
+  });
+}
+
+test("LinkedIn composer classifier confirms the real structural composer signals", () => {
+  const state = evaluateLinkedInComposer({ dialog: true, editor: true, audience: true, post: true, media: true, close: true });
+  assert.equal(state.confirmed, true);
+  assert.equal(state.routeCompatible, true);
+  assert.equal(classifyLinkedInComposerState(state), "CONFIRMED");
+});
+
+test("LinkedIn feed without an open composer is not classified as a composer", () => {
+  const state = evaluateLinkedInComposer();
+  assert.equal(state.confirmed, false);
+  assert.equal(classifyLinkedInComposerState(state), "NOT_COMPOSER");
+});
+
+test("an unrelated LinkedIn dialog is not classified as the post composer", () => {
+  const state = evaluateLinkedInComposer({ dialog: true, close: true });
+  assert.equal(state.confirmed, false);
+  assert.equal(classifyLinkedInComposerState(state), "NOT_COMPOSER");
+});
+
+test("a partially loaded LinkedIn composer remains UNKNOWN until structural signals arrive", () => {
+  const state = evaluateLinkedInComposer({ dialog: true, editor: true, close: true });
+  assert.equal(state.confirmed, false);
+  assert.equal(classifyLinkedInComposerState(state), "UNKNOWN");
+});
+
+test("LinkedIn composer confirmation accepts contenteditable plus audience and submit controls", () => {
+  const state = evaluateLinkedInComposer({ dialog: true, editor: true, audience: true, post: true });
+  assert.equal(state.mediaControl, false);
+  assert.equal(state.confirmed, true);
+  assert.equal(classifyLinkedInComposerState(state), "CONFIRMED");
+});
+
+test("LinkedIn readiness waits for an asynchronously mounted composer before classifying it", async () => {
+  let phase = "feed";
+  let waitExpression;
+  const browser = {
+    async listProfiles() { return [{ id: "linkedin-profile-1" }]; },
+    async listTabs() { return [{ id: "page-1", profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }]; },
+    async showTab(id) { return { pageId: id, profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }; },
+    async evaluate(_id, expression) {
+      if (expression.includes("const expectedPath")) return {
+        linkedinDomain: true, loginRequired: false, securityChallenge: false,
+        sessionAuthenticated: true, identityVerified: true, feedReachable: true
+      };
+      return phase === "composer"
+        ? { linkedinDomain: true, route: false, routeCompatible: true, dialogCount: 1, editorCount: 1, audience: true, postButton: true, mediaControl: true, closeControl: true, advertisingControls: 0, confirmed: true }
+        : { linkedinDomain: true, route: false, routeCompatible: false, dialogCount: 1, editorCount: 0, audience: false, postButton: false, mediaControl: false, closeControl: true, advertisingControls: 0, confirmed: false };
+    },
+    async snapshot() { return '- button "Start a post" [ref=e10]'; },
+    async click() { phase = "loading"; },
+    async waitForExpression(_id, expression, timeoutMs) {
+      waitExpression = { expression, timeoutMs };
+      phase = "composer";
+    },
+    async pressEscape() { phase = "feed"; },
+    async waitForFeed() {}
+  };
+  const result = await new LinkedInReadinessProvider(browser).checkReadiness({
+    platform: "linkedin", profileId: "linkedin-profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/test-owner"
+  });
+  assert.equal(result.state, "READY");
+  assert.match(waitExpression.expression, /confirmed === true/);
+  assert.equal(waitExpression.timeoutMs, 8_000);
+});
+
+test("LinkedIn readiness reports UNKNOWN for a partially loaded composer after bounded wait", async () => {
+  const browser = {
+    async listProfiles() { return [{ id: "linkedin-profile-1" }]; },
+    async listTabs() { return [{ id: "page-1", profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }]; },
+    async showTab(id) { return { pageId: id, profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }; },
+    async evaluate(_id, expression) {
+      if (expression.includes("const expectedPath")) return {
+        linkedinDomain: true, loginRequired: false, securityChallenge: false,
+        sessionAuthenticated: true, identityVerified: true, feedReachable: true
+      };
+      return { linkedinDomain: true, route: false, routeCompatible: false, dialogCount: 1, editorCount: 1, audience: false, postButton: false, mediaControl: false, closeControl: true, advertisingControls: 0, confirmed: false };
+    },
+    async snapshot() { return '- button "Start a post" [ref=e10]'; },
+    async click() {},
+    async waitForExpression() { throw Object.assign(new Error("bounded wait timed out"), { code: "ORCA_COMMAND_FAILED" }); },
+    async pressEscape() {},
+    async waitForFeed() {}
+  };
+  const result = await new LinkedInReadinessProvider(browser).checkReadiness({
+    platform: "linkedin", profileId: "linkedin-profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/test-owner"
+  });
+  assert.equal(result.state, "UNKNOWN");
+  assert.equal(result.reasonCode, "composer_state_incomplete");
+  assert.equal(result.retryable, true);
 });
 
 test("pending reconciliation selection includes registered and unregistered platforms", async () => {

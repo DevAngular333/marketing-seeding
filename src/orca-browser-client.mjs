@@ -124,6 +124,10 @@ export class OrcaCliClient {
     const parsed = new URL(url);
     await this.#run(["wait", "--url", `${parsed.origin}${parsed.pathname}`, "--timeout", String(timeoutMs), "--page", pageId, "--worktree", this.worktree]);
   }
+
+  async waitForExpression(pageId, expression, timeoutMs = 8_000) {
+    await this.#run(["wait", "--fn", expression, "--timeout", String(timeoutMs), "--page", pageId, "--worktree", this.worktree]);
+  }
 }
 
 export function findComposerTrigger(snapshot) {
