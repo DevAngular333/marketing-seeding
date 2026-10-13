@@ -6,6 +6,7 @@ import { CHANNELS, nowIso } from "./constants.mjs";
 import { approvalFingerprint, assertReplyCanSend, assertTransition, evaluateQueue } from "./guards.mjs";
 import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs";
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
+import { campaignAuthorizationFingerprint, campaignScopeFingerprint, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
 
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
 const MAX_GROUNDING_BYTES = 2_000_000;
@@ -188,6 +189,19 @@ async function readArtifactSource(productRepo, source) {
   return { path: resolved, relativePath: path.relative(productRepo, resolved), sha256, bytes: info.size };
 }
 
+async function assertPostArtifactCurrent(post, state) {
+  if (!post.assetPath) return;
+  if (!post.artifactId || !post.assetSha256) throw new Error("Publication guard blocked: asset_evidence_missing_or_stale");
+  const artifact = requireItem(state.artifacts || [], post.artifactId, "Artifact");
+  const campaign = requireItem(state.campaigns, post.campaignId, "Campaign");
+  if (artifact.campaignId !== campaign.id || artifact.sha256 !== post.assetSha256 || path.resolve(post.assetPath) !== path.resolve(artifact.path)) {
+    throw new Error("Publication guard blocked: asset_evidence_missing_or_stale");
+  }
+  const productRepo = await requireProductRepo(campaign.productRepo);
+  const current = await readArtifactSource(productRepo, artifact.relativePath);
+  if (current.sha256 !== artifact.sha256) throw new Error("Publication guard blocked: asset_source_changed_since_registration");
+}
+
 async function readBrowserScreenshot(stateFilePath, source, expectedSha256) {
   const requested = String(source || "").trim();
   if (!requested) throw new Error("Browser observation screenshotPath is required");
@@ -307,7 +321,11 @@ export function normalizeTargetReadiness(value, fallbackStatus = "needs_review")
   if (evidence && evidence.length > 1000) throw new Error("Target readiness evidence must contain at most 1000 characters");
   const checkedAt = input.checkedAt == null ? null : String(input.checkedAt).trim() || null;
   if (checkedAt && !Number.isFinite(Date.parse(checkedAt))) throw new Error("Target readiness checkedAt must be an ISO timestamp");
-  return { state, reasonCode, summary, nextSteps, evidence, checkedAt };
+  const checks = {};
+  for (const field of ["sessionValid", "composerCapable", "platformAvailable"]) {
+    if (input.checks && typeof input.checks[field] === "boolean") checks[field] = input.checks[field];
+  }
+  return { state, reasonCode, summary, nextSteps, evidence, checkedAt, checks };
 }
 
 function currencyCode(value) {
@@ -623,6 +641,133 @@ export class SeedingService {
     return result.result;
   }
 
+  async authorizeCampaign(campaignId, input, actor = "operator") {
+    const result = await this.store.mutate(actor, "campaign_authorization_activated", async (state) => {
+      const campaign = requireItem(state.campaigns, campaignId, "Campaign");
+      const authorization = normalizeCampaignAuthorization(input, campaign);
+      const productRepo = await requireProductRepo(campaign.productRepo);
+      if ((state.campaignAuthorizations || []).some((item) => item.id === authorization.id)) throw new Error("Campaign authorization id already exists");
+      for (const destination of authorization.destinations) {
+        const target = requireItem(state.targets, destination.targetId, "Target");
+        if (target.channel !== destination.platform || target.accountId !== destination.accountId) {
+          throw new Error(`Authorized destination identity does not match target ${destination.targetId}`);
+        }
+        const registeredProfile = String(target.profileId || target.browserProfileId || "").trim() || null;
+        if (destination.profileId && registeredProfile && destination.profileId !== registeredProfile) {
+          throw new Error(`Authorized profile identity does not match target ${destination.targetId}`);
+        }
+        destination.profileId = registeredProfile || destination.profileId;
+        destination.targetUrl = target.url;
+      }
+      for (const approvedAsset of authorization.approvedAssets) {
+        const artifact = requireItem(state.artifacts || [], approvedAsset.artifactId, "Artifact");
+        if (artifact.campaignId !== campaignId || artifact.sha256 !== approvedAsset.sha256 || artifact.status !== "verified") {
+          throw new Error(`Approved asset identity is not verified for campaign: ${approvedAsset.artifactId}`);
+        }
+        const currentAsset = await readArtifactSource(productRepo, artifact.relativePath);
+        if (currentAsset.sha256 !== artifact.sha256 || currentAsset.path !== artifact.path) {
+          throw new Error(`Approved asset changed since registration: ${artifact.id}`);
+        }
+      }
+      const verifiedSourceRefs = new Set((state.stories || [])
+        .filter((story) => story.campaignId === campaignId)
+        .flatMap((story) => story.groundingSources || [])
+        .map((source) => `${source.relativePath}#${source.sha256}`));
+      for (const claim of authorization.contentBoundary.approvedClaims) {
+        for (const source of claim.sourceRefs) {
+          if (!verifiedSourceRefs.has(`${source.relativePath}#${source.sha256}`)) {
+            throw new Error(`Approved claim source is not bound to verified campaign grounding: ${source.relativePath}`);
+          }
+          const currentSource = await readGroundingSource(productRepo, source.relativePath);
+          if (currentSource.relativePath !== source.relativePath || currentSource.sha256 !== source.sha256) {
+            throw new Error(`Approved claim source changed since grounding: ${source.relativePath}`);
+          }
+        }
+      }
+      state.campaignAuthorizations ||= [];
+      for (const previous of state.campaignAuthorizations.filter((item) => item.campaignId === campaignId && item.status === "active")) {
+        previous.status = "superseded";
+        previous.supersededAt = nowIso();
+        for (const post of state.posts.filter((item) => item.campaignAuthorizationId === previous.id && item.status === "queued")) {
+          post.status = "blocked";
+          post.blockedAt = previous.supersededAt;
+          post.authorizationDecision = { evaluatedAt: previous.supersededAt, allowed: false, reasons: ["campaign_authorization_superseded"] };
+        }
+      }
+      authorization.approvedBy = actor;
+      authorization.activatedAt = authorization.approvedAt;
+      authorization.binding = campaignAuthorizationFingerprint(authorization);
+      state.campaignAuthorizations.push(authorization);
+      campaign.status = "active";
+      campaign.updatedAt = authorization.activatedAt;
+      const inheritingPosts = state.posts.filter((item) => item.campaignId === campaignId && ["draft", "needs_review", "approved", "queued", "blocked"].includes(item.status));
+      for (const post of inheritingPosts) post.status = "blocked";
+      for (const post of inheritingPosts) {
+        const target = state.targets.find((item) => item.id === post.targetId);
+        post.campaignAuthorizationId = authorization.id;
+        post.campaignAuthorizationBinding = authorization.binding;
+        post.contentId ||= post.storyId || createHash("sha256").update(post.content || "").digest("hex");
+        post.idempotencyKey ||= publicationIdentityKey({ campaignId, contentId: post.contentId, platform: target?.channel, accountId: target?.accountId, targetId: post.targetId });
+        post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt || authorization.activatedAt }];
+        post.jobLifecycle.push({ state: "AUTHORIZED", at: authorization.activatedAt, authorizationId: authorization.id });
+        const eligibility = evaluateQueue(post, state);
+        post.authorizationDecision = { evaluatedAt: authorization.activatedAt, allowed: eligibility.allowed, reasons: eligibility.reasons };
+        if (eligibility.allowed) {
+          post.status = "queued";
+          post.queuedAt = authorization.activatedAt;
+          post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
+          post.jobLifecycle.push({ state: "READY", at: authorization.activatedAt }, { state: "QUEUED", at: authorization.activatedAt });
+        } else {
+          post.status = "blocked";
+          post.blockedAt = authorization.activatedAt;
+          post.jobLifecycle.push({ state: "BLOCKED", at: authorization.activatedAt, reasons: eligibility.reasons });
+        }
+      }
+      return authorization;
+    });
+    return result.result;
+  }
+
+  async setCampaignAuthorizationStatus(campaignId, status, actor = "operator") {
+    if (!new Set(["paused", "active", "revoked"]).has(status)) throw new Error("Unsupported campaign authorization status");
+    const result = await this.store.mutate(actor, `campaign_authorization_${status}`, (state) => {
+        const authorization = [...(state.campaignAuthorizations || [])].reverse().find((item) => item.campaignId === campaignId && item.status !== "superseded");
+        if (!authorization) throw new Error("Campaign authorization not found");
+        if (status === "active") {
+          const campaign = requireItem(state.campaigns, campaignId, "Campaign");
+          if (campaign.status !== "active") throw new Error("Paused or inactive campaign cannot resume authorization");
+          if (authorization.status === "revoked" || authorization.status === "superseded") throw new Error("Revoked or superseded campaign authorization cannot be resumed");
+          if (!Number.isFinite(Date.parse(authorization.validUntil)) || Date.parse(authorization.validUntil) <= Date.now()) throw new Error("Expired campaign authorization cannot be resumed");
+          if (authorization.campaignBinding !== campaignScopeFingerprint(campaign)) throw new Error("Campaign scope changed; create a new authorization before resuming");
+          if (authorization.binding !== campaignAuthorizationFingerprint(authorization)) throw new Error("Campaign authorization scope changed; create a new authorization before resuming");
+        }
+      authorization.status = status;
+      authorization.updatedAt = nowIso();
+      if (status !== "active") {
+        for (const post of state.posts.filter((item) => item.campaignAuthorizationId === authorization.id && item.status === "queued")) {
+          post.status = "blocked";
+          post.blockedAt = authorization.updatedAt;
+          post.authorizationDecision = { evaluatedAt: authorization.updatedAt, allowed: false, reasons: [`campaign_authorization_${status}`] };
+        }
+      } else {
+        for (const post of state.posts.filter((item) => item.campaignAuthorizationId === authorization.id && ["blocked", "draft"].includes(item.status))) {
+          const eligibility = evaluateQueue(post, state);
+          post.authorizationDecision = { evaluatedAt: authorization.updatedAt, allowed: eligibility.allowed, reasons: eligibility.reasons };
+          if (eligibility.allowed) {
+            post.status = "queued";
+            post.queuedAt = authorization.updatedAt;
+            post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
+            post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt }];
+            post.jobLifecycle.push({ state: "READY", at: authorization.updatedAt }, { state: "QUEUED", at: authorization.updatedAt });
+            delete post.blockedAt;
+          }
+        }
+      }
+      return authorization;
+    });
+    return result.result;
+  }
+
   async registerArtifact(campaignId, input, actor = "operator") {
     const state = await this.store.read();
     const campaign = requireItem(state.campaigns, campaignId, "Campaign");
@@ -684,9 +829,14 @@ export class SeedingService {
   async createChannelDrafts(storyId, input, actor = "ai-drafter") {
     const variants = Array.isArray(input.variants) ? input.variants : [];
     if (variants.length === 0) throw new Error("At least one channel variant is required");
+    const initialState = await this.store.read();
+    const initialStory = requireItem(initialState.stories || [], storyId, "Story");
+    const initialCampaign = requireItem(initialState.campaigns, initialStory.campaignId, "Campaign");
+    const productRepo = await requireProductRepo(initialCampaign.productRepo);
     const result = await this.store.mutate(actor, "channel_drafts_created", (state) => {
       const story = requireItem(state.stories || [], storyId, "Story");
       const seenTargets = new Set();
+      const createdPostIds = new Set();
       const posts = variants.map((variant) => {
         const target = requireItem(state.targets, variant.targetId, "Target");
         if (seenTargets.has(target.id)) throw new Error(`Duplicate target variant: ${target.id}`);
@@ -697,25 +847,148 @@ export class SeedingService {
         if (policy.maxContentChars && content.length > policy.maxContentChars) {
           throw new Error(`Content exceeds ${policy.maxContentChars} characters for ${target.channel}`);
         }
-        return {
+        const artifact = story.artifactId
+          ? requireItem(state.artifacts || [], story.artifactId, "Artifact")
+          : null;
+        const assetPath = artifact ? artifact.path : null;
+        if (variant.assetPath) {
+          if (!artifact) throw new Error("A post asset must reference a registered artifact");
+          const requestedAssetPath = path.isAbsolute(String(variant.assetPath))
+            ? path.resolve(String(variant.assetPath))
+            : path.resolve(productRepo, String(variant.assetPath));
+          if (requestedAssetPath !== path.resolve(artifact.path)) {
+            throw new Error("A post asset must match the story's registered artifact");
+          }
+        }
+        const idempotencyKey = publicationIdentityKey({
+          campaignId: story.campaignId,
+          contentId: String(variant.contentId || story.id),
+          platform: target.channel,
+          accountId: target.accountId,
+          targetId: target.id
+        });
+        const existing = state.posts.find((item) => item.idempotencyKey === idempotencyKey);
+        if (existing) return existing;
+        const created = {
           id: randomUUID(),
           campaignId: story.campaignId,
           storyId: story.id,
+          contentId: String(variant.contentId || story.id),
           artifactId: story.artifactId,
           targetId: target.id,
           content,
-          assetPath: variant.assetPath || null,
+          templateId: String(variant.templateId || "").trim() || null,
+          audience: String(variant.audience || "").trim(),
+          claimIds: Array.isArray(variant.claimIds) ? [...new Set(variant.claimIds.map(String))] : [],
+          contentSourceRefs: Array.isArray(variant.contentSourceRefs) ? variant.contentSourceRefs.map((reference) => typeof reference === "string" ? reference : ({ relativePath: String(reference.relativePath || ""), sha256: String(reference.sha256 || "").toLowerCase() })) : [],
+          assetPath,
+          assetSha256: artifact?.sha256 || null,
           language: String(variant.language || story.language || "en"),
           status: "draft",
           approvedAt: null,
+          idempotencyKey,
+          scheduledAt: variant.scheduledAt ? new Date(variant.scheduledAt).toISOString() : null,
           createdAt: nowIso(),
           updatedAt: nowIso()
         };
+        createdPostIds.add(created.id);
+        return created;
       });
-      state.posts.push(...posts);
+      state.posts.push(...posts.filter((post) => !state.posts.some((item) => item.id === post.id)));
+      const campaignAuthorizations = (state.campaignAuthorizations || []).filter((item) => item.campaignId === story.campaignId);
+      const authorization = [...campaignAuthorizations].reverse().find((item) => item.status === "active") || campaignAuthorizations.at(-1);
+      if (authorization) {
+        for (const post of posts) {
+          if (!createdPostIds.has(post.id)) continue;
+          if (post.campaignAuthorizationId) continue;
+          post.campaignAuthorizationId = authorization.id;
+          post.campaignAuthorizationBinding = authorization.binding;
+          post.jobLifecycle = [{ state: "CREATED", at: post.createdAt }, { state: "AUTHORIZED", at: nowIso(), authorizationId: authorization.id }];
+          const eligibility = evaluateQueue(post, state);
+          post.authorizationDecision = { evaluatedAt: nowIso(), allowed: eligibility.allowed, reasons: eligibility.reasons };
+          if (eligibility.allowed) {
+            post.status = "queued";
+            post.queuedAt = nowIso();
+            post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
+            post.jobLifecycle.push({ state: "READY", at: post.queuedAt }, { state: "QUEUED", at: post.queuedAt });
+          } else {
+            post.status = "blocked";
+            post.blockedAt = nowIso();
+            post.jobLifecycle.push({ state: "BLOCKED", at: post.blockedAt, reasons: eligibility.reasons });
+          }
+        }
+      }
       story.status = "adapted";
       story.updatedAt = nowIso();
       return posts;
+    });
+    return result.result;
+  }
+
+  async queueAuthorizedCampaignJobs(campaignId, actor = "scheduler") {
+    const result = await this.store.mutate(actor, "campaign_jobs_readiness_evaluated", (state) => {
+      const candidates = state.posts.filter((post) => post.campaignId === campaignId && post.campaignAuthorizationId && ["blocked", "draft"].includes(post.status));
+      const decisions = [];
+      for (const post of candidates) {
+        const eligibility = evaluateQueue(post, state);
+        post.authorizationDecision = { evaluatedAt: nowIso(), allowed: eligibility.allowed, reasons: eligibility.reasons };
+        if (eligibility.allowed) {
+          const at = nowIso();
+          post.status = "queued";
+          post.queuedAt = at;
+          post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
+          post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt }];
+          post.jobLifecycle.push({ state: "READY", at }, { state: "QUEUED", at });
+          delete post.blockedAt;
+        } else {
+          post.status = "blocked";
+          post.blockedAt ||= nowIso();
+        }
+        decisions.push({ postId: post.id, status: post.status, reasons: eligibility.reasons });
+      }
+      return decisions;
+    });
+    return result.result;
+  }
+
+  async queueDueCampaignJobs(actor = "scheduler") {
+    await this.expireCampaignAuthorizations(actor);
+    const state = await this.store.read();
+    const now = Date.now();
+    const campaignIds = [...new Set(state.posts
+      .filter((post) => post.campaignAuthorizationId && ["blocked", "draft"].includes(post.status))
+      .filter((post) => post.authorizationDecision?.reasons?.includes("schedule_not_due"))
+      .filter((post) => Number.isFinite(Date.parse(post.scheduledAt || "")) && Date.parse(post.scheduledAt) <= now)
+      .map((post) => post.campaignId))];
+    const results = [];
+    for (const campaignId of campaignIds) {
+      results.push({ campaignId, decisions: await this.queueAuthorizedCampaignJobs(campaignId, actor) });
+    }
+    return results;
+  }
+
+  async expireCampaignAuthorizations(actor = "scheduler") {
+    const snapshot = await this.store.read();
+    const now = Date.now();
+    const dueIds = new Set((snapshot.campaignAuthorizations || [])
+      .filter((authorization) => authorization.status === "active")
+      .filter((authorization) => !Number.isFinite(Date.parse(authorization.validUntil)) || Date.parse(authorization.validUntil) <= now)
+      .map((authorization) => authorization.id));
+    if (dueIds.size === 0) return [];
+    const result = await this.store.mutate(actor, "campaign_authorizations_expired", (state) => {
+      const expired = [];
+      for (const authorization of (state.campaignAuthorizations || []).filter((item) => dueIds.has(item.id) && item.status === "active")) {
+        const at = nowIso();
+        authorization.status = "expired";
+        authorization.updatedAt = at;
+        expired.push(authorization.id);
+        for (const post of state.posts.filter((item) => item.campaignAuthorizationId === authorization.id && item.status === "queued")) {
+          post.status = "blocked";
+          post.blockedAt = at;
+          post.authorizationDecision = { evaluatedAt: at, allowed: false, reasons: ["campaign_authorization_expired"] };
+        }
+      }
+      return expired;
     });
     return result.result;
   }
@@ -743,10 +1016,8 @@ export class SeedingService {
         channels,
         mode,
         status: input.status === "paused" ? "paused" : "active",
-        requiresHumanPublishApproval: mode !== "publish_with_standing_approval",
-        approvalPolicy: mode === "publish_with_standing_approval"
-          ? "standing_owner_approval"
-          : "per_item_human_approval",
+        requiresHumanPublishApproval: false,
+        approvalPolicy: "campaign_authorization",
         approvalReference: mode === "publish_with_standing_approval"
           ? requiredText(input.approvalReference, "schedule approvalReference")
           : null,
@@ -784,10 +1055,8 @@ export class SeedingService {
         const mode = String(input.mode);
         const normalizedMode = normalizeScheduleMode(mode);
         schedule.mode = normalizedMode;
-        schedule.requiresHumanPublishApproval = normalizedMode !== "publish_with_standing_approval";
-        schedule.approvalPolicy = normalizedMode === "publish_with_standing_approval"
-          ? "standing_owner_approval"
-          : "per_item_human_approval";
+        schedule.requiresHumanPublishApproval = false;
+        schedule.approvalPolicy = "campaign_authorization";
         schedule.approvalReference = normalizedMode === "publish_with_standing_approval"
           ? requiredText(input.approvalReference || schedule.approvalReference, "schedule approvalReference")
           : null;
@@ -835,6 +1104,7 @@ export class SeedingService {
   async updateCampaign(campaignId, input, actor = "operator") {
     const result = await this.store.mutate(actor, "campaign_updated", (state) => {
       const campaign = requireItem(state.campaigns, campaignId, "Campaign");
+      const authorizationScopeBefore = JSON.stringify({ objective: campaign.objective, audience: campaign.audience || [], track: campaign.track || null, landingUrl: campaign.landingUrl || null, productRepo: campaign.productRepo });
       for (const field of ["name", "objective", "status"]) {
         if (input[field] !== undefined) campaign[field] = String(input[field]).trim();
       }
@@ -844,6 +1114,29 @@ export class SeedingService {
       if (input.track !== undefined) campaign.track = optionalProductTrack(input.track);
       if (!campaign.name || !campaign.objective) throw new Error("Campaign name and objective are required");
       campaign.updatedAt = nowIso();
+      const authorizationScopeAfter = JSON.stringify({ objective: campaign.objective, audience: campaign.audience || [], track: campaign.track || null, landingUrl: campaign.landingUrl || null, productRepo: campaign.productRepo });
+      if (authorizationScopeBefore !== authorizationScopeAfter) {
+        for (const authorization of (state.campaignAuthorizations || []).filter((item) => item.campaignId === campaignId && item.status === "active")) {
+          authorization.status = "paused";
+          authorization.updatedAt = campaign.updatedAt;
+          for (const post of state.posts.filter((item) => item.campaignAuthorizationId === authorization.id && item.status === "queued")) {
+            post.status = "blocked";
+            post.blockedAt = campaign.updatedAt;
+            post.authorizationDecision = { evaluatedAt: campaign.updatedAt, allowed: false, reasons: ["campaign_scope_changed"] };
+          }
+        }
+      }
+      if (campaign.status !== "active") {
+        for (const authorization of (state.campaignAuthorizations || []).filter((item) => item.campaignId === campaignId && item.status === "active")) {
+          authorization.status = "paused";
+          authorization.updatedAt = campaign.updatedAt;
+          for (const post of state.posts.filter((item) => item.campaignAuthorizationId === authorization.id && item.status === "queued")) {
+            post.status = "blocked";
+            post.blockedAt = campaign.updatedAt;
+            post.authorizationDecision = { evaluatedAt: campaign.updatedAt, allowed: false, reasons: ["campaign_paused"] };
+          }
+        }
+      }
       return campaign;
     });
     return result.result;
@@ -852,20 +1145,69 @@ export class SeedingService {
   async createPost(input, actor = "operator") {
     const result = await this.store.mutate(actor, "post_created", (state) => {
       requireItem(state.campaigns, input.campaignId, "Campaign");
-      requireItem(state.targets, input.targetId, "Target");
+      const target = requireItem(state.targets, input.targetId, "Target");
+      const content = String(input.content || "");
+      const contentId = String(input.contentId || createHash("sha256").update(content).digest("hex"));
+      const idempotencyKey = publicationIdentityKey({ campaignId: input.campaignId, contentId, platform: target.channel, accountId: target.accountId, targetId: target.id });
+      const existing = state.posts.find((item) => item.idempotencyKey === idempotencyKey || publicationIdentityKeysForPost(item, state).includes(idempotencyKey));
+      if (existing) return existing;
+      const artifact = input.artifactId ? requireItem(state.artifacts || [], input.artifactId, "Artifact") : null;
+      if (artifact && (artifact.campaignId !== input.campaignId || artifact.status !== "verified")) {
+        throw new Error("Post artifact must be verified and belong to its campaign");
+      }
+      if (input.assetPath && !artifact) throw new Error("A post asset must reference a registered artifact");
+      const assetPath = artifact ? artifact.path : null;
+      if (input.assetPath && path.resolve(String(input.assetPath)) !== path.resolve(artifact.path)) {
+        throw new Error("Post asset path must match its registered artifact");
+      }
+      if (input.assetSha256 && (!artifact || String(input.assetSha256).toLowerCase() !== artifact.sha256)) {
+        throw new Error("Post asset SHA-256 must match its registered artifact");
+      }
+      const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
+      if (scheduledAt && !Number.isFinite(scheduledAt.getTime())) throw new Error("scheduledAt must be a valid timestamp");
+      const at = nowIso();
       const post = {
         id: randomUUID(),
         campaignId: input.campaignId,
         targetId: input.targetId,
-        content: String(input.content || ""),
-        assetPath: input.assetPath || null,
+        storyId: String(input.storyId || "").trim() || null,
+        content,
+        contentId,
+        idempotencyKey,
+        audience: String(input.audience || "").trim(),
+        templateId: String(input.templateId || "").trim() || null,
+        claimIds: Array.isArray(input.claimIds) ? [...new Set(input.claimIds.map(String))] : [],
+        contentSourceRefs: Array.isArray(input.contentSourceRefs) ? input.contentSourceRefs.map((reference) => typeof reference === "string" ? reference : ({ relativePath: String(reference.relativePath || ""), sha256: String(reference.sha256 || "").toLowerCase() })) : [],
+        artifactId: artifact?.id || null,
+        assetPath,
+        assetSha256: artifact?.sha256 || null,
+        scheduledAt: scheduledAt?.toISOString() || null,
         language: input.language || "en",
         status: "draft",
         approvedAt: null,
-        createdAt: nowIso(),
-        updatedAt: nowIso()
+        createdAt: at,
+        updatedAt: at
       };
       state.posts.push(post);
+      const authorizations = (state.campaignAuthorizations || []).filter((item) => item.campaignId === input.campaignId);
+      const authorization = [...authorizations].reverse().find((item) => item.status === "active") || authorizations.at(-1);
+      if (authorization) {
+        post.campaignAuthorizationId = authorization.id;
+        post.campaignAuthorizationBinding = authorization.binding;
+        post.jobLifecycle = [{ state: "CREATED", at }, { state: "AUTHORIZED", at, authorizationId: authorization.id }];
+        const eligibility = evaluateQueue(post, state);
+        post.authorizationDecision = { evaluatedAt: at, allowed: eligibility.allowed, reasons: eligibility.reasons };
+        if (eligibility.allowed) {
+          post.status = "queued";
+          post.queuedAt = at;
+          post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
+          post.jobLifecycle.push({ state: "READY", at }, { state: "QUEUED", at });
+        } else {
+          post.status = "blocked";
+          post.blockedAt = at;
+          post.jobLifecycle.push({ state: "BLOCKED", at, reasons: eligibility.reasons });
+        }
+      }
       return post;
     });
     return result.result;
@@ -922,12 +1264,27 @@ export class SeedingService {
       }
       target.updatedAt = nowIso();
       for (const post of state.posts.filter((item) => item.targetId === target.id && ["approved", "queued"].includes(item.status))) {
-        post.status = "needs_review";
+        post.status = post.campaignAuthorizationId ? "blocked" : "needs_review";
+        if (post.campaignAuthorizationId) {
+          post.blockedAt = target.updatedAt;
+          post.authorizationDecision = { evaluatedAt: target.updatedAt, allowed: false, reasons: ["target_identity_or_readiness_changed"] };
+        }
         post.approvedAt = null;
         delete post.approvedBy;
         delete post.approvalBinding;
         delete post.approvalBinding;
         post.updatedAt = target.updatedAt;
+      }
+      for (const post of state.posts.filter((item) => item.targetId === target.id && item.campaignAuthorizationId && item.status === "blocked")) {
+        const decision = evaluateQueue(post, state);
+        post.authorizationDecision = { evaluatedAt: target.updatedAt, allowed: decision.allowed, reasons: decision.reasons };
+        if (decision.allowed) {
+          post.status = "queued";
+          post.queuedAt = target.updatedAt;
+          post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt }];
+          post.jobLifecycle.push({ state: "READY", at: target.updatedAt }, { state: "QUEUED", at: target.updatedAt });
+          delete post.blockedAt;
+        }
       }
       return target;
     });
@@ -964,17 +1321,39 @@ export class SeedingService {
   async updatePost(postId, input, actor = "operator") {
     const result = await this.store.mutate(actor, "post_updated", (state) => {
       const post = requireItem(state.posts, postId, "Post");
-      if (!["draft", "needs_review", "paused", "failed"].includes(post.status)) {
+      if (!["draft", "needs_review", "paused", "failed", "blocked"].includes(post.status)) {
         throw new Error(`Post cannot be edited from ${post.status}`);
       }
       const contentChanged = input.content !== undefined && String(input.content) !== post.content;
+      const assetChanged = input.assetPath !== undefined && String(input.assetPath || "") !== String(post.assetPath || "");
+      const assetHashChanged = input.assetSha256 !== undefined && String(input.assetSha256 || "").toLowerCase() !== String(post.assetSha256 || "").toLowerCase();
+      let verifiedAssetHash;
+      if (input.assetSha256 !== undefined) {
+        verifiedAssetHash = String(input.assetSha256 || "").trim().toLowerCase();
+        if (!/^[a-f0-9]{64}$/.test(verifiedAssetHash)) {
+          throw new Error("assetSha256 must be a 64-character SHA-256 hex digest");
+        }
+        const artifact = (state.artifacts || []).find((item) => item.id === post.artifactId);
+        if (!artifact || artifact.sha256 !== verifiedAssetHash) {
+          throw new Error("assetSha256 must match the post's registered artifact");
+        }
+        const assetPath = input.assetPath !== undefined ? input.assetPath : post.assetPath;
+        if (!assetPath || path.resolve(assetPath) !== path.resolve(artifact.path)) {
+          throw new Error("assetPath must resolve to the post's registered artifact path");
+        }
+      }
       if (input.content !== undefined) post.content = String(input.content).trim();
       if (input.assetPath !== undefined) post.assetPath = input.assetPath || null;
+      if (verifiedAssetHash !== undefined) post.assetSha256 = verifiedAssetHash;
       if (input.language !== undefined) post.language = input.language;
       if (input.externalId !== undefined) post.externalId = String(input.externalId || "").trim() || null;
       if (!post.content) throw new Error("Post content is required");
-      if (contentChanged) {
-        post.status = "needs_review";
+      if (contentChanged || assetChanged || assetHashChanged) {
+        post.status = post.campaignAuthorizationId ? "blocked" : "needs_review";
+        if (post.campaignAuthorizationId) {
+          post.authorizationDecision = { evaluatedAt: nowIso(), allowed: false, reasons: ["job_content_or_asset_changed"] };
+          post.blockedAt = nowIso();
+        }
         post.approvedAt = null;
         delete post.approvedBy;
         delete post.approvalBinding;
@@ -1003,10 +1382,11 @@ export class SeedingService {
   }
 
   async transitionPost(postId, input, actor = "operator") {
-    const result = await this.store.mutate(actor, `post_transition_${input.status}`, (state) => {
+    const result = await this.store.mutate(actor, `post_transition_${input.status}`, async (state) => {
       const post = requireItem(state.posts, postId, "Post");
       assertTransition(post.status, input.status);
       if (["queued", "publishing"].includes(input.status)) {
+        await assertPostArtifactCurrent(post, state);
         const decision = evaluateQueue(post, state);
         if (!decision.allowed) throw new Error(`Publication guard blocked: ${decision.reasons.join(", ")}`);
       }
@@ -1022,6 +1402,8 @@ export class SeedingService {
           id: randomUUID(), postId: post.id, targetId: post.targetId,
           contentSha256: createHash("sha256").update(post.content).digest("hex"),
           approvalBinding: post.approvalBinding,
+          campaignAuthorizationId: post.campaignAuthorizationId || null,
+          campaignAuthorizationBinding: post.campaignAuthorizationBinding || null,
           status: "prepared",
           preparedAt: at,
           expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
@@ -1031,7 +1413,10 @@ export class SeedingService {
       }
       if (input.status === "published") {
         const attempt = requireItem(state.publicationAttempts, post.publicationAttemptId, "Publication attempt");
-        if (attempt.status !== "prepared" || attempt.approvalBinding !== post.approvalBinding || attempt.contentSha256 !== createHash("sha256").update(post.content).digest("hex")) {
+        if (attempt.status !== "prepared" || attempt.approvalBinding !== post.approvalBinding ||
+            attempt.campaignAuthorizationId !== (post.campaignAuthorizationId || null) ||
+            attempt.campaignAuthorizationBinding !== (post.campaignAuthorizationBinding || null) ||
+            attempt.contentSha256 !== createHash("sha256").update(post.content).digest("hex")) {
           throw new Error("Publication attempt is stale or does not match the approved content");
         }
         if (Date.parse(attempt.expiresAt) < Date.now()) throw new Error("Publication attempt expired; return the post through review");

@@ -30,3 +30,14 @@ Chỉ active email target khi có nguồn audience opt-in, căn cứ đồng ý 
 ## Recovery
 
 Windows task `Jang Global Seeding Dashboard` chạy supervisor từ `D:\project-all\marketing-seeding`. Runtime state không nằm trong project source nên việc cập nhật/rebuild source không làm mất campaign history.
+
+## PR1: campaign authorization
+
+Với campaign đã có bản ghi authorization, người vận hành phê duyệt phạm vi một lần qua API operator; các job con chỉ được đưa vào hàng đợi khi đánh giá lại thấy platform, account/profile, target, nội dung, asset, audience, lịch, readiness và giới hạn đều hợp lệ. Job cũ không được tự nhận quyền từ `approvedAt`; campaign chưa có authorization tiếp tục dùng gate duyệt từng bài hiện hành.
+
+- Tạo authorization: `POST /api/campaigns/{campaignId}/authorization` bằng operator token và payload phạm vi campaign.
+- Tạm dừng/tiếp tục: `POST /api/campaigns/{campaignId}/authorization/pause` hoặc `/resume` bằng operator token.
+- Đánh giá lại job đủ điều kiện: `POST /api/campaigns/{campaignId}/queue-ready-jobs`; endpoint này chỉ đánh giá/queue, không đăng bài.
+- Job fan-out được kiểm tra trùng theo campaign, content, platform, account và target. Một job thành công ở platform này không chặn platform khác; lặp cùng nội dung trên cùng platform/account cần `allowRepeatSameContent` trong phạm vi authorization.
+
+`queued` chỉ có nghĩa là đủ điều kiện trong queue. PR1 không thêm publisher, readiness collector hoặc xác minh bài đăng trực tiếp; không coi `queued` là `published`.

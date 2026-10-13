@@ -1,7 +1,9 @@
 import { CHANNELS, TRANSITIONS } from "./constants.mjs";
 import { createHash } from "node:crypto";
+import { evaluateCampaignAuthorization } from "./campaign-authorization.mjs";
 
 const ACTIVE_PUBLICATION_STATUSES = new Set(["queued", "publishing", "processing", "published"]);
+export const CAMPAIGN_READINESS_MAX_AGE_MS = 5 * 60 * 1000;
 
 export function normalizeContent(value = "") {
   return value.toLowerCase().replace(/https?:\/\/\S+/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
@@ -36,8 +38,27 @@ export function evaluateQueue(post, state, now = new Date()) {
   if (!policy) return { allowed: false, reasons: ["channel_policy_missing"] };
 
   const reasons = [];
-  if (!post.approvedAt) reasons.push("human_approval_required");
-  if (post.approvedAt && post.approvalBinding !== approvalFingerprint(post, target)) reasons.push("approval_binding_stale");
+  if (post.assetPath) {
+    const artifact = (state.artifacts || []).find((item) => item.id === post.artifactId);
+    if (!artifact || !post.assetSha256 || artifact.sha256 !== post.assetSha256) reasons.push("asset_evidence_missing_or_stale");
+  }
+  const hasCampaignAuthorization = (state.campaignAuthorizations || []).some((item) => item.campaignId === post.campaignId);
+  const campaignAuthorization = post.campaignAuthorizationId
+    ? evaluateCampaignAuthorization(post, state, now)
+    : null;
+  if (campaignAuthorization) reasons.push(...campaignAuthorization.reasons);
+  if (campaignAuthorization) {
+    if (target.readiness?.checks?.sessionValid !== true) reasons.push("session_not_verified");
+    if (target.readiness?.checks?.composerCapable !== true) reasons.push("composer_capability_not_verified");
+    if (target.readiness?.checks?.platformAvailable !== true) reasons.push("platform_availability_not_verified");
+    const readinessCheckedAt = Date.parse(target.readiness?.checkedAt || "");
+    if (!Number.isFinite(readinessCheckedAt)) reasons.push("readiness_timestamp_missing");
+    else if (readinessCheckedAt > now.getTime() + 30_000) reasons.push("readiness_timestamp_in_future");
+    else if (now.getTime() - readinessCheckedAt > CAMPAIGN_READINESS_MAX_AGE_MS) reasons.push("readiness_evidence_stale");
+  }
+  if (!campaignAuthorization && hasCampaignAuthorization) reasons.push("campaign_authorization_missing");
+  if (!campaignAuthorization && !hasCampaignAuthorization && !post.approvedAt) reasons.push("human_approval_required");
+  if (!campaignAuthorization && !hasCampaignAuthorization && post.approvedAt && post.approvalBinding !== approvalFingerprint(post, target)) reasons.push("approval_binding_stale");
   if (!post.content?.trim()) reasons.push("content_missing");
   if (policy.maxContentChars && post.content?.length > policy.maxContentChars) reasons.push("content_too_long");
   if (policy.requiresRulesReview && target.rulesStatus !== "reviewed") {
@@ -54,7 +75,7 @@ export function evaluateQueue(post, state, now = new Date()) {
   const accountPosts = state.posts.filter((item) => {
     if (item.id === post.id || !ACTIVE_PUBLICATION_STATUSES.has(item.status)) return false;
     const itemTarget = state.targets.find((targetItem) => targetItem.id === item.targetId);
-    if (!itemTarget || itemTarget.accountId !== target.accountId) return false;
+    if (!itemTarget || itemTarget.channel !== target.channel || itemTarget.accountId !== target.accountId) return false;
     const timestamp = item.publishedAt || item.processingAt || item.publishingAt || item.queuedAt;
     return timestamp && new Date(timestamp) >= dayStart;
   });
@@ -67,7 +88,7 @@ export function evaluateQueue(post, state, now = new Date()) {
       target: state.targets.find((targetItem) => targetItem.id === item.targetId),
       at: item.publishedAt || item.processingAt || item.publishingAt || item.queuedAt
     }))
-    .filter((entry) => entry.target?.accountId === target.accountId && entry.at)
+    .filter((entry) => entry.target?.channel === target.channel && entry.target?.accountId === target.accountId && entry.at)
     .sort((a, b) => new Date(b.at) - new Date(a.at))[0];
   if (recent) {
     const elapsedMinutes = (now - new Date(recent.at)) / 60000;
@@ -78,9 +99,11 @@ export function evaluateQueue(post, state, now = new Date()) {
   const duplicate = state.posts.some((item) => {
     if (item.id === post.id || item.status !== "published") return false;
     const ageDays = (now - new Date(item.publishedAt)) / 86400000;
-    return ageDays <= 7 && normalizeContent(item.content) === normalized;
+    const itemTarget = state.targets.find((targetItem) => targetItem.id === item.targetId);
+    return itemTarget?.channel === target.channel && itemTarget?.accountId === target.accountId && ageDays <= 7 && normalizeContent(item.content) === normalized;
   });
-  if (duplicate) reasons.push("duplicate_content_within_7_days");
+  const repeatContentAllowed = campaignAuthorization?.authorization?.contentBoundary?.allowRepeatSameContent === true;
+  if (duplicate && !repeatContentAllowed) reasons.push("duplicate_content_within_7_days");
 
   return { allowed: reasons.length === 0, reasons, policy, target };
 }

@@ -9,6 +9,7 @@ export const POST_STATUSES = Object.freeze([
   "removed",
   "failed",
   "paused",
+  "blocked",
   "rejected"
 ]);
 
@@ -23,6 +24,7 @@ export const TRANSITIONS = Object.freeze({
   removed: ["needs_review", "rejected"],
   failed: ["needs_review", "rejected"],
   paused: ["needs_review", "approved", "queued"],
+  blocked: ["queued", "paused", "needs_review"],
   rejected: ["draft"]
 });
 

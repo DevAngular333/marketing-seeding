@@ -91,7 +91,7 @@ test("standing owner approval schedules are explicit, editable and audit side ef
     approvalReference: "D:\\build-agentic-AI\\automation-contracts\\marketing-seeding\\standing-publish-approval.json"
   }, "operator");
   assert.equal(schedule.requiresHumanPublishApproval, false);
-  assert.equal(schedule.approvalPolicy, "standing_owner_approval");
+  assert.equal(schedule.approvalPolicy, "campaign_authorization");
   const updated = await service.updateSchedule(schedule.id, { localTime: "19:00", status: "active" }, "operator");
   assert.equal(updated.localTime, "19:00");
   const run = await service.recordScheduleRun(schedule.id, { status: "succeeded", externalSideEffects: true }, "scheduler");
@@ -108,7 +108,7 @@ test("legacy Telegram product review schedules normalize to standing approval", 
     mode: "publish_with_product_review",
     approvalReference: "D:\\build-agentic-AI\\automation-contracts\\marketing-seeding\\standing-publish-approval.json"
   }, "operator");
-  assert.equal(schedule.approvalPolicy, "standing_owner_approval");
+  assert.equal(schedule.approvalPolicy, "campaign_authorization");
   assert.equal(schedule.mode, "publish_with_standing_approval");
   assert.equal(schedule.requiresHumanPublishApproval, false);
 });

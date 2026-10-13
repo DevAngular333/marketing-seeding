@@ -66,6 +66,8 @@ const trafficRuntime = {
 };
 const fixtureWorker = new FixtureWorkerBridge({ service });
 let trafficTimer = null;
+let campaignQueueTimer = null;
+let campaignQueueRunning = false;
 let shuttingDown = false;
 
 function scheduleTrafficCollection(delayMs = trafficIntervalMs) {
@@ -77,6 +79,24 @@ function scheduleTrafficCollection(delayMs = trafficIntervalMs) {
     runTrafficCollection("scheduled-official-collector").catch(() => undefined);
   }, boundedDelay);
   trafficTimer.unref();
+}
+
+function scheduleCampaignQueueEvaluation(delayMs = 30_000) {
+  if (shuttingDown) return;
+  if (campaignQueueTimer) clearTimeout(campaignQueueTimer);
+  campaignQueueTimer = setTimeout(async () => {
+    if (campaignQueueRunning || shuttingDown) return scheduleCampaignQueueEvaluation();
+    campaignQueueRunning = true;
+    try {
+      await service.queueDueCampaignJobs("campaign-queue-scheduler");
+    } catch (error) {
+      process.stderr.write(`Campaign queue evaluation failed: ${error.message}\n`);
+    } finally {
+      campaignQueueRunning = false;
+      scheduleCampaignQueueEvaluation();
+    }
+  }, Math.max(1_000, delayMs));
+  campaignQueueTimer.unref();
 }
 
 async function readDailyProductionAutomation() {
@@ -179,6 +199,7 @@ function requestRole(request) {
 function automationCanMutate(method, pathname) {
   if (method === "PATCH" && /^\/api\/campaigns\/[^/]+$/.test(pathname)) return true;
   if (method !== "POST") return false;
+  if (/^\/api\/campaigns\/[^/]+\/queue-ready-jobs$/.test(pathname)) return true;
   return [
     /^\/api\/campaigns$/,
     /^\/api\/posts$/,
@@ -308,6 +329,18 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "PATCH" && match) {
       return sendJson(response, 200, await service.updateCampaign(match[1], await readJson(request), actor));
     }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/authorization$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 201, await service.authorizeCampaign(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/authorization\/(pause|resume)$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.setCampaignAuthorizationStatus(match[1], match[2] === "pause" ? "paused" : "active", actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/queue-ready-jobs$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.queueAuthorizedCampaignJobs(match[1], actor));
+    }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/artifacts$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.registerArtifact(match[1], await readJson(request), actor));
@@ -399,6 +432,7 @@ server.listen(port, host, () => {
   const address = server.address();
   process.stdout.write(`Jang Global Seeding dashboard: http://${host}:${address.port}\n`);
   fixtureWorker.start();
+  scheduleCampaignQueueEvaluation();
 });
 
 if (trafficPollMinutes > 0) {
@@ -411,6 +445,7 @@ if (trafficPollMinutes > 0) {
 function shutdown() {
   shuttingDown = true;
   if (trafficTimer) clearTimeout(trafficTimer);
+  if (campaignQueueTimer) clearTimeout(campaignQueueTimer);
   fixtureWorker.stop();
   server.close(() => {
     store.releaseWriterLease().finally(() => process.exit(0));
