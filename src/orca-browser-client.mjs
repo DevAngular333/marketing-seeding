@@ -31,9 +31,13 @@ export class OrcaCliClient {
     this.executable = executable;
     this.timeoutMs = timeoutMs;
     this.worktree = worktree;
+    this.browserCommands = 0;
   }
 
+  browserCommandCount() { return this.browserCommands; }
+
   async #run(args) {
+    this.browserCommands += 1;
     try {
       const { stdout } = await execFileAsync(this.executable, [...args, "--json"], {
         windowsHide: true,
@@ -96,12 +100,29 @@ export class OrcaCliClient {
     await this.#run(["click", "--element", element, "--page", pageId, "--worktree", this.worktree]);
   }
 
+  async fill(pageId, element, value) {
+    await this.#run(["fill", "--element", element, "--value", String(value), "--page", pageId, "--worktree", this.worktree]);
+  }
+
+  async upload(pageId, element, filePath) {
+    await this.#run(["upload", "--element", element, "--files", filePath, "--page", pageId, "--worktree", this.worktree]);
+  }
+
+  async keypress(pageId, key) {
+    await this.#run(["keypress", "--key", key, "--page", pageId, "--worktree", this.worktree]);
+  }
+
   async pressEscape(pageId) {
     await this.#run(["keypress", "--key", "Escape", "--page", pageId, "--worktree", this.worktree]);
   }
 
   async waitForFeed(pageId) {
     await this.#run(["wait", "--url", "https://www.linkedin.com/feed/", "--timeout", "10000", "--page", pageId, "--worktree", this.worktree]);
+  }
+
+  async waitForUrl(pageId, url, timeoutMs = 10_000) {
+    const parsed = new URL(url);
+    await this.#run(["wait", "--url", `${parsed.origin}${parsed.pathname}`, "--timeout", String(timeoutMs), "--page", pageId, "--worktree", this.worktree]);
   }
 }
 

@@ -178,6 +178,7 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
     audienceRules: { allowedAudiences },
     schedule: { timezone, weekdays, startLocal, endLocal },
     rateLimits,
+    allowLiveExecution: input.allowLiveExecution === true,
     validFrom: new Date(fromMs).toISOString(),
     validUntil: new Date(untilMs).toISOString(),
     approvedAt: now.toISOString(),

@@ -200,6 +200,34 @@ test("explicit campaign scope can allow repeating the same copy", async () => {
   assert.equal(repeated.status, "queued", JSON.stringify(repeated.authorizationDecision));
 });
 
+test("live execution requires explicit campaign scope and changes the authorization binding", async () => {
+  const { service, campaign, targets } = await campaignFixture({ channels: ["linkedin"] });
+  const defaultAuth = await service.authorizeCampaign(campaign.id, {
+    id: "live-default-deny",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "linkedin", accountId: targets[0].accountId, profileId: targets[0].profileId, targetId: targets[0].id }],
+    approvedAssets: [], contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash("authorized copy")] },
+    audienceRules: { allowedAudiences: ["public"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 5, maxJobsPerCampaignPerDay: 5, maxConcurrency: 1, minIntervalMinutes: 0 }
+  }, "operator");
+  assert.equal(defaultAuth.allowLiveExecution, false);
+  const liveAuth = await service.authorizeCampaign(campaign.id, {
+    id: "live-explicitly-authorized",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "linkedin", accountId: targets[0].accountId, profileId: targets[0].profileId, targetId: targets[0].id }],
+    approvedAssets: [], contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash("authorized copy")] },
+    audienceRules: { allowedAudiences: ["public"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 5, maxJobsPerCampaignPerDay: 5, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true
+  }, "operator");
+  assert.equal(liveAuth.allowLiveExecution, true);
+  assert.notEqual(liveAuth.binding, defaultAuth.binding);
+});
+
 test("concurrency limit carries across campaign authorization renewal", async () => {
   const copyOne = "First in-flight approved copy.";
   const copyTwo = "Second approved copy.";

@@ -44,15 +44,15 @@ State thêm collections theo kiểu additive:
 - `executionAccounts`: explicit platform-account to isolated browser-profile binding, health and readiness timestamp.
 - `executionRequests` / `executionReceipts`: versioned request/receipt boundary and non-redispatchable submit state.
 
-`src/store.mjs` accepts state v1/v2/v3 and UTF-8 BOM, migrating additively to v4. Migration does not infer campaign authorization or account/profile bindings from legacy approvals or target data.
+`src/store.mjs` accepts state v1/v2/v3/v4 and UTF-8 BOM, migrating additively to v5. Migration does not infer campaign authorization or account/profile bindings from legacy approvals or target data.
 
 ## PR2 readiness and execution boundary
 
-State schema v4 adds `executionAccounts`, `executionRequests`, and `executionReceipts`. Migrations from v1/v2/v3 are additive and do not infer account/profile identity from legacy targets or per-job approvals.
+State schema v5 adds `executionLeases` to PR2's `executionAccounts`, `executionRequests`, and `executionReceipts`. Migrations from earlier schemas are additive and do not infer account/profile identity from legacy targets or per-job approvals.
 
 Authorized jobs with missing or stale readiness enter `READINESS_CHECKING`, call the configured platform provider, persist a result bound to platform/account/profile/target, and reevaluate queue eligibility. The LinkedIn provider uses the ORCA Browser profile to verify session identity, feed, and composer; it closes the composer without entering content or submitting.
 
-Queue-eligible jobs produce `ExecutionRequestV1`; adapter results use `ExecutionReceiptV1`. `SUBMIT_SENT` and unknown outcomes are never automatically redispatched. PR2 defines this boundary but does not implement real publishing or mark a post published from an unverified receipt.
+Queue-eligible jobs produce `ExecutionRequestV1`; adapter results use `ExecutionReceiptV1`. The JEV worker binds a durable lease to the job and ORCA profile. The LinkedIn adapter writes `SUBMIT_SENT_INTENT` before its single Post click. `SUBMIT_SENT_INTENT`, `SUBMIT_SENT`, and unknown outcomes are never automatically redispatched. Only a confirmed receipt with matching evidence moves the post to `PUBLISHED` and `VERIFIED`; uncertain receipts go through verifier-only reconciliation.
 
 ## Adapter/channel policy
 

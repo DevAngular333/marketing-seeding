@@ -964,7 +964,10 @@ export class SeedingService {
     const candidates = snapshot.posts.filter((post) => {
       if (post.campaignId !== campaignId || !post.campaignAuthorizationId) return false;
       if (["blocked", "draft"].includes(post.status)) return true;
-      if (post.status !== "queued" || post.executionState !== "REQUEST_READY") return false;
+      if (post.status !== "queued") return false;
+      const latestExecution = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id).sort((a, b) => b.attempt - a.attempt)[0];
+      if (latestExecution?.state === "FAILED" && latestExecution.recoveryClassification === "RECOVERABLE" && latestExecution.submitState === "FAILED" && latestExecution.attempt < 3) return true;
+      if (post.executionState !== "REQUEST_READY") return false;
       const target = snapshot.targets.find((item) => item.id === post.targetId);
       return !target || !isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, new Date(), this.readinessTtlMs);
     });
@@ -989,7 +992,10 @@ export class SeedingService {
           if ((post.readinessAttempts || 0) === 0) return true;
           return Boolean(post.readinessRetryAt) && Date.parse(post.readinessRetryAt) <= now && (post.readinessAttempts || 0) < this.maxReadinessAttempts;
         }
-        if (post.status !== "queued" || post.executionState !== "REQUEST_READY") return false;
+        if (post.status !== "queued") return false;
+        const latestExecution = (state.executionRequests || []).filter((item) => item.jobId === post.id).sort((a, b) => b.attempt - a.attempt)[0];
+        if (latestExecution?.state === "FAILED" && latestExecution.recoveryClassification === "RECOVERABLE" && latestExecution.submitState === "FAILED" && latestExecution.attempt < 3) return true;
+        if (post.executionState !== "REQUEST_READY") return false;
         const target = state.targets.find((item) => item.id === post.targetId);
         return !target || !isReadinessFresh(target.readiness, {
           platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id
@@ -1168,6 +1174,8 @@ export class SeedingService {
   async prepareExecutionRequest(postId, actor = "execution-router") {
     const snapshot = await this.store.read();
     const post = requireItem(snapshot.posts, postId, "Post");
+    const previous = (snapshot.executionRequests || []).filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
+    if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
     const target = requireItem(snapshot.targets, post.targetId, "Target");
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
     const authorization = (snapshot.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
@@ -1186,7 +1194,7 @@ export class SeedingService {
     const result = await this.store.mutate(actor, "execution_request_prepared", (state) => {
       state.executionRequests ||= [];
       const previous = state.executionRequests.filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
-      if (previous && ["SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
+      if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
       if (previous && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
         if (previous.state !== "REQUEST_READY") throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
       }
@@ -1234,45 +1242,283 @@ export class SeedingService {
     });
   }
 
+  async executionContext(executionId) {
+    const state = await this.store.read();
+    const requestRow = (state.executionRequests || []).find((item) => item.executionId === executionId);
+    if (!requestRow) throw new Error(`Execution request not found: ${executionId}`);
+    const post = requireItem(state.posts, requestRow.jobId, "Post");
+    const target = requireItem(state.targets, post.targetId, "Target");
+    const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+    const authorization = (state.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
+    const artifact = post.artifactId ? (state.artifacts || []).find((item) => item.id === post.artifactId) : null;
+    return { requestRow, request: requestRow.request, post, target, account, authorization, artifact, state };
+  }
+
+  async pendingExecutionReconciliations({ now = Date.now(), minIntervalMs = 60_000, maxAttempts = 10 } = {}) {
+    const state = await this.store.read();
+    return (state.executionRequests || []).filter((item) => ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(item.state))
+      .filter((item) => item.request?.platform === "linkedin")
+      .filter((item) => Number(item.reconciliationAttempts || 0) < maxAttempts)
+      .filter((item) => !Number.isFinite(Date.parse(item.lastReconciliationAt || "")) || now - Date.parse(item.lastReconciliationAt) >= minIntervalMs);
+  }
+
+  async markExecutionReconciliationAttempt(executionId) {
+    const result = await this.store.mutate("execution-reconciler", "execution_reconciliation_started", (state) => {
+      const request = state.executionRequests.find((item) => item.executionId === executionId);
+      if (!request || !["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(request.state)) throw new Error("Execution is not awaiting reconciliation");
+      request.lastReconciliationAt = nowIso();
+      request.reconciliationAttempts = Number(request.reconciliationAttempts || 0) + 1;
+      return request;
+    });
+    return result.result;
+  }
+
+  async acquireExecutionLease(executionId, workerId, { leaseMs = 60_000, mode = "execute" } = {}) {
+    const owner = String(workerId || "").trim();
+    if (!owner) throw new Error("workerId is required");
+    if (!Number.isSafeInteger(leaseMs) || leaseMs < 5_000 || leaseMs > 10 * 60_000) throw new Error("leaseMs must be between 5000 and 600000");
+    const context = await this.executionContext(executionId);
+    if (!context.account?.profileId || context.account.profileId !== context.target.profileId) throw new Error("Execution profile binding is invalid");
+    const at = Date.now();
+    const lease = {
+      id: randomUUID(), token: randomUUID(), executionId, jobId: context.post.id,
+      platform: context.target.channel, accountId: context.target.accountId,
+      profileId: context.account.profileId, profileKey: `${context.target.channel}:${context.account.profileId}`,
+      workerId: owner, acquiredAt: new Date(at).toISOString(), expiresAt: new Date(at + leaseMs).toISOString()
+    };
+    const result = await this.store.mutate(owner, "execution_lease_acquired", (state) => {
+      state.executionLeases ||= [];
+      state.executionLeases = state.executionLeases.filter((item) => Date.parse(item.expiresAt) > at);
+      const request = state.executionRequests.find((item) => item.executionId === executionId);
+      const executable = request?.state === "REQUEST_READY" && request.submitState === "NOT_STARTED";
+      const reconcilable = mode === "reconcile" && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(request?.state);
+      if (!executable && !reconcilable) return { acquired: false, reason: "execution_not_ready" };
+      const conflict = state.executionLeases.find((item) => item.executionId === executionId || item.jobId === lease.jobId || item.profileKey === lease.profileKey);
+      if (conflict) return { acquired: false, reason: "execution_lease_held" };
+      state.executionLeases.push(lease);
+      return { acquired: true, lease };
+    });
+    return result.result;
+  }
+
+  async renewExecutionLease(leaseId, token, { leaseMs = 60_000 } = {}) {
+    if (!Number.isSafeInteger(leaseMs) || leaseMs < 5_000 || leaseMs > 10 * 60_000) throw new Error("leaseMs must be between 5000 and 600000");
+    const at = Date.now();
+    const result = await this.store.mutate("execution-worker", "execution_lease_renewed", (state) => {
+      const lease = state.executionLeases.find((item) => item.id === leaseId && item.token === token);
+      if (!lease || Date.parse(lease.expiresAt) <= at) return false;
+      lease.expiresAt = new Date(at + leaseMs).toISOString();
+      lease.renewedAt = new Date(at).toISOString();
+      return true;
+    });
+    return result.result;
+  }
+
+  async releaseExecutionLease(leaseId, token) {
+    const result = await this.store.mutate("execution-worker", "execution_lease_released", (state) => {
+      const index = state.executionLeases.findIndex((item) => item.id === leaseId && item.token === token);
+      if (index < 0) return false;
+      state.executionLeases.splice(index, 1);
+      return true;
+    });
+    return result.result;
+  }
+
+  async markExecutionStarted(executionId, lease, { dryRun = false } = {}) {
+    const result = await this.store.mutate("execution-worker", "execution_started", (state) => {
+      const request = state.executionRequests.find((item) => item.executionId === executionId);
+      const persistedLease = state.executionLeases.find((item) => item.id === lease.id && item.token === lease.token && Date.parse(item.expiresAt) > Date.now());
+      if (!request || request.state !== "REQUEST_READY" || request.submitState !== "NOT_STARTED" || !persistedLease) throw new Error("Execution cannot start without a dispatchable request and active lease");
+      if (dryRun) {
+        request.lastDryRunAt = nowIso();
+        return request;
+      }
+      request.executionPhase = "EXECUTING";
+      request.executionStartedAt ||= nowIso();
+      const post = requireItem(state.posts, request.jobId, "Post");
+      post.executionState = "EXECUTING";
+      post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt || request.createdAt }];
+      if (!post.jobLifecycle.some((item) => item.state === "EXECUTING" && item.executionId === executionId)) {
+        post.jobLifecycle.push({ state: "EXECUTING", at: request.executionStartedAt, executionId });
+      }
+      return request;
+    });
+    return result.result;
+  }
+
+  async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, verifiedGates = {} } = {}) {
+    const snapshot = await this.executionContext(executionId);
+    const { request, post, target, account, authorization, artifact, state } = snapshot;
+    const expectedGates = ["authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"];
+    if (expectedGates.some((key) => verifiedGates[key] !== true)) throw new Error("Pre-submit validation did not pass every required gate");
+    const controlledTestAuthorized = request.testJob === true && liveExecutionId === executionId;
+    const autonomousCampaignAuthorized = request.testJob !== true && autonomousLiveEnabled === true;
+    if (!liveEnabled || (!controlledTestAuthorized && !autonomousCampaignAuthorized) || authorization?.allowLiveExecution !== true) {
+      throw new Error("Live submit requires explicit worker mode, the matching one-job test ID or autonomous mode, and campaign authorization");
+    }
+    if (request.content.sha256 !== createHash("sha256").update(post.content).digest("hex") || request.content.payload !== post.content) throw new Error("Execution content changed after request creation");
+    if (request.audience !== post.audience || !authorization.audienceRules.allowedAudiences.includes(post.audience)) throw new Error("Execution audience does not match authorized audience");
+    if (artifact && (request.media.length !== 1 || request.media[0].artifactId !== artifact.id || request.media[0].reference !== artifact.path || request.media[0].sha256 !== artifact.sha256 || !authorization.approvedAssets.some((item) => item.artifactId === artifact.id && item.sha256 === artifact.sha256))) throw new Error("Execution media identity is not the approved artifact");
+    if (!artifact && request.media.length !== 0) throw new Error("Execution request contains unregistered media");
+    if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId || request.accountId !== target.accountId || request.profileId !== target.profileId) throw new Error("Execution account/profile binding changed");
+    if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, new Date(), this.readinessTtlMs)) throw new Error("Readiness expired before submit intent");
+
+    const result = await this.store.mutate("execution-worker", "execution_submit_intent_persisted", (currentState) => {
+      const requestRow = currentState.executionRequests.find((item) => item.executionId === executionId);
+      const persistedLease = currentState.executionLeases.find((item) => item.id === lease.id && item.token === lease.token && Date.parse(item.expiresAt) > Date.now());
+      const currentPost = requireItem(currentState.posts, post.id, "Post");
+      if (!requestRow || requestRow.state !== "REQUEST_READY" || requestRow.submitState !== "NOT_STARTED") throw new Error("Execution is no longer dispatchable");
+      if (!persistedLease || persistedLease.profileKey !== `${target.channel}:${target.profileId}`) throw new Error("A valid execution lease is required");
+      const currentAuthorization = (currentState.campaignAuthorizations || []).find((item) => item.id === currentPost.campaignAuthorizationId);
+      const decision = evaluateQueue(currentPost, currentState);
+      if (!decision.allowed || currentAuthorization?.allowLiveExecution !== true) throw new Error(`Pre-submit governance blocked: ${decision.reasons.join(", ")}`);
+      if ((currentState.executionRequests || []).some((item) => item.executionId !== executionId && item.request?.idempotencyKey === request.idempotencyKey && ["REQUEST_READY", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state))) throw new Error("Another execution already owns this publication identity");
+      if ((currentState.executionReceipts || []).some((item) => item.receipt?.submitState === "CONFIRMED" && item.executionId !== executionId && (currentState.executionRequests || []).find((row) => row.executionId === item.executionId)?.request?.idempotencyKey === request.idempotencyKey)) throw new Error("A confirmed publication already exists for this idempotency key");
+      if ((currentState.posts || []).some((item) => item.id !== currentPost.id && item.idempotencyKey === request.idempotencyKey && item.status === "published")) throw new Error("A publication already exists for this idempotency key");
+      if (currentPost.status !== "queued") throw new Error("Job is no longer queued");
+      assertTransition(currentPost.status, "publishing");
+      const at = nowIso();
+      const attempt = {
+        id: randomUUID(), postId: currentPost.id, targetId: target.id,
+        contentSha256: createHash("sha256").update(currentPost.content).digest("hex"),
+        approvalBinding: currentPost.approvalBinding || null,
+        campaignAuthorizationId: currentPost.campaignAuthorizationId,
+        campaignAuthorizationBinding: currentPost.campaignAuthorizationBinding,
+        status: "prepared", preparedAt: at,
+        expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(), executionId
+      };
+      currentState.publicationAttempts ||= [];
+      currentState.publicationAttempts.push(attempt);
+      currentPost.publicationAttemptId = attempt.id;
+      currentPost.status = "publishing";
+      currentPost.publishingAt = at;
+      currentPost.executionState = "SUBMIT_SENT_INTENT";
+      currentPost.jobLifecycle ||= [{ state: "CREATED", at: currentPost.createdAt || at }];
+      if (!currentPost.jobLifecycle.some((item) => item.state === "EXECUTING" && item.executionId === executionId)) currentPost.jobLifecycle.push({ state: "EXECUTING", at, executionId });
+      currentPost.jobLifecycle.push({ state: "SUBMIT_SENT_INTENT", at, executionId });
+      requestRow.state = "SUBMIT_SENT_INTENT";
+      requestRow.executionPhase = "SUBMIT_SENT_INTENT";
+      requestRow.submitIntentAt = at;
+      requestRow.idempotencyKey = request.idempotencyKey;
+      return requestRow;
+    });
+    return result.result;
+  }
+
+  async markExecutionSubmitSent(executionId, lease) {
+    const result = await this.store.mutate("execution-worker", "execution_submit_sent", (state) => {
+      const request = state.executionRequests.find((item) => item.executionId === executionId);
+      const persistedLease = state.executionLeases.find((item) => item.id === lease.id && item.token === lease.token && Date.parse(item.expiresAt) > Date.now());
+      if (!request || request.state !== "SUBMIT_SENT_INTENT" || !persistedLease) throw new Error("Cannot mark submit sent without durable intent and active lease");
+      request.state = "SUBMIT_SENT";
+      request.executionPhase = "SUBMIT_SENT";
+      request.submitState = "SUBMIT_SENT";
+      request.dispatchedAt = nowIso();
+      const post = requireItem(state.posts, request.jobId, "Post");
+      post.executionState = "SUBMIT_SENT";
+      post.jobLifecycle.push({ state: "SUBMIT_SENT", at: request.dispatchedAt, executionId });
+      return request;
+    });
+    return result.result;
+  }
+
   async recordExecutionReceipt(executionId, input, actor = "execution-adapter") {
     const receipt = validateExecutionReceiptV1(input);
     if (receipt.executionId !== executionId) throw new Error("Receipt executionId does not match request");
+    if (receipt.submitState === "CONFIRMED" && !String(actor).startsWith("jev-worker:")) throw new Error("CONFIRMED receipts must be produced by the in-process JEV verifier");
     const result = await this.store.mutate(actor, "execution_receipt_recorded", (state) => {
       const request = (state.executionRequests || []).find((item) => item.executionId === executionId);
       if (!request) throw new Error(`Execution request not found: ${executionId}`);
       if (request.jobId !== receipt.jobId || request.attempt !== receipt.attempt) throw new Error("Receipt job/attempt does not match execution request");
       state.executionReceipts ||= [];
-      const priorReceipt = state.executionReceipts.find((item) => item.executionId === executionId && item.attempt === receipt.attempt);
-      if (priorReceipt) {
-        if (JSON.stringify(priorReceipt.receipt) === JSON.stringify(receipt)) return priorReceipt;
+      const exactReceipt = state.executionReceipts.find((item) => item.executionId === executionId && item.attempt === receipt.attempt && JSON.stringify(item.receipt) === JSON.stringify(receipt));
+      if (exactReceipt) return exactReceipt;
+      const priorReceipt = state.executionReceipts.find((item) => item.executionId === executionId && item.attempt === receipt.attempt && item.receipt.dryRun !== true);
+      if (priorReceipt && !receipt.dryRun && !(receipt.reconciliation === true && priorReceipt.receipt.submitState === "UNKNOWN" && receipt.submitState === "CONFIRMED")) {
         throw new Error("A different receipt already exists for this execution attempt");
       }
-      if (["SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(request.state)) throw new Error("Execution result is terminal and cannot be overwritten");
+      if (request.state === "CONFIRMED") throw new Error("Confirmed execution cannot be overwritten");
+      if (request.state === "SUBMIT_RESULT_UNKNOWN" && !(receipt.reconciliation === true && receipt.submitState === "CONFIRMED" && receipt.publicationEvidence)) throw new Error("Unknown execution requires verified reconciliation; it cannot be resubmitted");
       if (request.state === "SUBMIT_SENT" && receipt.submitState === "FAILED") throw new Error("A submitted execution cannot be downgraded to FAILED");
+      if (request.state === "SUBMIT_SENT_INTENT" && ["FAILED", "NOT_STARTED"].includes(receipt.submitState)) throw new Error("A durable submit intent cannot be downgraded to a safe pre-submit result");
+      if (receipt.submitState === "SUBMIT_SENT" && !["SUBMIT_SENT_INTENT", "SUBMIT_SENT"].includes(request.state)) throw new Error("SUBMIT_SENT receipt requires a durable submit intent");
+      if (receipt.submitState === "UNKNOWN" && !["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(request.state)) throw new Error("UNKNOWN receipt requires a durable submit intent");
+      if (receipt.submitState === "FAILED" && request.state !== "REQUEST_READY") throw new Error("FAILED receipt is only safe before a durable submit intent");
+      if (receipt.submitState === "NOT_STARTED" && request.state !== "REQUEST_READY") throw new Error("NOT_STARTED receipt is only valid before submit intent");
       const post = requireItem(state.posts, request.jobId, "Post");
-      const row = { executionId, jobId: receipt.jobId, attempt: receipt.attempt, receivedAt: nowIso(), receipt };
+      const row = { id: randomUUID(), executionId, jobId: receipt.jobId, attempt: receipt.attempt, receivedAt: nowIso(), receipt };
       state.executionReceipts.push(row);
+      if (receipt.dryRun) return row;
       request.submitState = receipt.submitState;
       request.recoveryClassification = receipt.recoveryClassification;
       request.lastReceiptAt = row.receivedAt;
       if (receipt.submitState === "SUBMIT_SENT") {
         request.state = "SUBMIT_SENT";
+        request.executionPhase = "SUBMIT_SENT";
         request.dispatchedAt ||= receipt.startedAt;
         post.executionState = "SUBMIT_SENT";
       } else if (receipt.submitState === "UNKNOWN") {
         request.state = "SUBMIT_RESULT_UNKNOWN";
+        request.executionPhase = "SUBMIT_RESULT_UNKNOWN";
         request.dispatchedAt ||= receipt.startedAt;
         post.executionState = "SUBMIT_RESULT_UNKNOWN";
+        if (!post.jobLifecycle?.some((item) => item.state === "SUBMIT_RESULT_UNKNOWN" && item.executionId === executionId)) post.jobLifecycle?.push({ state: "SUBMIT_RESULT_UNKNOWN", at: row.receivedAt, executionId });
       } else if (receipt.submitState === "CONFIRMED") {
+        if (!["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(request.state)) throw new Error("CONFIRMED receipt requires a durable submit intent");
+        const evidence = receipt.publicationEvidence;
+        const target = requireItem(state.targets, post.targetId, "Target");
+        const artifact = post.artifactId ? (state.artifacts || []).find((item) => item.id === post.artifactId) : null;
+        if (!evidence || evidence.accountMatched !== true || evidence.targetMatched !== true || evidence.contentHashMatched !== true || evidence.mediaHashMatched !== true || !receipt.publicationUrl) {
+          throw new Error("Confirmed receipt requires verified account, target, content, media, and permalink evidence");
+        }
+        const postContentHash = createHash("sha256").update(post.content).digest("hex");
+        if (evidence.contentHash !== postContentHash || evidence.targetId !== target.id || evidence.accountId !== target.accountId || evidence.profileId !== target.profileId || evidence.mediaHash !== (artifact?.sha256 || null)) {
+          throw new Error("Publication evidence does not match the expected job identity");
+        }
+        const targetHost = new URL(target.url).hostname.toLowerCase().replace(/^www\./, "");
+        const publicationHost = new URL(receipt.publicationUrl).hostname.toLowerCase().replace(/^www\./, "");
+        if (publicationHost !== targetHost && !publicationHost.endsWith(`.${targetHost}`)) throw new Error("Publication URL host does not match the approved target platform");
+        if (post.status !== "publishing") throw new Error("Confirmed publication requires a previously persisted submit intent");
+        assertTransition(post.status, "published");
+        const attempt = (state.publicationAttempts || []).find((item) => item.id === post.publicationAttemptId && item.executionId === executionId);
+        if (!attempt || attempt.status !== "prepared" || attempt.contentSha256 !== postContentHash) throw new Error("Publication attempt is missing or stale");
+        attempt.status = "verified";
+        attempt.verifiedAt = evidence.verifiedAt;
+        attempt.publicationUrl = receipt.publicationUrl;
         request.state = "CONFIRMED";
+        request.executionPhase = "VERIFIED";
         request.dispatchedAt ||= receipt.startedAt;
         request.publicationUrl = receipt.publicationUrl;
         request.publicationReference = receipt.publicationReference;
         post.executionState = "CONFIRMED";
+        post.status = "published";
+        post.publishedAt = evidence.verifiedAt;
+        post.publicationUrl = receipt.publicationUrl;
+        post.evidence = evidence.evidenceReference || `verified:${evidence.verificationMethod}:${evidence.verifiedAt}`;
+        post.jobLifecycle.push({ state: "PUBLISHED", at: evidence.verifiedAt, executionId, publicationUrl: receipt.publicationUrl }, { state: "VERIFIED", at: evidence.verifiedAt, executionId });
       } else if (receipt.submitState === "FAILED") {
         if (request.state === "SUBMIT_SENT") throw new Error("A submitted execution cannot be marked as safely failed");
         request.state = "FAILED";
+        request.executionPhase = "FAILED";
         post.executionState = "FAILED";
+        if (receipt.recoveryClassification !== "RECOVERABLE") {
+          const at = row.receivedAt;
+          post.status = "blocked";
+          post.blockedAt = at;
+          post.readinessState = receipt.recoveryClassification === "HUMAN_REQUIRED" ? "HUMAN_REQUIRED" : "BLOCKED";
+          post.readinessReasonCode = receipt.errorClassification.toLowerCase();
+          post.authorizationDecision = { evaluatedAt: at, allowed: false, reasons: [post.readinessReasonCode] };
+          if (!post.jobLifecycle?.some((item) => item.state === post.readinessState && item.executionId === executionId)) post.jobLifecycle?.push({ state: post.readinessState, at, executionId, reasonCode: post.readinessReasonCode });
+          if (receipt.recoveryClassification === "HUMAN_REQUIRED") {
+            const target = state.targets.find((item) => item.id === post.targetId);
+            const account = target && (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+            if (account) {
+              account.health = "human_required";
+              account.lastFailureAt = at;
+              account.updatedAt = at;
+            }
+          }
+        }
       }
       return row;
     });
@@ -1473,6 +1719,9 @@ export class SeedingService {
 
   async createPost(input, actor = "operator") {
     const result = await this.store.mutate(actor, "post_created", (state) => {
+      if (input.testJob === true && !["operator", "local-human-operator"].includes(actor)) {
+        throw new Error("Only an operator can mark a job as a live-test job");
+      }
       requireItem(state.campaigns, input.campaignId, "Campaign");
       const target = requireItem(state.targets, input.targetId, "Target");
       const content = String(input.content || "");
@@ -1504,6 +1753,7 @@ export class SeedingService {
         contentId,
         idempotencyKey,
         audience: String(input.audience || "").trim(),
+        testJob: input.testJob === true,
         templateId: String(input.templateId || "").trim() || null,
         claimIds: Array.isArray(input.claimIds) ? [...new Set(input.claimIds.map(String))] : [],
         contentSourceRefs: Array.isArray(input.contentSourceRefs) ? input.contentSourceRefs.map((reference) => typeof reference === "string" ? reference : ({ relativePath: String(reference.relativePath || ""), sha256: String(reference.sha256 || "").toLowerCase() })) : [],

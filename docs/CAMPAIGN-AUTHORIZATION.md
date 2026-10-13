@@ -6,7 +6,7 @@ Campaign authorization is the canonical pre-authorization for future child distr
 
 ## Canonical state
 
-`state.json` is schema version 3. `campaignAuthorizations[]` is the source of truth; the campaign record and dashboard are projections. State v1/v2 migration adds an empty authorization collection and preserves existing records. Migration does not infer or grant campaign permission.
+`state.json` is schema version 5. `campaignAuthorizations[]` is the source of truth; the campaign record and dashboard are projections. Earlier state migrations add authorization, execution, and lease collections while preserving existing records. Migration does not infer or grant campaign permission.
 
 An authorization records:
 
@@ -29,7 +29,7 @@ An active authorization attaches to matching child jobs. Eligible jobs inherit `
 
 Authorization requires exact destination identity and a registered enabled account-to-profile binding; campaign activity; valid authorization dates and binding; approved media identity/hash; approved copy hash or exact rendered approved template and source references; allowed audience; valid schedule; rate/concurrency limits; target active/ready; reviewed destination rules; consent evidence where required; and no duplicate. A dispatchable request requires fresh readiness bound to platform, account, profile, and target, including verified session, feed availability, and composer capability. If identity is uncertain, the job becomes `HUMAN_REQUIRED`; MFA, passkey, security challenge, locked account, and ambiguous account identity are never bypassed.
 
-Artifact identity, campaign, registered path, and SHA-256 are checked during eligibility; artifact and claim-source bytes are re-hashed when the campaign is authorized, and artifact source bytes are re-hashed before transition to publishing. The LinkedIn readiness provider uses the dedicated ORCA browser profile, verifies account/feed/composer structure, and safely closes the composer without entering content or submitting. Other platforms need their own provider. This PR creates versioned `ExecutionRequestV1` and `ExecutionReceiptV1` boundaries, but does not implement a real publishing dispatcher or publisher. `EXECUTION_REQUEST_READY` is not proof of dispatch or publication.
+Artifact identity, campaign, registered path, and SHA-256 are checked during eligibility; artifact and claim-source bytes are re-hashed when the campaign is authorized, and artifact source bytes are re-hashed before transition to publishing. The LinkedIn readiness provider uses the dedicated ORCA browser profile, verifies account/feed/composer structure, and safely closes the composer without entering content or submitting. PR3 adds a JEV worker and LinkedIn adapter on top of the versioned execution contracts. The worker is disabled unless explicitly enabled and bound to one named execution ID. It uses the registered ORCA profile and does not use external Chrome. Other platforms remain unsupported by the JEV worker.
 
 ## Idempotency and fan-out
 
@@ -47,12 +47,14 @@ Stop and block only the affected job/account for MFA/passkey/security challenge,
 
 `executionAccounts[]` maps one `(platform, accountId)` to one isolated `profileId`, health and last readiness timestamp. An enabled profile cannot be shared by two enabled accounts on the same platform. `ExecutionRequestV1` contains job/campaign/target identity, account/profile, audience, exact content hash and payload, verified media descriptors, authorization binding, readiness binding and idempotency key; secrets are rejected. `ExecutionReceiptV1` records attempt timestamps, readiness result, submit state, safe publication reference, classifications and telemetry.
 
-`SUBMIT_SENT`, `SUBMIT_RESULT_UNKNOWN`, and `CONFIRMED` are non-redispatchable states. An uncertain result must be reconciled before any new attempt. PR2 does not mark a post `published` from a receipt and does not produce a confirmed real publication.
+`SUBMIT_SENT_INTENT`, `SUBMIT_SENT`, `SUBMIT_RESULT_UNKNOWN`, and `CONFIRMED` are non-redispatchable states. Before the only Post click, PR3 durably records `SUBMIT_SENT_INTENT`; failure to persist it stops before clicking. An uncertain result must be reconciled without resubmitting. Only a validated confirmed receipt with matching publication evidence transitions the post to `PUBLISHED` and `VERIFIED`. Dry-run receipts are separately marked and do not consume the live request.
+
+The LinkedIn worker defaults to no-submit behavior and remains disabled unless explicitly enabled. See [JEV LinkedIn execution](./JEV-LINKEDIN-EXECUTION.md) for per-execution dry-run/live flags, identity requirements, and evidence limits. PR3 has no Facebook/Threads executor.
 
 ## Legacy migration
 
-1. Upgrade v1/v2/v3 state additively to schema v4; retain existing approvals, jobs, audit, and publication attempts. New execution collections begin empty; old approvals do not create account/profile bindings.
+1. Upgrade older state additively through schema v5; retain existing approvals, jobs, audit, and publication attempts. New execution collections and leases begin empty; old approvals do not create account/profile bindings.
 2. Keep campaigns without an authorization on the legacy per-job rule. They gain no new authority during migration.
 3. When an operator explicitly authorizes a campaign, existing draft/review/approved/queued jobs are evaluated against the exact new scope. Matching jobs inherit the authorization and auto-queue only if all readiness and policy checks pass. Non-matching jobs become `BLOCKED`. Published jobs and unresolved submissions are unchanged.
 4. New generation creates one child per approved destination and binds idempotency identity at creation. Scope or policy changes require new explicit campaign authorization; old scopes pause.
-5. Register the intended account/profile and configure a readiness provider before expecting an execution request. PR2 provides the LinkedIn readiness reference and request/receipt contracts; the real JEV dispatcher/adapter and publication verifier remain subsequent work. Do not describe a queued request as published.
+5. Register the intended account/profile and configure a readiness provider before expecting an execution request. PR3 provides the LinkedIn JEV worker and publication verifier. Do not describe a queued request as published, and do not enable live mode without a one-job authorization and fresh readiness.

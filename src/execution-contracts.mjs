@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 export const EXECUTION_REQUEST_SCHEMA_VERSION = 1;
 export const EXECUTION_RECEIPT_SCHEMA_VERSION = 1;
 export const SUBMIT_STATES = Object.freeze(["NOT_STARTED", "SUBMIT_SENT", "CONFIRMED", "UNKNOWN", "FAILED"]);
-export const EXECUTION_STATES = Object.freeze(["REQUEST_READY", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED"]);
+export const EXECUTION_STATES = Object.freeze(["REQUEST_READY", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED"]);
 
 const sha256Pattern = /^[a-f0-9]{64}$/i;
 const secretKeyPattern = /(password|passwd|cookie|bearer|token|credential|mfa|passkey|sessionstorage|localstorage|secret|authorizationheader)/i;
@@ -46,6 +46,7 @@ export function validateExecutionRequestV1(input) {
       url: required(input.target?.url, "target.url")
     },
     audience: required(input.audience, "audience"),
+    testJob: input.testJob === true,
     content: {
       contentId: required(input.content?.contentId, "content.contentId"),
       sha256: required(input.content?.sha256, "content.sha256").toLowerCase(),
@@ -100,8 +101,24 @@ export function validateExecutionReceiptV1(input) {
       reasonCode: String(input.readinessResult?.reasonCode || "ready").slice(0, 80)
     },
     submitState: required(input.submitState, "submitState").toUpperCase(),
+    dryRun: input.dryRun === true,
     publicationUrl: input.publicationUrl ? String(input.publicationUrl) : null,
     publicationReference: input.publicationReference ? String(input.publicationReference) : null,
+    publicationEvidence: input.publicationEvidence && typeof input.publicationEvidence === "object" ? {
+      verifiedAt: required(input.publicationEvidence.verifiedAt, "publicationEvidence.verifiedAt"),
+      accountMatched: input.publicationEvidence.accountMatched === true,
+      targetMatched: input.publicationEvidence.targetMatched === true,
+      contentHashMatched: input.publicationEvidence.contentHashMatched === true,
+      mediaHashMatched: input.publicationEvidence.mediaHashMatched === true,
+      accountId: required(input.publicationEvidence.accountId, "publicationEvidence.accountId"),
+      profileId: required(input.publicationEvidence.profileId, "publicationEvidence.profileId"),
+      targetId: required(input.publicationEvidence.targetId, "publicationEvidence.targetId"),
+      contentHash: required(input.publicationEvidence.contentHash, "publicationEvidence.contentHash"),
+      mediaHash: input.publicationEvidence.mediaHash ? String(input.publicationEvidence.mediaHash).toLowerCase() : null,
+      verificationMethod: required(input.publicationEvidence.verificationMethod, "publicationEvidence.verificationMethod"),
+      evidenceReference: input.publicationEvidence.evidenceReference ? String(input.publicationEvidence.evidenceReference) : null
+    } : null,
+    reconciliation: input.reconciliation === true,
     errorClassification: String(input.errorClassification || "NONE").toUpperCase(),
     recoveryClassification: String(input.recoveryClassification || "NONE").toUpperCase(),
     telemetry: {
@@ -116,6 +133,7 @@ export function validateExecutionReceiptV1(input) {
   if (Date.parse(receipt.finishedAt) < Date.parse(receipt.startedAt)) throw new Error("ExecutionReceiptV1 finishedAt cannot precede startedAt");
   if (!new Set(["READY", "BLOCKED", "HUMAN_REQUIRED", "UNKNOWN"]).has(receipt.readinessResult.state)) throw new Error("ExecutionReceiptV1 readinessResult state is invalid");
   if (!SUBMIT_STATES.includes(receipt.submitState)) throw new Error("ExecutionReceiptV1 submitState is invalid");
+  if (receipt.dryRun && receipt.submitState !== "NOT_STARTED") throw new Error("A dry-run receipt must remain NOT_STARTED");
   if (!errorClasses.has(receipt.errorClassification)) throw new Error("ExecutionReceiptV1 errorClassification is invalid");
   if (!recoveryClasses.has(receipt.recoveryClassification)) throw new Error("ExecutionReceiptV1 recoveryClassification is invalid");
   for (const [name, value] of Object.entries(receipt.telemetry)) {
@@ -124,6 +142,21 @@ export function validateExecutionReceiptV1(input) {
   if (receipt.submitState === "CONFIRMED" && !receipt.publicationUrl && !receipt.publicationReference) {
     throw new Error("CONFIRMED receipt requires a publication URL or reference");
   }
+  if (receipt.submitState === "CONFIRMED" && (!receipt.publicationEvidence || receipt.publicationEvidence.accountMatched !== true || receipt.publicationEvidence.targetMatched !== true || receipt.publicationEvidence.contentHashMatched !== true || receipt.publicationEvidence.mediaHashMatched !== true)) {
+    throw new Error("CONFIRMED receipt requires positive account, target, content, and media evidence");
+  }
+  if (receipt.dryRun && (receipt.publicationUrl || receipt.publicationReference || receipt.publicationEvidence)) {
+    throw new Error("Dry-run receipt cannot contain publication evidence");
+  }
+  if (receipt.submitState === "CONFIRMED" && (!receipt.publicationEvidence || receipt.publicationEvidence.accountMatched !== true || receipt.publicationEvidence.targetMatched !== true || receipt.publicationEvidence.contentHashMatched !== true || receipt.publicationEvidence.mediaHashMatched !== true)) {
+    throw new Error("CONFIRMED receipt requires positive account, target, content, and media evidence");
+  }
+  if (receipt.dryRun && (receipt.publicationUrl || receipt.publicationReference || receipt.publicationEvidence)) {
+    throw new Error("Dry-run receipt cannot contain publication evidence");
+  }
+  if (receipt.publicationEvidence && !Number.isFinite(Date.parse(receipt.publicationEvidence.verifiedAt))) throw new Error("publicationEvidence.verifiedAt must be an ISO timestamp");
+  if (receipt.publicationEvidence && !/^[a-f0-9]{64}$/i.test(receipt.publicationEvidence.contentHash)) throw new Error("publicationEvidence.contentHash must be a SHA-256 digest");
+  if (receipt.publicationEvidence?.mediaHash && !/^[a-f0-9]{64}$/i.test(receipt.publicationEvidence.mediaHash)) throw new Error("publicationEvidence.mediaHash must be a SHA-256 digest");
   if (["SUBMIT_SENT", "UNKNOWN"].includes(receipt.submitState) && receipt.recoveryClassification === "RECOVERABLE") {
     throw new Error("A possibly submitted execution cannot be classified as safely recoverable");
   }
@@ -141,6 +174,7 @@ export function createExecutionRequestV1({ executionId, post, target, account, a
     profileId: account.profileId,
     target: { targetId: target.id, url: target.url },
     audience: post.audience,
+    testJob: post.testJob === true,
     content: { contentId: post.contentId, sha256: contentSha256(post.content), payload: post.content },
     media: artifact ? [{ artifactId: artifact.id, reference: artifact.path, sha256: artifact.sha256, type: artifact.mimeType || artifact.mediaType || "application/octet-stream" }] : [],
     authorization: { authorizationId: authorization.id, binding: authorization.binding },

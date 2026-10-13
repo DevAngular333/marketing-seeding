@@ -10,6 +10,8 @@ import { readAutoGtmFeed } from "./auto-gtm-feed.mjs";
 import { OrcaCliClient } from "./orca-browser-client.mjs";
 import { LinkedInReadinessProvider } from "./linkedin-readiness.mjs";
 import { configuredReadinessTtlMs } from "./readiness.mjs";
+import { LinkedInAdapter } from "./linkedin-adapter.mjs";
+import { JevExecutionWorker } from "./jev-execution-worker.mjs";
 
 async function loadLocalEnv() {
   try {
@@ -46,10 +48,12 @@ if (!Number.isFinite(trafficPollMinutes) || trafficPollMinutes < 0 || (trafficPo
 const store = new JsonStore(stateFile, { requireLease: true });
 await store.acquireWriterLease();
 const readinessTtlMs = configuredReadinessTtlMs();
+const orcaBrowser = new OrcaCliClient();
 const service = new SeedingService(store, {
   readinessTtlMs,
-  readinessProviders: { linkedin: new LinkedInReadinessProvider(new OrcaCliClient(), { ttlMs: readinessTtlMs }) }
+  readinessProviders: { linkedin: new LinkedInReadinessProvider(orcaBrowser, { ttlMs: readinessTtlMs }) }
 });
+const jevWorker = new JevExecutionWorker({ service, adapters: { linkedin: new LinkedInAdapter(orcaBrowser) }, workerId: `jev-server-${process.pid}` });
 let initializedState;
 try {
   initializedState = await service.init();
@@ -74,6 +78,9 @@ const trafficRuntime = {
 const fixtureWorker = new FixtureWorkerBridge({ service });
 let trafficTimer = null;
 let campaignQueueTimer = null;
+let jevExecutionTimer = null;
+let jevExecutionRunning = false;
+const jevExecutionStarted = new Set();
 let campaignQueueRunning = false;
 let shuttingDown = false;
 
@@ -104,6 +111,41 @@ function scheduleCampaignQueueEvaluation(delayMs = 30_000) {
     }
   }, Math.max(1_000, delayMs));
   campaignQueueTimer.unref();
+}
+
+function scheduleJevExecution(delayMs = 5_000) {
+  if (shuttingDown || process.env.SEEDING_JEV_WORKER_ENABLED !== "true") return;
+  if (jevExecutionTimer) clearTimeout(jevExecutionTimer);
+  jevExecutionTimer = setTimeout(async () => {
+    const liveExecutionId = String(process.env.SEEDING_JEV_LIVE_EXECUTION_ID || "").trim();
+    const dryRunExecutionId = String(process.env.SEEDING_JEV_DRY_RUN_EXECUTION_ID || "").trim();
+    const autonomousLive = process.env.SEEDING_JEV_LIVE_ENABLED === "true" && process.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED === "true";
+    const executionId = liveExecutionId || dryRunExecutionId;
+    if (jevExecutionRunning || shuttingDown) return scheduleJevExecution();
+    const shouldExecute = autonomousLive || Boolean(executionId && !jevExecutionStarted.has(executionId));
+    jevExecutionRunning = true;
+    if (shouldExecute && executionId) jevExecutionStarted.add(executionId);
+    try {
+      const reconciliations = await jevWorker.reconcilePendingOnce();
+      if (shouldExecute) {
+        if (autonomousLive && !liveExecutionId) {
+          const results = await jevWorker.runReadyOnce({ dryRun: false });
+          process.stdout.write(`JEV autonomous cycle ${JSON.stringify({ jobs: results.length, confirmed: results.filter((item) => item.status === "CONFIRMED").length, unknown: results.filter((item) => item.status === "UNKNOWN").length, reconciliations: reconciliations.length })}\n`);
+        } else {
+          const result = await jevWorker.run(executionId, { dryRun: !liveExecutionId });
+          process.stdout.write(`JEV execution ${JSON.stringify({ executionId, status: result.status, submitState: result.receipt?.submitState || null, reconciliations: reconciliations.length })}\n`);
+        }
+      } else if (reconciliations.length > 0) {
+        process.stdout.write(`JEV reconciliation ${JSON.stringify({ executions: reconciliations.length, confirmed: reconciliations.filter((item) => item.status === "CONFIRMED").length })}\n`);
+      }
+    } catch (error) {
+      process.stderr.write(`JEV cycle stopped ${JSON.stringify({ executionId: executionId || null, reason: error.code || "worker_error" })}\n`);
+    } finally {
+      jevExecutionRunning = false;
+      scheduleJevExecution();
+    }
+  }, Math.max(1_000, delayMs));
+  jevExecutionTimer.unref();
 }
 
 async function readDailyProductionAutomation() {
@@ -462,6 +504,7 @@ server.listen(port, host, () => {
   process.stdout.write(`Jang Global Seeding dashboard: http://${host}:${address.port}\n`);
   fixtureWorker.start();
   scheduleCampaignQueueEvaluation();
+  scheduleJevExecution();
 });
 
 if (trafficPollMinutes > 0) {
@@ -475,6 +518,7 @@ function shutdown() {
   shuttingDown = true;
   if (trafficTimer) clearTimeout(trafficTimer);
   if (campaignQueueTimer) clearTimeout(campaignQueueTimer);
+  if (jevExecutionTimer) clearTimeout(jevExecutionTimer);
   fixtureWorker.stop();
   server.close(() => {
     store.releaseWriterLease().finally(() => process.exit(0));

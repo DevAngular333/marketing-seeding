@@ -181,6 +181,16 @@ test("SUBMIT_SENT receipt is terminal for dispatch and never creates a replaceme
   const { service, post } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
   const before = await service.snapshot();
   const request = before.executionRequests[0];
+  await service.store.mutate("test", "simulate_durable_submit_intent", (state) => {
+    const storedRequest = state.executionRequests.find((item) => item.executionId === request.executionId);
+    storedRequest.state = "SUBMIT_SENT_INTENT";
+    storedRequest.submitIntentAt = new Date().toISOString();
+    const storedPost = state.posts.find((item) => item.id === post.id);
+    storedPost.status = "publishing";
+    storedPost.executionState = "SUBMIT_SENT_INTENT";
+    storedPost.publicationAttemptId = "attempt-test";
+    state.publicationAttempts.push({ id: "attempt-test", postId: post.id, targetId: storedPost.targetId, status: "prepared", executionId: request.executionId, contentSha256: contentSha256(storedPost.content) });
+  });
   await service.recordExecutionReceipt(request.executionId, {
     schemaVersion: 1, executionId: request.executionId, jobId: post.id, attempt: 1,
     startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
@@ -193,6 +203,158 @@ test("SUBMIT_SENT receipt is terminal for dispatch and never creates a replaceme
   assert.equal(terminal.executionId, request.executionId);
   assert.equal(terminal.state, "SUBMIT_SENT");
   assert.equal(after.executionRequests.length, 1);
+  assert.equal((await service.readyExecutionRequests()).length, 0);
+});
+
+test("execution lease serializes duplicate/profile work and releases for the next safe owner", async () => {
+  const { service } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
+  const initial = (await service.snapshot()).executionRequests[0];
+  const request = initial;
+  const otherExecutionId = "second-execution-same-profile";
+  await service.store.mutate("test", "add_second_job_same_profile", (state) => {
+    const originalPost = state.posts.find((item) => item.id === initial.jobId);
+    state.posts.push({ ...originalPost, id: "second-job-same-profile", contentId: "second-content", content: "separate child job", idempotencyKey: "different-publication-identity" });
+    state.executionRequests.push({
+      executionId: otherExecutionId, jobId: "second-job-same-profile", attempt: 1, state: "REQUEST_READY", submitState: "NOT_STARTED",
+      request: { ...initial.request, executionId: otherExecutionId, jobId: "second-job-same-profile", idempotencyKey: "different-publication-identity" }
+    });
+  });
+  const first = await service.acquireExecutionLease(request.executionId, "worker-one");
+  assert.equal(first.acquired, true);
+  const second = await service.acquireExecutionLease(otherExecutionId, "worker-two");
+  assert.deepEqual(second, { acquired: false, reason: "execution_lease_held" });
+  assert.equal(await service.releaseExecutionLease(first.lease.id, first.lease.token), true);
+  const secondLease = await service.acquireExecutionLease(otherExecutionId, "worker-two");
+  assert.equal(secondLease.acquired, true);
+  assert.equal(await service.releaseExecutionLease(secondLease.lease.id, secondLease.lease.token), true);
+});
+
+test("dry-run receipt is auditable but does not consume or change the live execution state", async () => {
+  const { service, post } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
+  const request = (await service.snapshot()).executionRequests[0];
+  const timestamp = new Date().toISOString();
+  const receipt = {
+    schemaVersion: 1, executionId: request.executionId, jobId: post.id, attempt: request.attempt,
+    startedAt: timestamp, finishedAt: timestamp,
+    readinessResult: { state: "READY", checkedAt: timestamp },
+    submitState: "NOT_STARTED", dryRun: true,
+    telemetry: { durationMs: 0, browserCommands: 1, computerUseCalls: 0, retries: 0 }
+  };
+  await service.recordExecutionReceipt(request.executionId, receipt);
+  const after = await service.snapshot();
+  assert.equal(after.executionRequests[0].state, "REQUEST_READY");
+  assert.equal(after.executionRequests[0].submitState, "NOT_STARTED");
+  assert.equal((await service.readyExecutionRequests()).length, 1);
+  assert.equal(after.executionReceipts[0].receipt.dryRun, true);
+  assert.equal((await service.prepareExecutionRequest(post.id)).executionId, request.executionId);
+});
+
+test("verified confirmation receipt reconciles an intent to PUBLISHED and VERIFIED", async () => {
+  const { service, post, target, profileId, accountId, content } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
+  const request = (await service.snapshot()).executionRequests[0];
+  const startedAt = new Date().toISOString();
+  await service.store.mutate("test", "simulate_sent_intent", (state) => {
+    const storedRequest = state.executionRequests.find((item) => item.executionId === request.executionId);
+    storedRequest.state = "SUBMIT_SENT_INTENT";
+    storedRequest.submitIntentAt = startedAt;
+    const storedPost = state.posts.find((item) => item.id === post.id);
+    storedPost.status = "publishing";
+    storedPost.executionState = "SUBMIT_SENT_INTENT";
+    storedPost.publicationAttemptId = "attempt-verified";
+    state.publicationAttempts.push({ id: "attempt-verified", postId: post.id, targetId: target.id, status: "prepared", executionId: request.executionId, contentSha256: contentSha256(content) });
+  });
+  const verifiedAt = new Date().toISOString();
+  const confirmedReceipt = {
+    schemaVersion: 1, executionId: request.executionId, jobId: post.id, attempt: 1,
+    startedAt, finishedAt: verifiedAt, readinessResult: { state: "READY", checkedAt: startedAt },
+    submitState: "CONFIRMED", publicationUrl: "https://www.threads.net/@owner/post/verified", publicationReference: "verified-post",
+    publicationEvidence: {
+      verifiedAt, accountMatched: true, targetMatched: true, contentHashMatched: true, mediaHashMatched: true,
+      accountId, profileId, targetId: target.id, contentHash: contentSha256(content), mediaHash: null,
+      verificationMethod: "isolated_test", evidenceReference: "test-evidence"
+    },
+    telemetry: { durationMs: 100, browserCommands: 2, computerUseCalls: 0, retries: 0 }
+  };
+  await assert.rejects(service.recordExecutionReceipt(request.executionId, confirmedReceipt, "automation"), /in-process JEV verifier/);
+  await service.recordExecutionReceipt(request.executionId, confirmedReceipt, "jev-worker:test");
+  const after = await service.snapshot();
+  assert.equal(after.posts.find((item) => item.id === post.id).status, "published");
+  assert.equal(after.executionRequests[0].state, "CONFIRMED");
+  assert.ok(after.posts.find((item) => item.id === post.id).jobLifecycle.some((item) => item.state === "VERIFIED"));
+});
+
+test("uncertain LinkedIn submissions enter rate-limited reconciliation without becoming dispatchable", async () => {
+  const { service } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
+  const request = (await service.snapshot()).executionRequests[0];
+  await service.store.mutate("test", "simulate_unknown_submit", (state) => {
+    const row = state.executionRequests.find((item) => item.executionId === request.executionId);
+    row.request.platform = "linkedin";
+    row.state = "SUBMIT_RESULT_UNKNOWN";
+    row.submitState = "UNKNOWN";
+  });
+  assert.equal((await service.pendingExecutionReconciliations()).length, 1);
+  await service.markExecutionReconciliationAttempt(request.executionId);
+  assert.equal((await service.pendingExecutionReconciliations()).length, 0);
+  assert.equal((await service.pendingExecutionReconciliations({ now: Date.now() + 60_001 })).length, 1);
+  await service.store.mutate("test", "exhaust_auto_reconciliation", (state) => {
+    state.executionRequests.find((item) => item.executionId === request.executionId).reconciliationAttempts = 10;
+  });
+  assert.equal((await service.pendingExecutionReconciliations({ now: Date.now() + 60_001 })).length, 0);
+  assert.equal((await service.readyExecutionRequests()).length, 0);
+});
+
+test("recoverable pre-submit adapter failures get bounded automatic retries under a new execution identity", async () => {
+  const { service, post } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
+  const before = (await service.snapshot()).executionRequests[0];
+  const timestamp = new Date().toISOString();
+  await service.recordExecutionReceipt(before.executionId, {
+    schemaVersion: 1, executionId: before.executionId, jobId: post.id, attempt: before.attempt,
+    startedAt: timestamp, finishedAt: timestamp, readinessResult: { state: "READY", checkedAt: timestamp },
+    submitState: "FAILED", errorClassification: "TIMEOUT", recoveryClassification: "RECOVERABLE",
+    telemetry: { durationMs: 100, browserCommands: 2, computerUseCalls: 0, retries: 0 }
+  });
+  await service.queueDueCampaignJobs("retry-scheduler");
+  const after = await service.snapshot();
+  assert.equal(after.executionRequests.length, 2);
+  assert.equal(after.executionRequests[1].state, "REQUEST_READY");
+  assert.equal(after.executionRequests[1].attempt, 2);
+  assert.notEqual(after.executionRequests[1].executionId, before.executionId);
+  const second = after.executionRequests[1];
+  const retryAt = new Date().toISOString();
+  await service.recordExecutionReceipt(second.executionId, {
+    schemaVersion: 1, executionId: second.executionId, jobId: post.id, attempt: 2,
+    startedAt: retryAt, finishedAt: retryAt, readinessResult: { state: "READY", checkedAt: retryAt },
+    submitState: "FAILED", errorClassification: "TIMEOUT", recoveryClassification: "RECOVERABLE",
+    telemetry: { durationMs: 100, browserCommands: 2, computerUseCalls: 0, retries: 0 }
+  });
+  await service.queueDueCampaignJobs("retry-scheduler");
+  const thirdAttempt = (await service.snapshot()).executionRequests[2];
+  assert.equal(thirdAttempt.attempt, 3);
+  const thirdAt = new Date().toISOString();
+  await service.recordExecutionReceipt(thirdAttempt.executionId, {
+    schemaVersion: 1, executionId: thirdAttempt.executionId, jobId: post.id, attempt: 3,
+    startedAt: thirdAt, finishedAt: thirdAt, readinessResult: { state: "READY", checkedAt: thirdAt },
+    submitState: "FAILED", errorClassification: "TIMEOUT", recoveryClassification: "RECOVERABLE",
+    telemetry: { durationMs: 100, browserCommands: 2, computerUseCalls: 0, retries: 0 }
+  });
+  await service.queueDueCampaignJobs("retry-scheduler");
+  assert.equal((await service.snapshot()).executionRequests.length, 3);
+});
+
+test("human-required pre-submit adapter failures pause only the affected job and account", async () => {
+  const { service, post, accountId } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
+  const request = (await service.snapshot()).executionRequests[0];
+  const timestamp = new Date().toISOString();
+  await service.recordExecutionReceipt(request.executionId, {
+    schemaVersion: 1, executionId: request.executionId, jobId: post.id, attempt: request.attempt,
+    startedAt: timestamp, finishedAt: timestamp, readinessResult: { state: "READY", checkedAt: timestamp },
+    submitState: "FAILED", errorClassification: "AUTH_REQUIRED", recoveryClassification: "HUMAN_REQUIRED",
+    telemetry: { durationMs: 100, browserCommands: 1, computerUseCalls: 0, retries: 0 }
+  });
+  const state = await service.snapshot();
+  assert.equal(state.posts.find((item) => item.id === post.id).status, "blocked");
+  assert.equal(state.posts.find((item) => item.id === post.id).readinessState, "HUMAN_REQUIRED");
+  assert.equal(state.executionAccounts.find((item) => item.accountId === accountId).health, "human_required");
   assert.equal((await service.readyExecutionRequests()).length, 0);
 });
 
