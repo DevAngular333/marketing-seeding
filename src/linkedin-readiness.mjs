@@ -123,6 +123,8 @@ export async function openLinkedInComposer(browser, pageId, trigger, { mountTime
   // after proving the feed is still open and the unique composer trigger remains.
   const fallback = await browser.evaluate(pageId, COMPOSER_TRIGGER_DOM_CLICK);
   if (fallback?.clicked !== true) return { state, domFallbackUsed: false };
+  state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
+  if (classifyLinkedInComposerState(state) === "CONFIRMED") return { state, domFallbackUsed: true };
   state = await waitForComposer(browser, pageId, mountTimeoutMs);
   return { state, domFallbackUsed: true };
 }
