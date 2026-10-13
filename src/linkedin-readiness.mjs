@@ -12,10 +12,16 @@ const CONTEXT_EXPRESSION = (expectedPath) => `(() => {
   });
   const pageText = document.body?.innerText || '';
   const securityChallenge = /captcha|security key|passkey|two[- ]step|verify your identity|checkpoint|security challenge|xác minh danh tính|khóa bảo mật/i.test(path + ' ' + pageText.slice(0, 3000));
-  const loginRequired = /\\/(?:login|checkpoint)\\/?$/i.test(path) || Boolean(document.querySelector('input[name="session_key"], input[name="session_password"]'));
-  const sessionAuthenticated = !loginRequired && Boolean(document.querySelector('#global-nav,[data-control-name="identity_welcome_message"],.global-nav'));
+  const visible = (node) => Boolean(node && node.getClientRects().length);
+  const pathSegments = path.toLowerCase().split('/').filter(Boolean);
+  const loginRoute = pathSegments[0] === 'login' || (pathSegments[0] === 'uas' && pathSegments[1] === 'login');
+  const loginForm = Array.from(document.querySelectorAll('input[name="session_key"], input[name="session_password"]')).some(visible);
+  const loginRequired = loginRoute || loginForm;
   const feedReachable = host.toLowerCase().replace(/^www\\./, '') === 'linkedin.com' && /\\/feed\\/?$/i.test(path) && Boolean(document.querySelector('main,#main-content'));
-  return { linkedinDomain: host.toLowerCase().replace(/^www\\./, '') === 'linkedin.com', loginRequired, securityChallenge, sessionAuthenticated, identityVerified, feedReachable };
+  const authenticatedNavigation = Array.from(document.querySelectorAll('nav,[role="navigation"]')).some(visible);
+  const composerTrigger = Array.from(document.querySelectorAll('button,[role="button"]')).some((node) => visible(node) && [node.getAttribute('aria-label') || '', node.innerText || ''].some((label) => /^(?:start a post|bắt đầu bài đăng)$/i.test(label.trim())));
+  const sessionAuthenticated = !loginRequired && feedReachable && authenticatedNavigation && composerTrigger;
+  return { linkedinDomain: host.toLowerCase().replace(/^www\\./, '') === 'linkedin.com', loginRequired, securityChallenge, sessionAuthenticated, authenticatedNavigation, composerTrigger, identityVerified, feedReachable };
 })()`;
 
 const COMPOSER_EXPRESSION = `(() => {
@@ -131,7 +137,10 @@ export class LinkedInReadinessProvider {
         return { state: "HUMAN_REQUIRED", reasonCode: "security_challenge", retryable: false, recoveryClassification: "HUMAN_REQUIRED", checkedAt: checkedAt.toISOString() };
       }
       if (contextState.loginRequired || !contextState.sessionAuthenticated) {
-        return { state: "HUMAN_REQUIRED", reasonCode: "authentication_required", retryable: false, recoveryClassification: "HUMAN_REQUIRED", checkedAt: checkedAt.toISOString() };
+        if (contextState.loginRequired) {
+          return { state: "HUMAN_REQUIRED", reasonCode: "authentication_required", retryable: false, recoveryClassification: "HUMAN_REQUIRED", checkedAt: checkedAt.toISOString() };
+        }
+        return { state: "UNKNOWN", reasonCode: "linkedin_auth_state_ambiguous", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       }
       if (!contextState.identityVerified) {
         return { state: "HUMAN_REQUIRED", reasonCode: "account_identity_mismatch", retryable: false, recoveryClassification: "HUMAN_REQUIRED", checkedAt: checkedAt.toISOString() };

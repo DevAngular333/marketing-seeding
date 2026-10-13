@@ -7,7 +7,7 @@ import { approvalFingerprint, assertReplyCanSend, assertTransition, evaluateQueu
 import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs";
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
 import { campaignAuthorizationFingerprint, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
-import { classifyReadinessError, configuredReadinessTtlMs, executionAccountIdentityReference, executionAccountKey, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
+import { classifyReadinessError, configuredReadinessTtlMs, executionAccountIdentityReference, executionAccountKey, isCanonicalOrcaProfileId, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
 import { createExecutionRequestV1, validateExecutionReceiptV1 } from "./execution-contracts.mjs";
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
@@ -751,6 +751,37 @@ export class SeedingService {
     return result.result;
   }
 
+  async updateCampaignAuthorizationProfileBinding(campaignId, authorizationId, targetId, profileId, actor = "operator") {
+    const nextProfileId = String(profileId || "").trim();
+    if (!nextProfileId) throw new Error("Authorization profileId is required");
+    const result = await this.store.mutate(actor, "campaign_authorization_profile_binding_updated", (state) => {
+      const authorization = requireItem(state.campaignAuthorizations || [], authorizationId, "Campaign authorization");
+      if (authorization.campaignId !== campaignId || authorization.status !== "active") {
+        throw new Error("Only the matching active campaign authorization can update a destination profile binding");
+      }
+      const destinations = authorization.destinations.filter((item) => item.targetId === targetId);
+      if (destinations.length !== 1) throw new Error("Authorization must contain exactly one destination for the target");
+      const destination = destinations[0];
+      const target = requireItem(state.targets, targetId, "Target");
+      const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(destination.platform, destination.accountId));
+      if (target.channel !== destination.platform || target.accountId !== destination.accountId ||
+          target.profileId !== nextProfileId || account?.status !== "enabled" || account.profileId !== nextProfileId) {
+        throw new Error("Authorization profile binding must match the enabled account and target");
+      }
+
+      destination.profileId = nextProfileId;
+      authorization.binding = campaignAuthorizationFingerprint(authorization);
+      authorization.updatedAt = nowIso();
+      for (const post of state.posts.filter((item) => item.campaignAuthorizationId === authorization.id)) {
+        post.campaignAuthorizationBinding = authorization.binding;
+        const decision = evaluateQueue(post, state);
+        post.authorizationDecision = { evaluatedAt: authorization.updatedAt, allowed: decision.allowed, reasons: decision.reasons };
+      }
+      return authorization;
+    });
+    return result.result;
+  }
+
   async setCampaignAuthorizationStatus(campaignId, status, actor = "operator") {
     if (!new Set(["paused", "active", "revoked"]).has(status)) throw new Error("Unsupported campaign authorization status");
     const result = await this.store.mutate(actor, `campaign_authorization_${status}`, (state) => {
@@ -1020,11 +1051,20 @@ export class SeedingService {
       const post = requireItem(snapshot.posts, postId, "Post");
       const target = requireItem(snapshot.targets, post.targetId, "Target");
       if (!post.campaignAuthorizationId) return { postId, status: post.status, readinessState: "NOT_REQUIRED", reasons: ["campaign_authorization_missing"] };
-      if (post.readinessState === "HUMAN_REQUIRED") {
+      const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+      const priorProfileMissingGate = [...(post.jobLifecycle || [])].reverse().find((item) => item.state === "HUMAN_REQUIRED");
+      const profileBindingRecovery = target.channel === "linkedin" && priorProfileMissingGate?.reasonCode === "expected_profile_missing" &&
+        isCanonicalOrcaProfileId(target.profileId) && target.profileId === account?.profileId &&
+        Number.isFinite(Date.parse(account?.lastReadinessAt || "")) &&
+        Math.abs(Date.parse(account.lastReadinessAt) - Date.parse(priorProfileMissingGate.at || "")) <= 10_000;
+      const authenticationDetectionRecheck = force && target.channel === "linkedin" &&
+        post.readinessState === "HUMAN_REQUIRED" && post.readinessReasonCode === "authentication_required" &&
+        isCanonicalOrcaProfileId(target.profileId) && target.profileId === account?.profileId && account?.status === "enabled";
+      const canRecheckHumanRequired = profileBindingRecovery || authenticationDetectionRecheck;
+      if (post.readinessState === "HUMAN_REQUIRED" && !canRecheckHumanRequired) {
         return { postId, status: post.status, readinessState: "HUMAN_REQUIRED", reasons: [post.readinessReasonCode || "human_required"] };
       }
-      const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
-      if (account?.health === "human_required") {
+      if (account?.health === "human_required" && !canRecheckHumanRequired) {
         return { postId, status: post.status, readinessState: "HUMAN_REQUIRED", reasons: ["account_requires_human_intervention"] };
       }
       if (!account || account.status !== "enabled" || target.profileId !== account.profileId) {
@@ -1058,7 +1098,7 @@ export class SeedingService {
         }, context, { ttlMs: this.readinessTtlMs });
         return this.#persistReadinessOutcome(postId, readiness, actor, { attempt: post.readinessAttempts || 0, alreadyFresh: true });
       }
-      if (!force && post.readinessState === "HUMAN_REQUIRED") return { postId, status: post.status, readinessState: "HUMAN_REQUIRED", reasons: [post.readinessReasonCode || "human_required"] };
+      if (!force && post.readinessState === "HUMAN_REQUIRED" && !profileBindingRecovery) return { postId, status: post.status, readinessState: "HUMAN_REQUIRED", reasons: [post.readinessReasonCode || "human_required"] };
       if (!force && post.readinessState === "UNKNOWN" && !post.readinessRetryAt) return { postId, status: post.status, readinessState: "UNKNOWN", reasons: [post.readinessReasonCode || "readiness_unknown"] };
       const priorAttempts = Number(post.readinessAttempts || 0);
       if (!force && priorAttempts >= this.maxReadinessAttempts) {

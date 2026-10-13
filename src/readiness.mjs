@@ -8,6 +8,11 @@ export const READINESS_STATES = Object.freeze(["READY", "BLOCKED", "HUMAN_REQUIR
 
 const secretKeyPattern = /(password|passwd|cookie|bearer|token|credential|mfa|passkey|sessionstorage|localstorage|secret|authorizationheader)/i;
 const accountHealthStates = new Set(["unknown", "healthy", "blocked", "human_required", "error"]);
+const orcaProfileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isCanonicalOrcaProfileId(value) {
+  return typeof value === "string" && orcaProfileIdPattern.test(value);
+}
 
 function required(value, label) {
   const text = String(value ?? "").trim();
@@ -41,6 +46,9 @@ export function normalizeExecutionAccount(input, now = new Date(), platformPolic
   const platform = required(input.platform, "account platform");
   const accountId = required(input.accountId, "account accountId");
   const profileId = required(input.profileId, "account profileId");
+  if (platform === "linkedin" && !isCanonicalOrcaProfileId(profileId)) {
+    throw new Error("LinkedIn profileId must be the immutable ORCA profile UUID");
+  }
   const status = String(input.status || "enabled");
   if (!new Set(["enabled", "disabled"]).has(status)) throw new Error("Account status must be enabled or disabled");
   const health = String(input.health || "unknown");

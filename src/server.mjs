@@ -405,13 +405,24 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/posts") {
       return sendJson(response, 201, await service.createPost(await readJson(request), actor));
     }
-    let match = url.pathname.match(/^\/api\/campaigns\/([^/]+)$/);
+    let match = url.pathname.match(/^\/api\/posts\/([^/]+)\/readiness-check$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.refreshCampaignJobReadiness(match[1], actor, { force: true }));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)$/);
     if (request.method === "PATCH" && match) {
       return sendJson(response, 200, await service.updateCampaign(match[1], await readJson(request), actor));
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/authorization$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.authorizeCampaign(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/authorization\/([^/]+)\/destinations\/([^/]+)\/profile$/);
+    if (request.method === "PATCH" && match) {
+      const input = await readJson(request);
+      return sendJson(response, 200, await service.updateCampaignAuthorizationProfileBinding(
+        match[1], match[2], match[3], input.profileId, actor
+      ));
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/authorization\/(pause|resume)$/);
     if (request.method === "POST" && match) {

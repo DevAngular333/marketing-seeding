@@ -11,24 +11,27 @@ import { contentSha256, validateExecutionReceiptV1, validateExecutionRequestV1 }
 import { isReadinessFresh, normalizeReadinessResult } from "../src/readiness.mjs";
 import { classifyLinkedInComposerState, LinkedInReadinessProvider, linkedInReadinessExpressions } from "../src/linkedin-readiness.mjs";
 
-async function fixture({ provider, readinessAgeMs = 10_000, readinessTtlMs = 5_000, maxReadinessAttempts = 2, schedule, maxConcurrency = 2, allowLiveExecution = true } = {}) {
+async function fixture({ platform = "threads", provider, readinessAgeMs = 10_000, readinessTtlMs = 5_000, maxReadinessAttempts = 2, schedule, maxConcurrency = 2, allowLiveExecution = true } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pr2-readiness-test-"));
   const productRepo = path.join(directory, "product");
   await mkdir(productRepo);
   await writeFile(path.join(productRepo, "README.md"), "Isolated test evidence\n", "utf8");
   const service = new SeedingService(new JsonStore(path.join(directory, "state.json")), {
     readinessTtlMs, maxReadinessAttempts,
-    readinessProviders: provider ? { threads: provider } : {}
+    readinessProviders: provider ? { [platform]: provider } : {}
   });
   await service.init();
   const campaign = await service.createCampaign({ name: "PR2 test", objective: "Exercise readiness", productRepo }, "operator");
   await service.updateCampaign(campaign.id, { status: "active" }, "operator");
-  const accountId = "threads-account-1";
-  const profileId = "threads-profile-1";
-  await service.registerExecutionAccount({ platform: "threads", accountId, profileId }, "operator");
+  const accountId = `${platform}-account-1`;
+  const profileId = platform === "linkedin" ? "1fe88615-ddcc-4d71-9cf6-821cf67b3b01" : "threads-profile-1";
+  await service.registerExecutionAccount({
+    platform, accountId, profileId,
+    identityReference: platform === "linkedin" ? "https://www.linkedin.com/in/test-owner" : undefined
+  }, "operator");
   const checkedAt = new Date(Date.now() - readinessAgeMs).toISOString();
   const target = await service.createTarget({
-    channel: "threads", name: "Test target", url: "https://www.threads.net/@owner", accountId, profileId,
+    channel: platform, name: "Test target", url: platform === "linkedin" ? "https://www.linkedin.com/feed/" : "https://www.threads.net/@owner", accountId, profileId,
     status: "active",
     readiness: { state: "ready", checkedAt, checks: { sessionValid: true, composerCapable: true, platformAvailable: true } }
   }, "operator");
@@ -38,7 +41,7 @@ async function fixture({ provider, readinessAgeMs = 10_000, readinessTtlMs = 5_0
     id: "pr2-test-auth",
     validFrom: new Date(Date.now() - 60_000).toISOString(),
     validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
-    destinations: [{ platform: "threads", accountId, profileId, targetId: target.id }],
+    destinations: [{ platform, accountId, profileId, targetId: target.id }],
     approvedAssets: [],
     contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(content)] },
     audienceRules: { allowedAudiences: ["public"] },
@@ -130,6 +133,24 @@ test("human-required readiness is isolated and not automatically retried", async
   await service.refreshCampaignJobReadiness(post.id, "forced-worker", { force: true });
   assert.equal(calls, 1);
   assert.equal((await service.readyExecutionRequests()).length, 0);
+});
+
+test("expected_profile_missing can be rechecked only for a canonical bound LinkedIn ORCA profile", async () => {
+  let calls = 0;
+  const { service, post } = await fixture({ platform: "linkedin", provider: { async checkReadiness() {
+    calls += 1;
+    return calls === 1
+      ? { state: "HUMAN_REQUIRED", reasonCode: "expected_profile_missing", retryable: false, recoveryClassification: "HUMAN_REQUIRED" }
+      : ready();
+  } } });
+  const first = await service.snapshot();
+  assert.equal(first.posts.find((item) => item.id === post.id).readinessState, "HUMAN_REQUIRED");
+  assert.equal(first.executionAccounts[0].health, "human_required");
+
+  const results = await service.queueAuthorizedCampaignJobs(post.campaignId, "operator");
+  assert.equal(calls, 2, JSON.stringify(results));
+  assert.equal(results[0].readinessState, "READY");
+  assert.equal((await service.readyExecutionRequests()).length, 1);
 });
 
 test("readiness runs outside the publish schedule but schedule still blocks queueing", async () => {
@@ -472,6 +493,53 @@ test("LinkedIn readiness uses the bound ORCA profile and stops before content or
   assert.equal(calls.some((call) => call === "fill" || call === "submit"), false);
 });
 
+function evaluateLinkedInContext({ path = "/feed/", navigation = true, main = true, composer = true, loginForm = false, pageText = "" } = {}) {
+  const visible = { getClientRects: () => [{}] };
+  const anchor = { href: "https://www.linkedin.com/in/test-owner" };
+  const postButton = {
+    ...visible,
+    innerText: "Start a post",
+    getAttribute(name) { return name === "aria-label" ? "" : null; }
+  };
+  const sessionInput = { ...visible };
+  const document = {
+    body: { innerText: pageText },
+    querySelector(selector) { return selector === "main,#main-content" && main ? visible : null; },
+    querySelectorAll(selector) {
+      if (selector === "a[href]") return [anchor];
+      if (selector === 'input[name="session_key"], input[name="session_password"]') return loginForm ? [sessionInput] : [];
+      if (selector === 'nav,[role="navigation"]') return navigation ? [visible] : [];
+      if (selector === "main,#main-content") return main ? [visible] : [];
+      if (selector === 'button,[role="button"]') return composer ? [postButton] : [];
+      return [];
+    }
+  };
+  const expression = linkedInReadinessExpressions().context("/in/test-owner");
+  return runInNewContext(expression, {
+    URL,
+    location: { hostname: "www.linkedin.com", pathname: path, href: `https://www.linkedin.com${path}` },
+    document
+  });
+}
+
+test("LinkedIn auth detector accepts an authenticated feed shell without legacy global-nav selectors", () => {
+  const state = evaluateLinkedInContext();
+  assert.equal(state.loginRequired, false);
+  assert.equal(state.feedReachable, true);
+  assert.equal(state.authenticatedNavigation, true);
+  assert.equal(state.composerTrigger, true);
+  assert.equal(state.sessionAuthenticated, true);
+  assert.equal(state.identityVerified, true);
+});
+
+test("LinkedIn auth detector requires explicit login evidence and recognizes security challenges", () => {
+  const login = evaluateLinkedInContext({ path: "/login/", navigation: false, main: false, composer: false });
+  assert.equal(login.loginRequired, true);
+  assert.equal(login.sessionAuthenticated, false);
+  const challenge = evaluateLinkedInContext({ path: "/checkpoint/challenge/", navigation: false, main: false, composer: false });
+  assert.equal(challenge.securityChallenge, true);
+});
+
 function evaluateLinkedInComposer({ dialog = false, editor = false, audience = false, post = false, media = false, close = false, path = "/feed/" } = {}) {
   const visible = { getClientRects: () => [{}] };
   const makeControl = (tagName, text, ariaLabel = "") => ({
@@ -594,6 +662,42 @@ test("LinkedIn readiness reports UNKNOWN for a partially loaded composer after b
   assert.equal(result.state, "UNKNOWN");
   assert.equal(result.reasonCode, "composer_state_incomplete");
   assert.equal(result.retryable, true);
+});
+
+test("partially loaded LinkedIn page does not become authentication_required", async () => {
+  const browser = {
+    async listProfiles() { return [{ id: "linkedin-profile-1" }]; },
+    async listTabs() { return [{ id: "page-1", profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }]; },
+    async showTab(id) { return { pageId: id, profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }; },
+    async evaluate() { return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: false, identityVerified: false, feedReachable: true }; }
+  };
+  const result = await new LinkedInReadinessProvider(browser).checkReadiness({
+    profileId: "linkedin-profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/test-owner"
+  });
+  assert.equal(result.state, "UNKNOWN");
+  assert.equal(result.reasonCode, "linkedin_auth_state_ambiguous");
+  assert.equal(result.recoveryClassification, "RECOVERABLE");
+});
+
+test("operator can force a fresh LinkedIn auth-detection check after a prior false-negative result", async () => {
+  let calls = 0;
+  const { service, post, accountId } = await fixture({ platform: "linkedin", provider: {
+    async checkReadiness() {
+      calls += 1;
+      return calls === 1
+        ? { state: "HUMAN_REQUIRED", reasonCode: "authentication_required", retryable: false, recoveryClassification: "HUMAN_REQUIRED" }
+        : ready();
+    }
+  } });
+  const before = await service.snapshot();
+  assert.equal(calls, 1);
+  assert.equal(before.executionAccounts.find((item) => item.accountId === accountId).health, "human_required");
+  const result = await service.refreshCampaignJobReadiness(post.id, "operator", { force: true });
+  const after = await service.snapshot();
+  assert.equal(calls, 2);
+  assert.equal(result.readinessState, "READY");
+  assert.equal(after.posts.find((item) => item.id === post.id).readinessState, "READY");
+  assert.equal(after.executionAccounts.find((item) => item.accountId === accountId).health, "healthy");
 });
 
 test("pending reconciliation selection includes registered and unregistered platforms", async () => {

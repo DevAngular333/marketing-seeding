@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { JsonStore } from "../src/store.mjs";
 import { SeedingService } from "../src/service.mjs";
-import { campaignContentHash } from "../src/campaign-authorization.mjs";
+import { campaignAuthorizationFingerprint, campaignContentHash, evaluateCampaignAuthorization } from "../src/campaign-authorization.mjs";
 import { approvalFingerprint, evaluateQueue } from "../src/guards.mjs";
 
 async function campaignFixture({ channels = ["threads"], rateLimits = {}, allowRepeatSameContent = false } = {}) {
@@ -21,7 +21,7 @@ async function campaignFixture({ channels = ["threads"], rateLimits = {}, allowR
   const targets = [];
   for (const channel of channels) {
     const accountId = `${channel}_fixture_account`;
-    const profileId = `${channel}-fixture-profile`;
+    const profileId = channel === "linkedin" ? "11111111-2222-4333-8444-555555555555" : `${channel}-fixture-profile`;
     await service.registerExecutionAccount({
       platform: channel,
       accountId,
@@ -227,6 +227,36 @@ test("live execution requires explicit campaign scope and changes the authorizat
   }, "operator");
   assert.equal(liveAuth.allowLiveExecution, true);
   assert.notEqual(liveAuth.binding, defaultAuth.binding);
+});
+
+test("campaign authorization profile binding can be corrected without changing its other scope", async () => {
+  const { service, campaign, targets, authorization } = await campaignFixture({ channels: ["linkedin"] });
+  const target = targets[0];
+  const content = "Bound LinkedIn validation copy";
+  const post = await service.createPost({ campaignId: campaign.id, targetId: target.id, content, audience: "public" }, "operator");
+  const auth = await authorization([content]);
+  const nextProfileId = "1fe88615-ddcc-4d71-9cf6-821cf67b3b01";
+  const account = (await service.snapshot()).executionAccounts[0];
+  await service.registerExecutionAccount({ ...account, profileId: nextProfileId }, "operator");
+  await service.updateTarget(target.id, { profileId: nextProfileId }, "operator");
+
+  const before = (await service.snapshot()).campaignAuthorizations.find((item) => item.id === auth.id);
+  const priorScope = structuredClone(before);
+  priorScope.destinations[0].profileId = nextProfileId;
+  delete priorScope.binding;
+  delete priorScope.updatedAt;
+  const updated = await service.updateCampaignAuthorizationProfileBinding(campaign.id, auth.id, target.id, nextProfileId, "operator");
+  const after = await service.snapshot();
+  const stored = after.campaignAuthorizations.find((item) => item.id === auth.id);
+  const comparable = structuredClone(stored);
+  delete comparable.binding;
+  delete comparable.updatedAt;
+
+  assert.deepEqual(comparable, priorScope);
+  assert.equal(stored.binding, campaignAuthorizationFingerprint(stored));
+  assert.equal(updated.destinations[0].profileId, nextProfileId);
+  assert.equal(after.posts.find((item) => item.id === post.id).campaignAuthorizationBinding, stored.binding);
+  assert.equal(evaluateCampaignAuthorization(after.posts.find((item) => item.id === post.id), after).reasons.includes("destination_not_authorized"), false);
 });
 
 test("concurrency limit carries across campaign authorization renewal", async () => {

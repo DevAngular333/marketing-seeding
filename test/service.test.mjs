@@ -51,6 +51,28 @@ test("post audience can be updated independently through the service", async () 
   assert.deepEqual({ content: updated.content, assetPath: updated.assetPath, targetId: updated.targetId, status: updated.status }, before);
 });
 
+test("LinkedIn execution accounts require an ORCA profile UUID and targets must use the same unique active binding", async () => {
+  const { service } = await fixture("seeding-linkedin-profile-binding-test-");
+  const profileId = "1fe88615-ddcc-4d71-9cf6-821cf67b3b01";
+  const account = await service.registerExecutionAccount({
+    platform: "linkedin", accountId: "linkedin_binding_test", profileId,
+    identityReference: "https://www.linkedin.com/in/fixture-owner"
+  }, "operator");
+  assert.equal(account.profileId, profileId);
+
+  await assert.rejects(service.registerExecutionAccount({
+    platform: "linkedin", accountId: "linkedin_label_binding", profileId: "marketing-linkedin-test-01"
+  }, "operator"), /immutable ORCA profile UUID/);
+  await assert.rejects(service.createTarget({
+    channel: "linkedin", name: "Mismatched profile", url: "https://www.linkedin.com/feed/",
+    accountId: account.accountId, profileId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+  }, "operator"), /must match a registered execution account/);
+  await assert.rejects(service.registerExecutionAccount({
+    platform: "linkedin", accountId: "linkedin_duplicate_binding", profileId: profileId,
+    identityReference: "https://www.linkedin.com/in/other-owner"
+  }, "operator"), /already bound to another linkedin account/);
+});
+
 test("verified artifact to grounded story to channel drafts stays draft-only", async () => {
   const { productRepo, service, campaign, target } = await fixture("seeding-pipeline-test-");
   await writeFile(path.join(productRepo, "preview.mp4"), "video-fixture", "utf8");
