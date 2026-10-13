@@ -673,12 +673,12 @@ test("LinkedIn readiness recovers once from the explicit composer load error and
   assert.equal(feedNavigations, 1);
 });
 
-function evaluateLinkedInContext({ path = "/feed/", navigation = true, main = true, composer = true, loginForm = false, pageText = "" } = {}) {
+function evaluateLinkedInContext({ path = "/feed/", navigation = true, main = true, composer = true, loginForm = false, pageText = "", locale = "en" } = {}) {
   const visible = { getClientRects: () => [{}] };
   const anchor = { href: "https://www.linkedin.com/in/test-owner" };
   const postButton = {
     ...visible,
-    innerText: "Start a post",
+    innerText: locale === "vi" ? "B\u1eaft \u0111\u1ea7u b\u00e0i \u0111\u0103ng" : "Start a post",
     getAttribute(name) { return name === "aria-label" ? "" : null; }
   };
   const sessionInput = { ...visible };
@@ -712,6 +712,12 @@ test("LinkedIn auth detector accepts an authenticated feed shell without legacy 
   assert.equal(state.identityVerified, true);
 });
 
+test("LinkedIn auth detector recognizes the Vietnamese composer trigger", () => {
+  const state = evaluateLinkedInContext({ locale: "vi" });
+  assert.equal(state.composerTrigger, true);
+  assert.equal(state.sessionAuthenticated, true);
+});
+
 test("LinkedIn auth detector requires explicit login evidence and recognizes security challenges", () => {
   const login = evaluateLinkedInContext({ path: "/login/", navigation: false, main: false, composer: false });
   assert.equal(login.loginRequired, true);
@@ -720,7 +726,7 @@ test("LinkedIn auth detector requires explicit login evidence and recognizes sec
   assert.equal(challenge.securityChallenge, true);
 });
 
-function evaluateLinkedInComposer({ dialog = false, editor = false, audience = false, post = false, media = false, close = false, errorText = "", retry = false, path = "/feed/" } = {}) {
+function evaluateLinkedInComposer({ dialog = false, editor = false, audience = false, post = false, media = false, close = false, errorText = "", retry = false, path = "/feed/", locale = "en" } = {}) {
   const visible = { getClientRects: () => [{}] };
   const makeControl = (tagName, text, ariaLabel = "") => ({
     ...visible, tagName,
@@ -728,10 +734,10 @@ function evaluateLinkedInComposer({ dialog = false, editor = false, audience = f
     getAttribute(name) { return name === "aria-label" ? ariaLabel : null; }
   });
   const controls = [
-    ...(audience ? [makeControl("BUTTON", "Everyone")] : []),
-    ...(post ? [makeControl("BUTTON", "Post")] : []),
-    ...(media ? [makeControl("BUTTON", "Add media")] : []),
-    ...(close ? [makeControl("BUTTON", "", "Close") ] : []),
+    ...(audience ? [makeControl("BUTTON", locale === "vi" ? "\u0110\u0103ng cho M\u1ecdi ng\u01b0\u1eddi" : "Everyone")] : []),
+    ...(post ? [makeControl("BUTTON", locale === "vi" ? "\u0110\u0103ng b\u00e0i" : "Post")] : []),
+    ...(media ? [makeControl("BUTTON", locale === "vi" ? "Ph\u01b0\u01a1ng ti\u1ec7n truy\u1ec1n th\u00f4ng" : "Add media")] : []),
+    ...(close ? [makeControl("BUTTON", "", locale === "vi" ? "H\u1ee7y b\u1ecf" : "Close") ] : []),
     ...(retry ? [makeControl("BUTTON", "Làm mới")] : [])
   ];
   const editorNode = { ...visible };
@@ -759,6 +765,16 @@ test("LinkedIn composer classifier confirms the real structural composer signals
   const state = evaluateLinkedInComposer({ dialog: true, editor: true, audience: true, post: true, media: true, close: true });
   assert.equal(state.confirmed, true);
   assert.equal(state.routeCompatible, true);
+  assert.equal(classifyLinkedInComposerState(state), "CONFIRMED");
+});
+
+test("LinkedIn composer classifier recognizes the real Vietnamese composer controls", () => {
+  const state = evaluateLinkedInComposer({ dialog: true, editor: true, audience: true, post: true, media: true, close: true, locale: "vi", path: "/sharing/compose" });
+  assert.equal(state.audience, true);
+  assert.equal(state.postButton, true);
+  assert.equal(state.mediaControl, true);
+  assert.equal(state.closeControl, true);
+  assert.equal(state.confirmed, true);
   assert.equal(classifyLinkedInComposerState(state), "CONFIRMED");
 });
 

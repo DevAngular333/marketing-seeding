@@ -11,7 +11,7 @@ const CONTEXT_EXPRESSION = (expectedPath) => `(() => {
     try { const url = new URL(anchor.href, location.href); return url.hostname.toLowerCase().replace(/^www\\./, '') === 'linkedin.com' && url.pathname.replace(/\\/$/, '').toLowerCase() === expectedPath; } catch { return false; }
   });
   const pageText = document.body?.innerText || '';
-  const securityChallenge = /captcha|security key|passkey|two[- ]step|verify your identity|checkpoint|security challenge|xác minh danh tính|khóa bảo mật/i.test(path + ' ' + pageText.slice(0, 3000));
+  const securityChallenge = /captcha|security key|passkey|two[- ]step|verify your identity|checkpoint|security challenge|x\u00e1c minh danh t\u00ednh|kh\u00f3a b\u1ea3o m\u1eadt/i.test(path + ' ' + pageText.slice(0, 3000));
   const visible = (node) => Boolean(node && node.getClientRects().length);
   const pathSegments = path.toLowerCase().split('/').filter(Boolean);
   const loginRoute = pathSegments[0] === 'login' || (pathSegments[0] === 'uas' && pathSegments[1] === 'login');
@@ -19,7 +19,7 @@ const CONTEXT_EXPRESSION = (expectedPath) => `(() => {
   const loginRequired = loginRoute || loginForm;
   const feedReachable = host.toLowerCase().replace(/^www\\./, '') === 'linkedin.com' && /\\/feed\\/?$/i.test(path) && Boolean(document.querySelector('main,#main-content'));
   const authenticatedNavigation = Array.from(document.querySelectorAll('nav,[role="navigation"]')).some(visible);
-  const composerTrigger = Array.from(document.querySelectorAll('button,[role="button"]')).some((node) => visible(node) && [node.getAttribute('aria-label') || '', node.innerText || ''].some((label) => /^(?:start a post|bắt đầu bài đăng)$/i.test(label.trim())));
+  const composerTrigger = Array.from(document.querySelectorAll('button,[role="button"]')).some((node) => visible(node) && [node.getAttribute('aria-label') || '', node.innerText || ''].some((label) => /^(?:start a post|b\u1eaft \u0111\u1ea7u b\u00e0i \u0111\u0103ng)$/i.test(label.trim())));
   const sessionAuthenticated = !loginRequired && feedReachable && authenticatedNavigation && composerTrigger;
   return { linkedinDomain: host.toLowerCase().replace(/^www\\./, '') === 'linkedin.com', loginRequired, securityChallenge, sessionAuthenticated, authenticatedNavigation, composerTrigger, identityVerified, feedReachable };
 })()`;
@@ -42,13 +42,13 @@ const COMPOSER_EXPRESSION = `(() => {
   const route = path === '/sharing/compose';
   const feedWithComposerSurface = /\\/feed$/i.test(path) && dialogs.length === 1;
   const routeCompatible = route || feedWithComposerSurface;
-  const audience = has(/post to|audience|mọi người|đăng cho|anyone|everyone/i);
-  const postButton = controls.some((control) => control.tag === 'button' && fields(control).some((field) => /^(đăng bài|post|publish)(?:$|[\\s.…])/i.test(field)));
-  const mediaControl = has(/media|photo|video|phương tiện truyền thông|ảnh/i);
-  const closeControl = has(/close|dismiss|cancel|hủy|đóng/i);
+  const audience = has(/post to|audience|m\u1ecdi ng\u01b0\u1eddi|\u0111\u0103ng cho|anyone|everyone/i);
+  const postButton = controls.some((control) => control.tag === 'button' && fields(control).some((field) => /^(\u0111\u0103ng b\u00e0i|post|publish)(?:$|[\s.\u2026])/i.test(field)));
+  const mediaControl = has(/media|photo|video|ph\u01b0\u01a1ng ti\u1ec7n truy\u1ec1n th\u00f4ng|\u1ea3nh/i);
+  const closeControl = has(/close|dismiss|cancel|h\u1ee7y|\u0111\u00f3ng/i);
   const dialogText = dialogs.map((dialog) => (dialog.innerText || '').replace(/\\s+/g, ' ').trim()).join(' ');
-  const retryControl = has(/^(?:refresh|reload|try again|làm mới|thử lại)$/i);
-  const transientLoadError = dialogs.length === 1 && editors.length === 0 && retryControl && /something went wrong|we hit a snag|there was a problem|đã xảy ra sự cố ở phía chúng tôi|chúng tôi gặp sự cố/i.test(dialogText);
+  const retryControl = has(/^(?:refresh|reload|try again|l\u00e0m m\u1edbi|th\u1eed l\u1ea1i)$/i);
+  const transientLoadError = dialogs.length === 1 && editors.length === 0 && retryControl && /something went wrong|we hit a snag|there was a problem|\u0111\u00e3 x\u1ea3y ra s\u1ef1 c\u1ed1 \u1edf ph\u00eda ch\u00fang t\u00f4i|ch\u00fang t\u00f4i g\u1eb7p s\u1ef1 c\u1ed1/i.test(dialogText);
   const linkedinDomain = /(^|\\.)linkedin\\.com$/i.test(location.hostname);
   const confirmed = linkedinDomain && routeCompatible && dialogs.length === 1 && editors.length === 1 && audience && postButton && advertisingControls === 0;
   const signalCount = [routeCompatible, dialogs.length === 1, editors.length === 1, audience, postButton, mediaControl, closeControl].filter(Boolean).length;
@@ -102,7 +102,7 @@ const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
   const candidates = Array.from(document.querySelectorAll('button,[role="button"]')).filter((node) => {
     if (!visible(node) || node.disabled || node.getAttribute('aria-disabled') === 'true') return false;
     const labels = [node.getAttribute('aria-label') || '', node.innerText || ''].map((value) => value.trim());
-    return labels.some((label) => /^(?:start a post|bắt đầu bài đăng)$/i.test(label));
+    return labels.some((label) => /^(?:start a post|b\u1eaft \u0111\u1ea7u b\u00e0i \u0111\u0103ng)$/i.test(label));
   });
   if (host !== 'linkedin.com' || path !== '/feed' || dialogs.length !== 0 || candidates.length !== 1) {
     return { clicked: false, reason: 'composer_trigger_fallback_precondition_failed' };
@@ -122,7 +122,7 @@ const CLOSE_EMPTY_COMPOSER_EXPRESSION = `(() => {
   if (editors.length !== 1 || editors.some((node) => String(node.innerText || node.textContent || '').trim())) return { closed: false, reason: 'composer_has_content' };
   const media = Array.from(dialog.querySelectorAll('video,[data-test-media-preview],[data-test-image-preview]')).filter(visible);
   if (media.length) return { closed: false, reason: 'composer_has_media' };
-  const cancelButtons = Array.from(dialog.querySelectorAll('button[aria-label],button')).filter((node) => visible(node) && !node.disabled && /^(?:cancel|discard|close|hủy bỏ|đóng)$/i.test((node.getAttribute('aria-label') || node.innerText || '').replace(/\\s+/g, ' ').trim()));
+  const cancelButtons = Array.from(dialog.querySelectorAll('button[aria-label],button')).filter((node) => visible(node) && !node.disabled && /^(?:cancel|discard|close|h\u1ee7y b\u1ecf|\u0111\u00f3ng)$/i.test((node.getAttribute('aria-label') || node.innerText || '').replace(/\s+/g, ' ').trim()));
   if (cancelButtons.length !== 1) return { closed: false, reason: 'composer_close_control_ambiguous' };
   cancelButtons[0].click();
   return { closed: true };
