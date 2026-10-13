@@ -488,6 +488,18 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && match) {
       return sendJson(response, 200, await service.prepareExecutionRequest(match[1], actor));
     }
+    match = url.pathname.match(/^\/api\/posts\/([^/]+)\/execution-request\/dry-run$/);
+    if (request.method === "POST" && match) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.prepareExecutionRequest(match[1], actor, { dryRun: true }));
+    }
+    match = url.pathname.match(/^\/api\/execution-requests\/([^/]+)\/run-dry-run$/);
+    if (request.method === "POST" && match) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      const context = await service.executionContext(match[1]);
+      if (context.request?.dryRun !== true) return sendJson(response, 409, { ok: false, error: "dry_run_request_required" });
+      return sendJson(response, 200, await jevWorker.run(match[1], { dryRun: true }));
+    }
     match = url.pathname.match(/^\/api\/execution-requests\/([^/]+)\/receipt$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.recordExecutionReceipt(match[1], await readJson(request), actor));

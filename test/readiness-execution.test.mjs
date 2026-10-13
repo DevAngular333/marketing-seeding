@@ -10,6 +10,9 @@ import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { contentSha256, validateExecutionReceiptV1, validateExecutionRequestV1 } from "../src/execution-contracts.mjs";
 import { isReadinessFresh, normalizeReadinessResult } from "../src/readiness.mjs";
 import { classifyLinkedInComposerState, LinkedInReadinessProvider, linkedInReadinessExpressions } from "../src/linkedin-readiness.mjs";
+import { evaluateQueue } from "../src/guards.mjs";
+import { JevExecutionWorker } from "../src/jev-execution-worker.mjs";
+import { PlatformAdapterRegistry, PLATFORM_CAPABILITIES } from "../src/platform-registries.mjs";
 
 async function fixture({ platform = "threads", provider, readinessAgeMs = 10_000, readinessTtlMs = 5_000, maxReadinessAttempts = 2, schedule, maxConcurrency = 2, allowLiveExecution = true } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pr2-readiness-test-"));
@@ -207,6 +210,83 @@ test("allowLiveExecution=false permits readiness but never queues or prepares ex
   assert.equal(stored.status, "blocked");
   assert.ok(stored.authorizationDecision.reasons.includes("live_execution_not_authorized"));
   assert.equal(state.executionRequests.length, 0);
+});
+
+test("operator DRY-RUN traverses the worker while live schedule, concurrency and publish gates remain blocked", async (context) => {
+  const otherWeekday = (new Date().getUTCDay() + 1) % 7;
+  const fixtureState = await fixture({
+    platform: "linkedin",
+    allowLiveExecution: false,
+    maxConcurrency: 1,
+    schedule: { timezone: "UTC", weekdays: [otherWeekday], startLocal: "20:00", endLocal: "20:30" },
+    provider: { async checkReadiness() { return ready(); } }
+  });
+  context.after(() => rm(fixtureState.directory, { recursive: true, force: true }));
+  await fixtureState.service.store.mutate("test", "set_dry_run_preconditions", (state) => {
+    const target = state.targets.find((item) => item.id === fixtureState.post.targetId);
+    target.status = "needs_review";
+    const source = state.posts.find((item) => item.id === fixtureState.post.id);
+    state.posts.push({
+      ...source,
+      id: "other-inflight-campaign-job",
+      content: "An unrelated in-flight campaign job",
+      contentId: "other-inflight-content",
+      idempotencyKey: "other-inflight-idempotency",
+      status: "publishing",
+      publishingAt: new Date().toISOString()
+    });
+  });
+  const preflight = await fixtureState.service.refreshCampaignJobReadiness(fixtureState.post.id, "operator", { force: true });
+  assert.equal(preflight.readinessState, "READY");
+  const before = await fixtureState.service.snapshot();
+  const job = before.posts.find((item) => item.id === fixtureState.post.id);
+  const liveDecision = evaluateQueue(job, before);
+  for (const reason of ["schedule_outside_allowed_window", "campaign_concurrency_limit_reached", "live_execution_not_authorized", "target_not_active"]) {
+    assert.ok(liveDecision.reasons.includes(reason), JSON.stringify(liveDecision.reasons));
+  }
+  assert.equal(liveDecision.allowed, false);
+
+  const requestRow = await fixtureState.service.prepareExecutionRequest(fixtureState.post.id, "local-human-operator", { dryRun: true });
+  assert.equal(requestRow.state, "REQUEST_READY");
+  assert.equal(requestRow.request.dryRun, true);
+  assert.equal(requestRow.request.profileId, fixtureState.profileId);
+  assert.equal(requestRow.request.audience, "public");
+  await assert.rejects(() => fixtureState.service.prepareExecutionRequest(fixtureState.post.id, "operator"), /queued job/);
+
+  let submitIntentCalls = 0;
+  const registry = new PlatformAdapterRegistry();
+  registry.register("linkedin", {
+    contractVersion: 1,
+    capabilities: Object.fromEntries(PLATFORM_CAPABILITIES.map((capability) => [capability, false])),
+    async execute(request, options) {
+      assert.equal(request.dryRun, true);
+      assert.equal(options.dryRun, true);
+      assert.equal(options.liveEnabled, false);
+      const gates = Object.fromEntries(["authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"].map((key) => [key, true]));
+      return { submitState: "NOT_STARTED", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), gates, durationMs: 1, browserCommands: 7, computerUseCalls: 0, retries: 0 };
+    },
+    async reconcile() { throw new Error("not used in dry-run"); }
+  });
+  const worker = new JevExecutionWorker({ service: fixtureState.service, adapterRegistry: registry, workerId: "dry-run-test", env: {} });
+  const result = await worker.run(requestRow.executionId, { dryRun: true });
+  assert.equal(result.status, "DRY_RUN_COMPLETE");
+  assert.equal(result.receipt.dryRun, true);
+  assert.equal(result.receipt.submitState, "NOT_STARTED");
+  assert.equal(result.receipt.publicationUrl, null);
+  assert.equal(result.receipt.telemetry.browserCommands, 7);
+  assert.equal(result.receipt.verificationGates.noExistingConfirmedPublication, true);
+  assert.equal(submitIntentCalls, 0);
+  const after = await fixtureState.service.snapshot();
+  const persistedRequest = after.executionRequests.find((item) => item.executionId === requestRow.executionId);
+  const persistedPost = after.posts.find((item) => item.id === fixtureState.post.id);
+  assert.equal(persistedRequest.state, "DRY_RUN_COMPLETE");
+  assert.equal(persistedRequest.submitState, "NOT_STARTED");
+  assert.equal(after.executionReceipts[0].receipt.dryRun, true);
+  assert.equal(persistedPost.status, "blocked");
+  assert.equal(persistedPost.executionState, undefined);
+  assert.equal(after.publicationAttempts.length, 0);
+  assert.equal(after.executionLeases.length, 0);
+  assert.equal((await fixtureState.service.readyExecutionRequests()).length, 0);
 });
 
 test("stale readiness refreshes while schedule still blocks execution", async () => {

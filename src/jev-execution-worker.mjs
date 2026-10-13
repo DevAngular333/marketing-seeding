@@ -67,19 +67,26 @@ export class JevExecutionWorker {
         durationMs: Math.max(0, Math.trunc(result.durationMs || Date.parse(finishedAt) - Date.parse(startedAt) || 0)),
         browserCommands: Math.max(0, Math.trunc(result.browserCommands || 0)),
         computerUseCalls: Math.max(0, Math.trunc(result.computerUseCalls || 0)),
-        retries: Math.max(0, Math.trunc(result.retries || 0))
-      }
+        retries: Math.max(0, Math.trunc(result.retries || 0)),
+        totalDryRunMs: dryRun ? Math.max(0, Math.trunc(result.durationMs || 0)) : 0,
+        ...(result.telemetry || {})
+      },
+      verificationGates: result.gates || undefined
     });
   }
 
   async run(executionId, { dryRun = true } = {}) {
+    const workerStartedAt = Date.now();
     const initial = await this.service.executionContext(executionId);
     if (initial.requestRow.state !== "REQUEST_READY" || initial.requestRow.submitState !== "NOT_STARTED") {
       return { status: "NOT_DISPATCHABLE", executionId, state: initial.requestRow.state };
     }
+    if (initial.request?.dryRun === true && !dryRun) return { status: "DRY_RUN_ONLY", executionId };
     const adapter = this.adapterRegistry.resolve(initial.request.platform);
     if (!adapter) return { status: "PLATFORM_UNSUPPORTED", executionId, platform: initial.request.platform, reasonCode: "adapter_not_registered" };
+    const leaseStartedAt = Date.now();
     const leaseResult = await this.service.acquireExecutionLease(executionId, this.workerId, { leaseMs: this.leaseMs });
+    const leaseAcquireMs = Date.now() - leaseStartedAt;
     if (!leaseResult.acquired) return { status: "LEASE_BUSY", executionId, reason: leaseResult.reason };
     const lease = leaseResult.lease;
     let leaseLost = false;
@@ -98,11 +105,14 @@ export class JevExecutionWorker {
         return { status: "HUMAN_REQUIRED", executionId, reasonCode: "account_profile_binding_invalid" };
       }
 
+      const readinessStarted = Date.now();
       const readiness = await this.service.refreshCampaignJobReadiness(initial.post.id, this.workerId, { force: true });
-      if (readiness.status !== "queued" || readiness.readinessState !== "READY") {
+      const readinessRefreshMs = Date.now() - readinessStarted;
+      const dryRunRequest = initial.request?.dryRun === true;
+      if ((dryRunRequest ? readiness.readinessState !== "READY" : readiness.status !== "queued" || readiness.readinessState !== "READY")) {
         return { status: readiness.readinessState || "BLOCKED", executionId, reasonCodes: readiness.reasons || [] };
       }
-      const refreshed = await this.service.prepareExecutionRequest(initial.post.id, this.workerId);
+      const refreshed = await this.service.prepareExecutionRequest(initial.post.id, `jev-worker:${this.workerId}`, { dryRun: dryRunRequest });
       if (refreshed.executionId !== executionId || refreshed.state !== "REQUEST_READY") {
         return { status: "NOT_DISPATCHABLE", executionId, state: refreshed.state };
       }
@@ -112,6 +122,7 @@ export class JevExecutionWorker {
       if (!dryRun && !liveEnabled) return { status: "LIVE_NOT_AUTHORIZED", executionId };
       await this.service.markExecutionStarted(executionId, lease, { dryRun });
 
+      const queueToWorkerMs = Math.max(0, workerStartedAt - Date.parse(context.request.createdAt));
       const result = await adapter.execute(context.request, {
         dryRun,
         liveEnabled,
@@ -127,6 +138,13 @@ export class JevExecutionWorker {
         },
         onSubmitSent: () => this.service.markExecutionSubmitSent(executionId, lease)
       });
+      result.durationMs = Date.now() - workerStartedAt;
+      result.telemetry = {
+        ...(result.telemetry || {}),
+        readinessRefreshMs,
+        queueToWorkerMs,
+        leaseAcquireMs
+      };
       const receipt = this.#receipt(context.requestRow, context.request, result, { dryRun });
       await this.service.recordExecutionReceipt(executionId, receipt, `jev-worker:${this.workerId}`);
       return { status: dryRun ? "DRY_RUN_COMPLETE" : receipt.submitState, executionId, receipt };

@@ -323,7 +323,8 @@ export class LinkedInAdapter {
 
   async #attachMedia(request, pageId, snapshot) {
     const media = validateMediaDescriptor(request);
-    if (!media) return { mediaHashMatched: true, mediaPreviewConfirmed: true };
+    if (!media) return { mediaHashMatched: true, mediaPreviewConfirmed: true, mediaAttachMs: 0, mediaReadyMs: 0 };
+    const attachStarted = Date.now();
     const fileHash = await sha256File(media.path);
     if (fileHash !== media.sha256) throw Object.assign(new Error("Media hash differs from the approved artifact"), { code: "MEDIA_MISMATCH" });
     if (!await verifyMediaType(media.path, media.type)) throw Object.assign(new Error("Media file type does not match the approved descriptor"), { code: "MEDIA_MISMATCH" });
@@ -334,10 +335,12 @@ export class LinkedInAdapter {
     const fileInput = findRef(fileSnapshot, /(?:file|upload).*(?:input|button)|input.*file/i);
     if (!fileInput) throw Object.assign(new Error("ORCA did not expose a direct file input for the composer"), { code: "UPLOAD_ERROR" });
     await this.browser.upload(pageId, fileInput, media.path);
+    const mediaAttachMs = Date.now() - attachStarted;
+    const mediaReadyStarted = Date.now();
     const basename = path.basename(media.path).toLowerCase();
     const preview = await waitFor(this.browser, pageId, MEDIA_STATE_EXPRESSION, (value) => value?.fileCount === 1 && value?.filename?.toLowerCase() === basename && (media.type.startsWith("video/") ? value.videoCount > 0 : value.imageCount > 0), this.mediaTimeoutMs);
     if (preview.uploadError || preview.dialogCount !== 1) throw Object.assign(new Error("LinkedIn media preview is not valid"), { code: "UPLOAD_ERROR" });
-    return { mediaHashMatched: true, mediaPreviewConfirmed: true };
+    return { mediaHashMatched: true, mediaPreviewConfirmed: true, mediaAttachMs, mediaReadyMs: Date.now() - mediaReadyStarted };
   }
 
   async #safeClose(pageId) {
@@ -363,25 +366,35 @@ export class LinkedInAdapter {
     let intentPersisted = false;
     let submitted = false;
     let computerUseCalls = 0;
+    const phaseTimings = {};
+    const timed = async (key, operation) => {
+      const at = Date.now();
+      try { return await operation(); }
+      finally { phaseTimings[key] = Date.now() - at; }
+    };
     const commandStart = this.browser.browserCommandCount?.() ?? 0;
     try {
       if (request.platform !== this.platform) throw Object.assign(new Error("LinkedInAdapter received another platform"), { code: "PLATFORM_MISMATCH" });
       const boundAccount = account || (expectedIdentityUrl ? { identityReference: expectedIdentityUrl } : null);
-      lifecycleContext = await this.prepareExecution(request, { account: boundAccount });
+      lifecycleContext = await timed("profileAcquireMs", () => this.prepareExecution(request, { account: boundAccount }));
       pageId = lifecycleContext.pageId;
-      await this.navigate(lifecycleContext);
-      lifecycleContext = await this.verifyTarget(lifecycleContext);
-      lifecycleContext = await this.openComposer(lifecycleContext);
-      lifecycleContext = await this.fillContent(lifecycleContext);
+      await timed("navigationMs", () => this.navigate(lifecycleContext));
+      lifecycleContext = await timed("targetVerifyMs", () => this.verifyTarget(lifecycleContext));
+      lifecycleContext = await timed("composerOpenMs", () => this.openComposer(lifecycleContext));
+      lifecycleContext = await timed("contentFillMs", () => this.fillContent(lifecycleContext));
       lifecycleContext = await this.attachMedia(lifecycleContext);
+      phaseTimings.mediaAttachMs = lifecycleContext.media?.mediaAttachMs || 0;
+      phaseTimings.mediaReadyMs = lifecycleContext.media?.mediaReadyMs || 0;
       const media = lifecycleContext.media;
+      const preSubmitStarted = Date.now();
       const gates = (await this.verifyPreSubmit({ ...lifecycleContext, media })).gates;
+      phaseTimings.preSubmitVerifyMs = Date.now() - preSubmitStarted;
       lifecycleContext.gates = gates;
       const submit = findRef(await this.browser.snapshot(pageId), /button\s+["'](?:post|đăng bài|share)["']/i);
       if (!submit) throw Object.assign(new Error("LinkedIn Post button is not uniquely identified"), { code: "UNKNOWN_COMPOSER" });
       if (dryRun) {
-        await this.cleanup(lifecycleContext);
-        return { submitState: "NOT_STARTED", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began };
+        await timed("cleanupMs", () => this.cleanup(lifecycleContext));
+        return { submitState: "NOT_STARTED", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings };
       }
       if (!liveEnabled || typeof beforeSubmitIntent !== "function" || typeof onSubmitSent !== "function") throw new Error("Live publish is disabled; dry-run is the default");
       lifecycleContext.submitRef = submit;
@@ -392,7 +405,11 @@ export class LinkedInAdapter {
       if (verification.state !== "CONFIRMED") return { submitState: "UNKNOWN", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN" };
       return { ...verification, submitState: "CONFIRMED", startedAt, finishedAt: verification.publicationEvidence.verifiedAt, gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, errorClassification: "NONE", recoveryClassification: "NONE" };
     } catch (error) {
-      if (pageId && !submitted && !intentPersisted) await this.recover(lifecycleContext, error).catch(() => undefined);
+      if (pageId && !submitted && !intentPersisted) {
+        const cleanupStarted = Date.now();
+        await this.recover(lifecycleContext, error).catch(() => undefined);
+        phaseTimings.cleanupMs = Date.now() - cleanupStarted;
+      }
       const uncertain = intentPersisted || submitted || lifecycleContext?.intentPersisted === true || lifecycleContext?.submitted === true;
       const code = String(error.code || "unknown").toUpperCase();
       const errorClassification = code === "AUTH_REQUIRED" || code === "SECURITY_CHALLENGE" ? "AUTH_REQUIRED"
@@ -411,6 +428,7 @@ export class LinkedInAdapter {
         submitState: uncertain ? "UNKNOWN" : dryRun ? "NOT_STARTED" : "FAILED",
         startedAt, finishedAt: new Date().toISOString(),
         gates: { passed: false }, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began,
+        telemetry: phaseTimings,
         errorClassification,
         recoveryClassification,
         reasonCode: code.toLowerCase()

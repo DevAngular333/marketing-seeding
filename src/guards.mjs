@@ -32,7 +32,8 @@ export function approvalFingerprint(post, target) {
   })).digest("hex");
 }
 
-export function evaluateQueue(post, state, now = new Date()) {
+export function evaluateQueue(post, state, now = new Date(), { mode = "live" } = {}) {
+  const dryRun = mode === "dry_run";
   const target = state.targets.find((item) => item.id === post.targetId);
   if (!target) return { allowed: false, reasons: ["target_missing"] };
   const policy = CHANNELS[target.channel];
@@ -45,10 +46,10 @@ export function evaluateQueue(post, state, now = new Date()) {
   }
   const hasCampaignAuthorization = (state.campaignAuthorizations || []).some((item) => item.campaignId === post.campaignId);
   const campaignAuthorization = post.campaignAuthorizationId
-    ? evaluateCampaignAuthorization(post, state, now)
+    ? evaluateCampaignAuthorization(post, state, now, { mode })
     : null;
   if (campaignAuthorization) reasons.push(...campaignAuthorization.reasons);
-  if (campaignAuthorization && campaignAuthorization.authorization?.allowLiveExecution !== true) reasons.push("live_execution_not_authorized");
+  if (!dryRun && campaignAuthorization && campaignAuthorization.authorization?.allowLiveExecution !== true) reasons.push("live_execution_not_authorized");
   if (campaignAuthorization) {
     const expectedReadiness = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
     if (!target.profileId) reasons.push("execution_profile_missing");
@@ -76,7 +77,7 @@ export function evaluateQueue(post, state, now = new Date()) {
   if (policy.requiresConsent && (!target.consentBasis || !target.audienceSource || !target.unsubscribeMechanism)) {
     reasons.push("consent_metadata_required");
   }
-  if (target.status !== "active") reasons.push("target_not_active");
+  if (!dryRun && target.status !== "active") reasons.push("target_not_active");
   if (target.readiness && target.readiness.state !== "ready") reasons.push("target_not_ready");
 
   const dayStart = new Date(now);
@@ -88,7 +89,7 @@ export function evaluateQueue(post, state, now = new Date()) {
     const timestamp = item.publishedAt || item.processingAt || item.publishingAt || item.queuedAt;
     return timestamp && new Date(timestamp) >= dayStart;
   });
-  if (accountPosts.length >= policy.dailyLimitPerAccount) reasons.push("daily_limit_reached");
+  if (!dryRun && accountPosts.length >= policy.dailyLimitPerAccount) reasons.push("daily_limit_reached");
 
   const recent = state.posts
     .filter((item) => item.id !== post.id && ACTIVE_PUBLICATION_STATUSES.has(item.status))
@@ -99,7 +100,7 @@ export function evaluateQueue(post, state, now = new Date()) {
     }))
     .filter((entry) => entry.target?.channel === target.channel && entry.target?.accountId === target.accountId && entry.at)
     .sort((a, b) => new Date(b.at) - new Date(a.at))[0];
-  if (recent) {
+  if (!dryRun && recent) {
     const elapsedMinutes = (now - new Date(recent.at)) / 60000;
     if (elapsedMinutes < policy.minimumIntervalMinutes) reasons.push("minimum_interval_not_met");
   }

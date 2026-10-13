@@ -1216,58 +1216,75 @@ export class SeedingService {
     return result.result;
   }
 
-  async prepareExecutionRequest(postId, actor = "execution-router") {
+  async prepareExecutionRequest(postId, actor = "execution-router", { dryRun = false } = {}) {
     const snapshot = await this.store.read();
     const post = requireItem(snapshot.posts, postId, "Post");
     const previous = (snapshot.executionRequests || []).filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
+    const operator = ["operator", "local-human-operator"].includes(actor);
+    const resumingOwnedDryRun = String(actor).startsWith("jev-worker:") && previous?.request?.dryRun === true && previous.state === "REQUEST_READY";
+    if (dryRun && !operator && !resumingOwnedDryRun) throw new Error("Dry-run execution requests require an operator");
     if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
     const target = requireItem(snapshot.targets, post.targetId, "Target");
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
     const authorization = (snapshot.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
     post.idempotencyKey ||= publicationIdentityKey({ campaignId: post.campaignId, contentId: post.contentId, platform: target.channel, accountId: target.accountId, targetId: target.id });
     const readinessContext = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
-    if (post.status !== "queued" || post.readinessState !== "READY" || !isReadinessFresh(target.readiness, readinessContext, new Date(), this.readinessTtlMs)) {
-      throw new Error("Execution request requires a queued job with fresh bound READY readiness");
+    if (dryRun) {
+      if (["published", "publishing", "processing", "removed", "rejected"].includes(post.status)) throw new Error("Dry-run cannot use a published or actively executing job");
+    } else if (post.status !== "queued") {
+      throw new Error("Execution request requires a queued job");
+    }
+    if (post.readinessState !== "READY" || !isReadinessFresh(target.readiness, readinessContext, new Date(), this.readinessTtlMs)) {
+      throw new Error("Execution request requires fresh bound READY readiness");
     }
     if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId) {
       throw new Error("Execution request requires the registered healthy account/profile binding");
     }
-    const eligibility = evaluateQueue(post, snapshot);
+    const eligibility = evaluateQueue(post, snapshot, new Date(), { mode: dryRun ? "dry_run" : "live" });
     if (!eligibility.allowed) throw new Error(`Execution request blocked: ${eligibility.reasons.join(", ")}`);
     if (!authorization) throw new Error("Execution request requires a campaign authorization");
+    if (dryRun && (snapshot.executionLeases || []).some((item) => Date.parse(item.expiresAt) > Date.now() && item.profileKey === `${target.channel}:${target.profileId}` && !(item.executionId === previous?.executionId && actor === `jev-worker:${item.workerId}`))) {
+      throw new Error("Dry-run profile is already leased by another execution");
+    }
+    if (dryRun && previous && previous.request?.dryRun !== true && previous.state === "REQUEST_READY") {
+      throw new Error("A live execution request already owns this job");
+    }
     const artifact = post.artifactId ? requireItem(snapshot.artifacts || [], post.artifactId, "Artifact") : null;
     const result = await this.store.mutate(actor, "execution_request_prepared", (state) => {
       state.executionRequests ||= [];
       const previous = state.executionRequests.filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
       if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
-      if (previous && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
+      if (previous && previous.state === "DRY_RUN_COMPLETE" && !dryRun) {
+        // A dry-run record must never be upgraded or redispatched as a live request.
+      } else if (previous && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
         if (previous.state !== "REQUEST_READY") throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
+        if (Boolean(previous.request?.dryRun) !== dryRun) throw new Error("Execution request mode cannot be changed after creation");
       }
-      const executionId = previous?.state === "REQUEST_READY" ? previous.executionId : randomUUID();
-      const attempt = previous?.state === "REQUEST_READY" ? previous.attempt : (previous?.attempt || 0) + 1;
+      const reusePrevious = previous?.state === "REQUEST_READY" && Boolean(previous.request?.dryRun) === dryRun;
+      const executionId = reusePrevious ? previous.executionId : randomUUID();
+      const attempt = reusePrevious ? previous.attempt : (previous?.attempt || 0) + 1;
       const request = createExecutionRequestV1({
-        executionId, post, target, account, authorization, readiness: target.readiness, artifact, createdAt: nowIso()
+        executionId, post, target, account, authorization, readiness: target.readiness, artifact, dryRun, createdAt: nowIso()
       });
-      if (previous?.state === "REQUEST_READY" && previous.submitState === "NOT_STARTED") {
+      if (reusePrevious && previous.submitState === "NOT_STARTED") {
         previous.request = request;
         previous.lastRefreshedAt = request.createdAt;
-        const current = requireItem(state.posts, postId, "Post");
-        current.idempotencyKey ||= post.idempotencyKey;
-        current.executionState = "REQUEST_READY";
         return previous;
       }
       const row = {
         executionId, jobId: post.id, campaignId: post.campaignId, attempt,
         state: "REQUEST_READY", submitState: "NOT_STARTED", recoveryClassification: "NONE",
-        request, createdAt: request.createdAt, dispatchedAt: null
+        request, dryRun, createdAt: request.createdAt, dispatchedAt: null
       };
       state.executionRequests.push(row);
-      const current = requireItem(state.posts, postId, "Post");
-      current.idempotencyKey ||= post.idempotencyKey;
-      current.executionState = "REQUEST_READY";
-      current.executionId = executionId;
-      current.jobLifecycle ||= [{ state: "CREATED", at: current.createdAt || row.createdAt }];
-      current.jobLifecycle.push({ state: "EXECUTION_REQUEST_READY", at: row.createdAt, executionId });
+      if (!dryRun) {
+        const current = requireItem(state.posts, postId, "Post");
+        current.idempotencyKey ||= post.idempotencyKey;
+        current.executionState = "REQUEST_READY";
+        current.executionId = executionId;
+        current.jobLifecycle ||= [{ state: "CREATED", at: current.createdAt || row.createdAt }];
+        current.jobLifecycle.push({ state: "EXECUTION_REQUEST_READY", at: row.createdAt, executionId });
+      }
       return row;
     });
     return result.result;
@@ -1277,6 +1294,7 @@ export class SeedingService {
     const state = await this.store.read();
     return (state.executionRequests || []).filter((item) => {
       if (item.state !== "REQUEST_READY" || item.submitState !== "NOT_STARTED") return false;
+      if (item.request?.dryRun === true) return false;
       const post = state.posts.find((candidate) => candidate.id === item.jobId);
       const target = state.targets.find((candidate) => candidate.id === post?.targetId);
       if (!post || post.status !== "queued" || !target) return false;
@@ -1374,6 +1392,7 @@ export class SeedingService {
       const persistedLease = state.executionLeases.find((item) => item.id === lease.id && item.token === lease.token && Date.parse(item.expiresAt) > Date.now());
       if (!request || request.state !== "REQUEST_READY" || request.submitState !== "NOT_STARTED" || !persistedLease) throw new Error("Execution cannot start without a dispatchable request and active lease");
       if (dryRun) {
+        if (request.request?.dryRun !== true) throw new Error("A non-dry-run request cannot use the policy-isolated dry-run path");
         request.lastDryRunAt = nowIso();
         return request;
       }
@@ -1492,7 +1511,14 @@ export class SeedingService {
       const post = requireItem(state.posts, request.jobId, "Post");
       const row = { id: randomUUID(), executionId, jobId: receipt.jobId, attempt: receipt.attempt, receivedAt: nowIso(), receipt };
       state.executionReceipts.push(row);
-      if (receipt.dryRun) return row;
+      if (receipt.dryRun) {
+        if (request.request?.dryRun === true) {
+          request.state = "DRY_RUN_COMPLETE";
+          request.executionPhase = "DRY_RUN_COMPLETE";
+          request.dryRunCompletedAt = row.receivedAt;
+        }
+        return row;
+      }
       request.submitState = receipt.submitState;
       request.recoveryClassification = receipt.recoveryClassification;
       request.lastReceiptAt = row.receivedAt;

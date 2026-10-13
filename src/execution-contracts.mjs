@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 export const EXECUTION_REQUEST_SCHEMA_VERSION = 1;
 export const EXECUTION_RECEIPT_SCHEMA_VERSION = 1;
 export const SUBMIT_STATES = Object.freeze(["NOT_STARTED", "SUBMIT_SENT", "CONFIRMED", "UNKNOWN", "FAILED"]);
-export const EXECUTION_STATES = Object.freeze(["REQUEST_READY", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED"]);
+export const EXECUTION_STATES = Object.freeze(["REQUEST_READY", "DRY_RUN_COMPLETE", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED"]);
 
 const sha256Pattern = /^[a-f0-9]{64}$/i;
 const secretKeyPattern = /(password|passwd|cookie|bearer|token|credential|mfa|passkey|sessionstorage|localstorage|secret|authorizationheader)/i;
@@ -47,6 +47,7 @@ export function validateExecutionRequestV1(input) {
     },
     audience: required(input.audience, "audience"),
     testJob: input.testJob === true,
+    dryRun: input.dryRun === true,
     content: {
       contentId: required(input.content?.contentId, "content.contentId"),
       sha256: required(input.content?.sha256, "content.sha256").toLowerCase(),
@@ -125,8 +126,24 @@ export function validateExecutionReceiptV1(input) {
       durationMs: Number(input.telemetry?.durationMs ?? 0),
       browserCommands: Number(input.telemetry?.browserCommands ?? 0),
       computerUseCalls: Number(input.telemetry?.computerUseCalls ?? 0),
-      retries: Number(input.telemetry?.retries ?? 0)
-    }
+      retries: Number(input.telemetry?.retries ?? 0),
+      readinessRefreshMs: Number(input.telemetry?.readinessRefreshMs ?? 0),
+      queueToWorkerMs: Number(input.telemetry?.queueToWorkerMs ?? 0),
+      leaseAcquireMs: Number(input.telemetry?.leaseAcquireMs ?? 0),
+      profileAcquireMs: Number(input.telemetry?.profileAcquireMs ?? 0),
+      navigationMs: Number(input.telemetry?.navigationMs ?? 0),
+      targetVerifyMs: Number(input.telemetry?.targetVerifyMs ?? 0),
+      composerOpenMs: Number(input.telemetry?.composerOpenMs ?? 0),
+      contentFillMs: Number(input.telemetry?.contentFillMs ?? 0),
+      mediaAttachMs: Number(input.telemetry?.mediaAttachMs ?? 0),
+      mediaReadyMs: Number(input.telemetry?.mediaReadyMs ?? 0),
+      preSubmitVerifyMs: Number(input.telemetry?.preSubmitVerifyMs ?? 0),
+      cleanupMs: Number(input.telemetry?.cleanupMs ?? 0),
+      totalDryRunMs: Number(input.telemetry?.totalDryRunMs ?? 0)
+    },
+    verificationGates: input.verificationGates && typeof input.verificationGates === "object"
+      ? Object.fromEntries(Object.entries(input.verificationGates).filter(([, value]) => typeof value === "boolean"))
+      : null
   };
   if (!Number.isSafeInteger(receipt.attempt) || receipt.attempt < 1) throw new Error("ExecutionReceiptV1 attempt must be a positive integer");
   for (const field of ["startedAt", "finishedAt"]) if (!Number.isFinite(Date.parse(receipt[field]))) throw new Error(`ExecutionReceiptV1 ${field} must be an ISO timestamp`);
@@ -163,7 +180,7 @@ export function validateExecutionReceiptV1(input) {
   return receipt;
 }
 
-export function createExecutionRequestV1({ executionId, post, target, account, authorization, readiness, artifact, createdAt = new Date().toISOString() }) {
+export function createExecutionRequestV1({ executionId, post, target, account, authorization, readiness, artifact, dryRun = false, createdAt = new Date().toISOString() }) {
   return validateExecutionRequestV1({
     schemaVersion: 1,
     executionId,
@@ -175,6 +192,7 @@ export function createExecutionRequestV1({ executionId, post, target, account, a
     target: { targetId: target.id, url: target.url },
     audience: post.audience,
     testJob: post.testJob === true,
+    dryRun,
     content: { contentId: post.contentId, sha256: contentSha256(post.content), payload: post.content },
     media: artifact ? [{ artifactId: artifact.id, reference: artifact.path, sha256: artifact.sha256, type: artifact.mimeType || artifact.mediaType || "application/octet-stream" }] : [],
     authorization: { authorizationId: authorization.id, binding: authorization.binding },

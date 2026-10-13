@@ -89,6 +89,8 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.deepEqual(await operatorSession.json(), { ok: true, actor: "local-human-operator" });
   assert.equal((await fetch(`${baseUrl}/api/operator/session`, { headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/posts/fixture-job/execution-request/dry-run`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/run-dry-run`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { authorization: `Bearer ${token}` } })).status, 200);
   const body = JSON.stringify({ name: "Fixture", objective: "Auth test", productRepo: appRoot });
   assert.equal((await fetch(`${baseUrl}/api/campaigns`, {
