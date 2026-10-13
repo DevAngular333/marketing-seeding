@@ -48,6 +48,7 @@ export function evaluateQueue(post, state, now = new Date()) {
     ? evaluateCampaignAuthorization(post, state, now)
     : null;
   if (campaignAuthorization) reasons.push(...campaignAuthorization.reasons);
+  if (campaignAuthorization && campaignAuthorization.authorization?.allowLiveExecution !== true) reasons.push("live_execution_not_authorized");
   if (campaignAuthorization) {
     const expectedReadiness = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
     if (!target.profileId) reasons.push("execution_profile_missing");

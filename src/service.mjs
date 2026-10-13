@@ -12,6 +12,27 @@ import { createExecutionRequestV1, validateExecutionReceiptV1 } from "./executio
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 
+const READINESS_IGNORED_EXECUTION_REASONS = new Set([
+  "schedule_timestamp_invalid",
+  "schedule_outside_authorization_window",
+  "schedule_not_due",
+  "schedule_outside_allowed_window",
+  "campaign_daily_limit_reached",
+  "account_daily_limit_reached",
+  "campaign_minimum_interval_not_met",
+  "campaign_concurrency_limit_reached",
+  "publication_identity_exists",
+  "duplicate_content_for_account"
+]);
+const DYNAMIC_EXECUTION_REASONS = new Set([
+  "schedule_not_due",
+  "schedule_outside_allowed_window",
+  "campaign_daily_limit_reached",
+  "account_daily_limit_reached",
+  "campaign_minimum_interval_not_met",
+  "campaign_concurrency_limit_reached"
+]);
+
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
 const MAX_GROUNDING_BYTES = 2_000_000;
 const MAX_SCREENSHOT_BYTES = 25_000_000;
@@ -963,7 +984,16 @@ export class SeedingService {
         if (["blocked", "draft"].includes(post.status)) {
           if (post.readinessState === "HUMAN_REQUIRED") return false;
           if ((post.readinessAttempts || 0) === 0) return true;
-          return Boolean(post.readinessRetryAt) && Date.parse(post.readinessRetryAt) <= now && (post.readinessAttempts || 0) < this.maxReadinessAttempts;
+          if (post.readinessRetryAt && Date.parse(post.readinessRetryAt) <= now && (post.readinessAttempts || 0) < this.maxReadinessAttempts) return true;
+          const target = state.targets.find((item) => item.id === post.targetId);
+          const readinessContext = target && { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
+          if (post.readinessState === "READY" && target && !isReadinessFresh(target.readiness, readinessContext, new Date(now), this.readinessTtlMs)) return true;
+          const previousReasons = post.authorizationDecision?.reasons || [];
+          if (post.readinessState === "READY" && previousReasons.some((reason) => DYNAMIC_EXECUTION_REASONS.has(reason))) {
+            const currentReasons = evaluateCampaignAuthorization(post, state, new Date(now)).reasons;
+            if (previousReasons.some((reason) => DYNAMIC_EXECUTION_REASONS.has(reason) && !currentReasons.includes(reason))) return true;
+          }
+          return false;
         }
         if (post.status !== "queued") return false;
         const latestExecution = (state.executionRequests || []).filter((item) => item.jobId === post.id).sort((a, b) => b.attempt - a.attempt)[0];
@@ -974,7 +1004,6 @@ export class SeedingService {
           platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id
         }, new Date(now), this.readinessTtlMs);
       })
-      .filter((post) => !post.scheduledAt || !Number.isFinite(Date.parse(post.scheduledAt)) || Date.parse(post.scheduledAt) <= now)
       .map((post) => post.campaignId))];
     const results = [];
     for (const campaignId of campaignIds) {
@@ -991,27 +1020,30 @@ export class SeedingService {
       const post = requireItem(snapshot.posts, postId, "Post");
       const target = requireItem(snapshot.targets, post.targetId, "Target");
       if (!post.campaignAuthorizationId) return { postId, status: post.status, readinessState: "NOT_REQUIRED", reasons: ["campaign_authorization_missing"] };
-      const authorizationCheck = evaluateCampaignAuthorization(post, snapshot);
-      const nonScheduleReasons = authorizationCheck.reasons.filter((reason) => reason !== "schedule_not_due");
-      if (nonScheduleReasons.length) {
-        return this.#persistReadinessOutcome(postId, {
-          state: "BLOCKED", checkedAt: nowIso(), reasonCode: nonScheduleReasons[0], retryable: false, recoveryClassification: "NONE"
-        }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true });
-      }
-      if (authorizationCheck.reasons.includes("schedule_not_due")) {
-        return { postId, status: post.status, readinessState: post.readinessState || "WAITING_FOR_SCHEDULE", reasons: authorizationCheck.reasons };
-      }
-      if (!force && post.readinessRetryAt && Date.parse(post.readinessRetryAt) > Date.now()) {
-        return { postId, status: post.status, readinessState: post.readinessState, reasons: ["readiness_retry_wait"], retryAt: post.readinessRetryAt };
-      }
-      if (!force && post.readinessAttempts > 0 && ["HUMAN_REQUIRED", "UNKNOWN", "BLOCKED"].includes(post.readinessState) && !post.readinessRetryAt) {
-        return { postId, status: post.status, readinessState: post.readinessState, reasons: [post.readinessReasonCode || post.readinessState.toLowerCase()] };
+      if (post.readinessState === "HUMAN_REQUIRED") {
+        return { postId, status: post.status, readinessState: "HUMAN_REQUIRED", reasons: [post.readinessReasonCode || "human_required"] };
       }
       const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+      if (account?.health === "human_required") {
+        return { postId, status: post.status, readinessState: "HUMAN_REQUIRED", reasons: ["account_requires_human_intervention"] };
+      }
       if (!account || account.status !== "enabled" || target.profileId !== account.profileId) {
         return this.#persistReadinessOutcome(postId, {
           state: "HUMAN_REQUIRED", checkedAt: nowIso(), reasonCode: "account_profile_binding_missing", retryable: false, recoveryClassification: "HUMAN_REQUIRED"
         }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true });
+      }
+      const authorizationCheck = evaluateCampaignAuthorization(post, snapshot);
+      const readinessBlockingReasons = authorizationCheck.reasons.filter((reason) => !READINESS_IGNORED_EXECUTION_REASONS.has(reason));
+      if (readinessBlockingReasons.length) {
+        return this.#persistReadinessOutcome(postId, {
+          state: "BLOCKED", checkedAt: nowIso(), reasonCode: readinessBlockingReasons[0], retryable: false, recoveryClassification: "NONE"
+        }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true });
+      }
+      if (!force && post.readinessRetryAt && Date.parse(post.readinessRetryAt) > Date.now()) {
+        return { postId, status: post.status, readinessState: post.readinessState, reasons: ["readiness_retry_wait"], retryAt: post.readinessRetryAt };
+      }
+      if (!force && post.readinessAttempts > 0 && ["UNKNOWN", "BLOCKED"].includes(post.readinessState) && !post.readinessRetryAt) {
+        return { postId, status: post.status, readinessState: post.readinessState, reasons: [post.readinessReasonCode || post.readinessState.toLowerCase()] };
       }
       const context = {
         jobId: post.id, campaignId: post.campaignId, platform: target.channel,

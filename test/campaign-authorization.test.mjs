@@ -67,6 +67,7 @@ async function campaignFixture({ channels = ["threads"], rateLimits = {}, allowR
       minIntervalMinutes: 0,
       ...rateLimits
     },
+    allowLiveExecution: true,
     ...overrides
   }, "operator");
   return { directory, service, campaign, targets, authorization };

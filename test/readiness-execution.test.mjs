@@ -10,7 +10,7 @@ import { contentSha256, validateExecutionReceiptV1, validateExecutionRequestV1 }
 import { isReadinessFresh, normalizeReadinessResult } from "../src/readiness.mjs";
 import { LinkedInReadinessProvider } from "../src/linkedin-readiness.mjs";
 
-async function fixture({ provider, readinessAgeMs = 10_000, readinessTtlMs = 5_000, maxReadinessAttempts = 2 } = {}) {
+async function fixture({ provider, readinessAgeMs = 10_000, readinessTtlMs = 5_000, maxReadinessAttempts = 2, schedule, maxConcurrency = 2, allowLiveExecution = true } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pr2-readiness-test-"));
   const productRepo = path.join(directory, "product");
   await mkdir(productRepo);
@@ -41,8 +41,9 @@ async function fixture({ provider, readinessAgeMs = 10_000, readinessTtlMs = 5_0
     approvedAssets: [],
     contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(content)] },
     audienceRules: { allowedAudiences: ["public"] },
-    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
-    rateLimits: { maxJobsPerAccountPerDay: 10, maxJobsPerCampaignPerDay: 10, maxConcurrency: 2, minIntervalMinutes: 0 }
+    schedule: schedule || { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 10, maxJobsPerCampaignPerDay: 10, maxConcurrency, minIntervalMinutes: 0 },
+    allowLiveExecution
   }, "operator");
   return { directory, service, campaign, target, post, accountId, profileId, content };
 }
@@ -125,8 +126,88 @@ test("human-required readiness is isolated and not automatically retried", async
   const before = await service.snapshot();
   assert.equal(before.posts.find((item) => item.id === post.id).readinessState, "HUMAN_REQUIRED");
   await service.queueDueCampaignJobs("test-scheduler");
+  await service.refreshCampaignJobReadiness(post.id, "forced-worker", { force: true });
   assert.equal(calls, 1);
   assert.equal((await service.readyExecutionRequests()).length, 0);
+});
+
+test("readiness runs outside the publish schedule but schedule still blocks queueing", async () => {
+  let calls = 0;
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60_000).getUTCDay();
+  const { service, post } = await fixture({
+    schedule: { timezone: "UTC", weekdays: [tomorrow], startLocal: "00:00", endLocal: "23:59" },
+    provider: { async checkReadiness() { calls += 1; return ready(); } }
+  });
+  const state = await service.snapshot();
+  const stored = state.posts.find((item) => item.id === post.id);
+  assert.equal(calls, 1);
+  assert.equal(stored.readinessState, "READY");
+  assert.equal(stored.status, "blocked");
+  assert.ok(stored.authorizationDecision.reasons.includes("schedule_outside_allowed_window"));
+  assert.equal(state.executionRequests.length, 0);
+});
+
+test("readiness runs at campaign concurrency limit but concurrency still blocks queueing", async () => {
+  let calls = 0;
+  const { service, post } = await fixture({
+    maxConcurrency: 1,
+    allowLiveExecution: false,
+    provider: { async checkReadiness() { calls += 1; return ready(); } }
+  });
+  await service.store.mutate("test", "occupy_campaign_execution_slot", (state) => {
+    const original = state.posts.find((item) => item.id === post.id);
+    state.posts.push({ ...original, id: "other-inflight-job", idempotencyKey: "other-inflight-publication", status: "publishing", executionState: "SUBMIT_SENT" });
+    const target = state.targets.find((item) => item.id === post.targetId);
+    target.readiness.checkedAt = new Date(Date.now() - 60_000).toISOString();
+    target.readiness.expiresAt = new Date(Date.now() - 1).toISOString();
+  });
+  calls = 0;
+  await service.refreshCampaignJobReadiness(post.id, "test-scheduler", { force: true });
+  const state = await service.snapshot();
+  const stored = state.posts.find((item) => item.id === post.id);
+  assert.equal(calls, 1);
+  assert.equal(stored.readinessState, "READY");
+  assert.equal(stored.status, "blocked");
+  assert.ok(stored.authorizationDecision.reasons.includes("campaign_concurrency_limit_reached"));
+  assert.equal(state.executionRequests.length, 0);
+});
+
+test("allowLiveExecution=false permits readiness but never queues or prepares execution", async () => {
+  let calls = 0;
+  const { service, post } = await fixture({
+    allowLiveExecution: false,
+    provider: { async checkReadiness() { calls += 1; return ready(); } }
+  });
+  const state = await service.snapshot();
+  const stored = state.posts.find((item) => item.id === post.id);
+  assert.equal(calls, 1);
+  assert.equal(stored.readinessState, "READY");
+  assert.equal(stored.status, "blocked");
+  assert.ok(stored.authorizationDecision.reasons.includes("live_execution_not_authorized"));
+  assert.equal(state.executionRequests.length, 0);
+});
+
+test("stale readiness refreshes while schedule still blocks execution", async () => {
+  let calls = 0;
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60_000).getUTCDay();
+  const { service, post } = await fixture({
+    readinessTtlMs: 1_000,
+    schedule: { timezone: "UTC", weekdays: [tomorrow], startLocal: "00:00", endLocal: "23:59" },
+    provider: { async checkReadiness() { calls += 1; return ready(); } }
+  });
+  await service.store.mutate("test", "expire_preflight_readiness", (state) => {
+    const target = state.targets.find((item) => item.id === post.targetId);
+    target.readiness.checkedAt = new Date(Date.now() - 10_000).toISOString();
+    target.readiness.expiresAt = new Date(Date.now() - 1).toISOString();
+  });
+  await service.queueDueCampaignJobs("test-scheduler");
+  const state = await service.snapshot();
+  const stored = state.posts.find((item) => item.id === post.id);
+  assert.equal(calls, 2);
+  assert.equal(stored.readinessState, "READY");
+  assert.equal(stored.status, "blocked");
+  assert.ok(stored.authorizationDecision.reasons.includes("schedule_outside_allowed_window"));
+  assert.equal(state.executionRequests.length, 0);
 });
 
 test("non-retryable BLOCKED and exhausted UNKNOWN readiness are not polled repeatedly", async () => {
