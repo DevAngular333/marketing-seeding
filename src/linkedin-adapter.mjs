@@ -8,7 +8,7 @@ import { linkedInReadinessExpressions, openLinkedInComposer } from "./linkedin-r
 
 
 function refOf(line) {
-  return line.match(/\[ref=([^\]]+)\]/)?.[1] || null;
+  return line.match(/\bref=([^\],\s]+)/)?.[1] || null;
 }
 
 function findRef(snapshot, pattern) {
