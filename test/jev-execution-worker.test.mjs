@@ -302,7 +302,7 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     async snapshot() {
       if (phase === "feed") return '- button "Start a post" [ref=trigger]';
       if (phase === "file") return '- input file [ref=file]';
-      return '- textbox "Post editor" [ref=editor]\n- button "Add video" [ref=media]\n- button "Post" [ref=post]';
+      return '- textbox "Post editor" [ref=editor]\n- button "Phương tiện truyền thông" [ref=media]\n- button "Post" [ref=post]';
     },
     async evaluate(_id, expression) {
       if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: phase === "feed" };

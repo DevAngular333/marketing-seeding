@@ -351,7 +351,7 @@ export class LinkedInAdapter {
     const fileHash = await sha256File(media.path);
     if (fileHash !== media.sha256) throw Object.assign(new Error("Media hash differs from the approved artifact"), { code: "MEDIA_MISMATCH" });
     if (!await verifyMediaType(media.path, media.type)) throw Object.assign(new Error("Media file type does not match the approved descriptor"), { code: "MEDIA_MISMATCH" });
-    const mediaButton = findRef(snapshot, /button.*(?:photo|video|media|ảnh)/i);
+    const mediaButton = findRef(snapshot, /button.*(?:photo|video|media|phương tiện truyền thông|ảnh)/i);
     if (!mediaButton) throw Object.assign(new Error("LinkedIn media control is not uniquely identified"), { code: "MEDIA_MISMATCH" });
     await this.browser.click(pageId, mediaButton);
     const fileSnapshot = await this.browser.snapshot(pageId);
