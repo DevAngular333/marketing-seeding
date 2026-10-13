@@ -6,7 +6,9 @@ import { CHANNELS, nowIso } from "./constants.mjs";
 import { approvalFingerprint, assertReplyCanSend, assertTransition, evaluateQueue } from "./guards.mjs";
 import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs";
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
-import { campaignAuthorizationFingerprint, campaignScopeFingerprint, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
+import { campaignAuthorizationFingerprint, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
+import { classifyReadinessError, configuredReadinessTtlMs, executionAccountKey, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
+import { createExecutionRequestV1, validateExecutionReceiptV1 } from "./execution-contracts.mjs";
 
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
 const MAX_GROUNDING_BYTES = 2_000_000;
@@ -305,7 +307,7 @@ function requiredText(value, label) {
   return text;
 }
 
-export function normalizeTargetReadiness(value, fallbackStatus = "needs_review") {
+export function normalizeTargetReadiness(value, fallbackStatus = "needs_review", bindingContext = null, ttlMs = configuredReadinessTtlMs()) {
   const input = value && typeof value === "object" ? value : {};
   const state = String(input.state || (fallbackStatus === "active" ? "ready" : "checking")).trim();
   if (!TARGET_READINESS_STATES.has(state)) throw new Error(`Unsupported target readiness state: ${state}`);
@@ -325,7 +327,25 @@ export function normalizeTargetReadiness(value, fallbackStatus = "needs_review")
   for (const field of ["sessionValid", "composerCapable", "platformAvailable"]) {
     if (input.checks && typeof input.checks[field] === "boolean") checks[field] = input.checks[field];
   }
-  return { state, reasonCode, summary, nextSteps, evidence, checkedAt, checks };
+  const capabilities = input.capabilities && typeof input.capabilities === "object" ? { ...input.capabilities } : {};
+  if (checks.sessionValid === true) capabilities.sessionAuthenticated = true;
+  if (checks.composerCapable === true) capabilities.composerAvailable = true;
+  if (checks.platformAvailable === true) capabilities.feedReachable = true;
+  const expiresAt = input.expiresAt && Number.isFinite(Date.parse(input.expiresAt))
+    ? new Date(input.expiresAt).toISOString()
+    : checkedAt ? new Date(Date.parse(checkedAt) + ttlMs).toISOString() : null;
+  const binding = input.binding || (bindingContext?.profileId && checkedAt ? readinessBinding(bindingContext) : null);
+  return {
+    state, reasonCode, summary, nextSteps, evidence, checkedAt, expiresAt, checks, capabilities,
+    binding,
+    platform: bindingContext?.platform || input.platform || null,
+    accountId: bindingContext?.accountId || input.accountId || null,
+    profileId: bindingContext?.profileId || input.profileId || null,
+    targetId: bindingContext?.targetId || input.targetId || null,
+    outcome: String(input.outcome || (state === "ready" ? "READY" : state === "blocked" ? "BLOCKED" : "UNKNOWN")).toUpperCase(),
+    retryable: input.retryable === true,
+    recoveryClassification: input.recoveryClassification || "NONE"
+  };
 }
 
 function currencyCode(value) {
@@ -475,8 +495,15 @@ export function buildTrafficPulse(post, snapshots = [], interactions = [], now =
 }
 
 export class SeedingService {
-  constructor(store) {
+  constructor(store, options = {}) {
     this.store = store;
+    this.readinessTtlMs = options.readinessTtlMs ?? configuredReadinessTtlMs();
+    this.maxReadinessAttempts = options.maxReadinessAttempts ?? MAX_READINESS_ATTEMPTS;
+    this.readinessProviders = options.readinessProviders instanceof Map
+      ? options.readinessProviders
+      : new Map(Object.entries(options.readinessProviders || {}));
+    this.readinessTimeoutMs = options.readinessTimeoutMs ?? 20_000;
+    this.readinessInFlight = new Set();
   }
 
   async init() {
@@ -652,11 +679,12 @@ export class SeedingService {
         if (target.channel !== destination.platform || target.accountId !== destination.accountId) {
           throw new Error(`Authorized destination identity does not match target ${destination.targetId}`);
         }
-        const registeredProfile = String(target.profileId || target.browserProfileId || "").trim() || null;
-        if (destination.profileId && registeredProfile && destination.profileId !== registeredProfile) {
+        const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(destination.platform, destination.accountId));
+        if (!account || account.status !== "enabled") throw new Error(`Execution account must be registered and enabled: ${destination.accountId}`);
+        const registeredProfile = String(target.profileId || "").trim() || null;
+        if (!registeredProfile || registeredProfile !== account.profileId || destination.profileId !== account.profileId) {
           throw new Error(`Authorized profile identity does not match target ${destination.targetId}`);
         }
-        destination.profileId = registeredProfile || destination.profileId;
         destination.targetUrl = target.url;
       }
       for (const approvedAsset of authorization.approvedAssets) {
@@ -725,6 +753,7 @@ export class SeedingService {
       }
       return authorization;
     });
+    await this.queueAuthorizedCampaignJobs(campaignId, actor);
     return result.result;
   }
 
@@ -922,33 +951,30 @@ export class SeedingService {
       story.updatedAt = nowIso();
       return posts;
     });
-    return result.result;
+    for (const post of result.result.filter((item) => item.campaignAuthorizationId)) {
+      const readinessResult = await this.refreshCampaignJobReadiness(post.id, actor);
+      if (readinessResult.status === "queued") await this.prepareExecutionRequest(post.id, actor);
+    }
+    const latestState = await this.store.read();
+    return result.result.map((post) => latestState.posts.find((item) => item.id === post.id) || post);
   }
 
   async queueAuthorizedCampaignJobs(campaignId, actor = "scheduler") {
-    const result = await this.store.mutate(actor, "campaign_jobs_readiness_evaluated", (state) => {
-      const candidates = state.posts.filter((post) => post.campaignId === campaignId && post.campaignAuthorizationId && ["blocked", "draft"].includes(post.status));
-      const decisions = [];
-      for (const post of candidates) {
-        const eligibility = evaluateQueue(post, state);
-        post.authorizationDecision = { evaluatedAt: nowIso(), allowed: eligibility.allowed, reasons: eligibility.reasons };
-        if (eligibility.allowed) {
-          const at = nowIso();
-          post.status = "queued";
-          post.queuedAt = at;
-          post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
-          post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt }];
-          post.jobLifecycle.push({ state: "READY", at }, { state: "QUEUED", at });
-          delete post.blockedAt;
-        } else {
-          post.status = "blocked";
-          post.blockedAt ||= nowIso();
-        }
-        decisions.push({ postId: post.id, status: post.status, reasons: eligibility.reasons });
-      }
-      return decisions;
+    const snapshot = await this.store.read();
+    const candidates = snapshot.posts.filter((post) => {
+      if (post.campaignId !== campaignId || !post.campaignAuthorizationId) return false;
+      if (["blocked", "draft"].includes(post.status)) return true;
+      if (post.status !== "queued" || post.executionState !== "REQUEST_READY") return false;
+      const target = snapshot.targets.find((item) => item.id === post.targetId);
+      return !target || !isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, new Date(), this.readinessTtlMs);
     });
-    return result.result;
+    const decisions = [];
+    for (const post of candidates) {
+      const result = await this.refreshCampaignJobReadiness(post.id, actor);
+      decisions.push({ postId: post.id, status: result.status, readinessState: result.readinessState, reasons: result.reasons || [] });
+      if (result.status === "queued") await this.prepareExecutionRequest(post.id, actor);
+    }
+    return decisions;
   }
 
   async queueDueCampaignJobs(actor = "scheduler") {
@@ -956,15 +982,301 @@ export class SeedingService {
     const state = await this.store.read();
     const now = Date.now();
     const campaignIds = [...new Set(state.posts
-      .filter((post) => post.campaignAuthorizationId && ["blocked", "draft"].includes(post.status))
-      .filter((post) => post.authorizationDecision?.reasons?.includes("schedule_not_due"))
-      .filter((post) => Number.isFinite(Date.parse(post.scheduledAt || "")) && Date.parse(post.scheduledAt) <= now)
+      .filter((post) => post.campaignAuthorizationId)
+      .filter((post) => {
+        if (["blocked", "draft"].includes(post.status)) {
+          if (post.readinessState === "HUMAN_REQUIRED") return false;
+          if ((post.readinessAttempts || 0) === 0) return true;
+          return Boolean(post.readinessRetryAt) && Date.parse(post.readinessRetryAt) <= now && (post.readinessAttempts || 0) < this.maxReadinessAttempts;
+        }
+        if (post.status !== "queued" || post.executionState !== "REQUEST_READY") return false;
+        const target = state.targets.find((item) => item.id === post.targetId);
+        return !target || !isReadinessFresh(target.readiness, {
+          platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id
+        }, new Date(now), this.readinessTtlMs);
+      })
+      .filter((post) => !post.scheduledAt || !Number.isFinite(Date.parse(post.scheduledAt)) || Date.parse(post.scheduledAt) <= now)
       .map((post) => post.campaignId))];
     const results = [];
     for (const campaignId of campaignIds) {
       results.push({ campaignId, decisions: await this.queueAuthorizedCampaignJobs(campaignId, actor) });
     }
     return results;
+  }
+
+  async refreshCampaignJobReadiness(postId, actor = "scheduler", { force = false } = {}) {
+    if (this.readinessInFlight.has(postId)) return { postId, status: "blocked", readinessState: "READINESS_CHECKING", reasons: ["readiness_check_in_progress"] };
+    this.readinessInFlight.add(postId);
+    try {
+      const snapshot = await this.store.read();
+      const post = requireItem(snapshot.posts, postId, "Post");
+      const target = requireItem(snapshot.targets, post.targetId, "Target");
+      if (!post.campaignAuthorizationId) return { postId, status: post.status, readinessState: "NOT_REQUIRED", reasons: ["campaign_authorization_missing"] };
+      const authorizationCheck = evaluateCampaignAuthorization(post, snapshot);
+      const nonScheduleReasons = authorizationCheck.reasons.filter((reason) => reason !== "schedule_not_due");
+      if (nonScheduleReasons.length) {
+        return this.#persistReadinessOutcome(postId, {
+          state: "BLOCKED", checkedAt: nowIso(), reasonCode: nonScheduleReasons[0], retryable: false, recoveryClassification: "NONE"
+        }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true });
+      }
+      if (authorizationCheck.reasons.includes("schedule_not_due")) {
+        return { postId, status: post.status, readinessState: post.readinessState || "WAITING_FOR_SCHEDULE", reasons: authorizationCheck.reasons };
+      }
+      if (!force && post.readinessRetryAt && Date.parse(post.readinessRetryAt) > Date.now()) {
+        return { postId, status: post.status, readinessState: post.readinessState, reasons: ["readiness_retry_wait"], retryAt: post.readinessRetryAt };
+      }
+      if (!force && post.readinessAttempts > 0 && ["HUMAN_REQUIRED", "UNKNOWN", "BLOCKED"].includes(post.readinessState) && !post.readinessRetryAt) {
+        return { postId, status: post.status, readinessState: post.readinessState, reasons: [post.readinessReasonCode || post.readinessState.toLowerCase()] };
+      }
+      const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+      if (!account || account.status !== "enabled" || target.profileId !== account.profileId) {
+        return this.#persistReadinessOutcome(postId, {
+          state: "HUMAN_REQUIRED", checkedAt: nowIso(), reasonCode: "account_profile_binding_missing", retryable: false, recoveryClassification: "HUMAN_REQUIRED"
+        }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true });
+      }
+      const context = {
+        jobId: post.id, campaignId: post.campaignId, platform: target.channel,
+        accountId: target.accountId, profileId: target.profileId, targetId: target.id,
+        targetUrl: target.url, expectedIdentityUrl: account.expectedIdentityUrl
+      };
+      if (!force && isReadinessFresh(target.readiness, context, new Date(), this.readinessTtlMs)) {
+        const readiness = normalizeReadinessResult({
+          state: "READY", checkedAt: target.readiness.checkedAt, expiresAt: target.readiness.expiresAt,
+          reasonCode: target.readiness.reasonCode, capabilities: target.readiness.capabilities,
+          evidenceReference: target.readiness.evidence, retryable: false, recoveryClassification: "NONE"
+        }, context, { ttlMs: this.readinessTtlMs });
+        return this.#persistReadinessOutcome(postId, readiness, actor, { attempt: post.readinessAttempts || 0, alreadyFresh: true });
+      }
+      if (!force && post.readinessState === "HUMAN_REQUIRED") return { postId, status: post.status, readinessState: "HUMAN_REQUIRED", reasons: [post.readinessReasonCode || "human_required"] };
+      if (!force && post.readinessState === "UNKNOWN" && !post.readinessRetryAt) return { postId, status: post.status, readinessState: "UNKNOWN", reasons: [post.readinessReasonCode || "readiness_unknown"] };
+      const priorAttempts = Number(post.readinessAttempts || 0);
+      if (!force && priorAttempts >= this.maxReadinessAttempts) {
+        return this.#persistReadinessOutcome(postId, {
+          state: "UNKNOWN", checkedAt: nowIso(), reasonCode: "readiness_attempts_exhausted", retryable: false, recoveryClassification: "UNKNOWN"
+        }, actor, { attempt: priorAttempts, skipProvider: true });
+      }
+
+      const attempt = priorAttempts + 1;
+      await this.store.mutate(actor, "job_readiness_checking", (state) => {
+        const current = requireItem(state.posts, postId, "Post");
+        current.readinessState = "READINESS_CHECKING";
+        current.readinessAttempts = attempt;
+        current.readinessReasonCode = null;
+        current.readinessRetryAt = null;
+        current.status = "blocked";
+        current.blockedAt ||= nowIso();
+        current.jobLifecycle ||= [{ state: "CREATED", at: current.createdAt || nowIso() }];
+        if (current.jobLifecycle.at(-1)?.state !== "READINESS_CHECKING") current.jobLifecycle.push({ state: "READINESS_CHECKING", at: nowIso(), attempt });
+      });
+
+      const provider = this.readinessProviders.get(target.channel);
+      let providerResult;
+      if (!provider || typeof provider.checkReadiness !== "function") {
+        providerResult = { state: "UNKNOWN", reasonCode: "readiness_provider_unavailable", retryable: false, recoveryClassification: "UNKNOWN" };
+      } else {
+        try {
+          providerResult = await Promise.race([
+            provider.checkReadiness(context),
+            new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error("Readiness provider timed out"), { code: "PROVIDER_TIMEOUT" })), this.readinessTimeoutMs))
+          ]);
+        } catch (error) {
+          providerResult = classifyReadinessError(error);
+        }
+      }
+      let readiness;
+      try {
+        readiness = normalizeReadinessResult(providerResult, context, { ttlMs: this.readinessTtlMs });
+      } catch {
+        readiness = normalizeReadinessResult({ state: "UNKNOWN", reasonCode: "invalid_provider_result", retryable: false, recoveryClassification: "UNKNOWN" }, context, { ttlMs: this.readinessTtlMs });
+      }
+      return this.#persistReadinessOutcome(postId, readiness, actor, { attempt });
+    } finally {
+      this.readinessInFlight.delete(postId);
+    }
+  }
+
+  async #persistReadinessOutcome(postId, readiness, actor, { attempt = 0, skipProvider = false, alreadyFresh = false } = {}) {
+    const result = await this.store.mutate(actor, "job_readiness_result_recorded", (state) => {
+      const post = requireItem(state.posts, postId, "Post");
+      const target = requireItem(state.targets, post.targetId, "Target");
+      const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+      const context = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
+      const stateName = String(readiness.state).toUpperCase();
+      const readinessAt = readiness.checkedAt || nowIso();
+      const capabilities = readiness.capabilities || {};
+      const checks = {
+        sessionValid: capabilities.sessionAuthenticated === true,
+        composerCapable: capabilities.composerAvailable === true,
+        platformAvailable: capabilities.feedReachable === true
+      };
+      if (!skipProvider) {
+        target.readiness = normalizeTargetReadiness({
+          state: stateName === "READY" ? "ready" : "blocked",
+          checkedAt: readinessAt,
+          expiresAt: readiness.expiresAt,
+          reasonCode: String(readiness.reasonCode || stateName.toLowerCase()).replace(/[^a-z0-9_]/g, "_").slice(0, 64) || "unknown",
+          summary: stateName === "READY" ? "Readiness verified for the bound execution profile" : "Readiness is blocked or requires recovery",
+          evidence: readiness.evidenceReference,
+          capabilities,
+          checks,
+          binding: readiness.binding,
+          outcome: stateName,
+          retryable: readiness.retryable,
+          recoveryClassification: readiness.recoveryClassification
+        }, target.status, context, this.readinessTtlMs);
+        if (account) {
+          account.lastReadinessAt = readinessAt;
+          account.health = stateName === "READY" ? "healthy" : stateName === "HUMAN_REQUIRED" ? "human_required" : stateName === "BLOCKED" ? "blocked" : "error";
+          account.updatedAt = nowIso();
+        }
+      }
+      post.readinessState = stateName;
+      post.readinessReasonCode = readiness.reasonCode;
+      post.readinessAttempts = Math.max(Number(post.readinessAttempts || 0), attempt);
+      post.readinessRetryAt = null;
+      if (stateName !== "READY") {
+        const retryAllowed = readiness.retryable === true && post.readinessAttempts < this.maxReadinessAttempts;
+        if (retryAllowed) {
+          const delay = Math.min(5 * 60_000, 5_000 * (2 ** Math.max(0, post.readinessAttempts - 1)));
+          post.readinessRetryAt = new Date(Date.now() + delay).toISOString();
+        }
+        post.status = "blocked";
+        post.blockedAt = nowIso();
+        post.authorizationDecision = { evaluatedAt: nowIso(), allowed: false, reasons: [readiness.reasonCode || "readiness_not_ready"] };
+        if (post.jobLifecycle?.at(-1)?.state !== stateName) post.jobLifecycle?.push({ state: stateName, at: nowIso(), reasonCode: readiness.reasonCode });
+        return { postId, status: post.status, readinessState: stateName, reasons: post.authorizationDecision.reasons, retryAt: post.readinessRetryAt, skipProvider, alreadyFresh };
+      }
+      const decision = evaluateQueue(post, state);
+      post.authorizationDecision = { evaluatedAt: nowIso(), allowed: decision.allowed, reasons: decision.reasons };
+      if (decision.allowed) {
+        const at = nowIso();
+        post.status = "queued";
+        post.queuedAt = at;
+        post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
+        post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt || at }];
+        post.jobLifecycle.push({ state: "READY", at }, { state: "QUEUED", at });
+        delete post.blockedAt;
+      } else {
+        post.status = "blocked";
+        post.blockedAt ||= nowIso();
+      }
+      return { postId, status: post.status, readinessState: stateName, reasons: decision.reasons, skipProvider, alreadyFresh };
+    });
+    return result.result;
+  }
+
+  async prepareExecutionRequest(postId, actor = "execution-router") {
+    const snapshot = await this.store.read();
+    const post = requireItem(snapshot.posts, postId, "Post");
+    const target = requireItem(snapshot.targets, post.targetId, "Target");
+    const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+    const authorization = (snapshot.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
+    post.idempotencyKey ||= publicationIdentityKey({ campaignId: post.campaignId, contentId: post.contentId, platform: target.channel, accountId: target.accountId, targetId: target.id });
+    const readinessContext = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
+    if (post.status !== "queued" || post.readinessState !== "READY" || !isReadinessFresh(target.readiness, readinessContext, new Date(), this.readinessTtlMs)) {
+      throw new Error("Execution request requires a queued job with fresh bound READY readiness");
+    }
+    if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId) {
+      throw new Error("Execution request requires the registered healthy account/profile binding");
+    }
+    const eligibility = evaluateQueue(post, snapshot);
+    if (!eligibility.allowed) throw new Error(`Execution request blocked: ${eligibility.reasons.join(", ")}`);
+    if (!authorization) throw new Error("Execution request requires a campaign authorization");
+    const artifact = post.artifactId ? requireItem(snapshot.artifacts || [], post.artifactId, "Artifact") : null;
+    const result = await this.store.mutate(actor, "execution_request_prepared", (state) => {
+      state.executionRequests ||= [];
+      const previous = state.executionRequests.filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
+      if (previous && ["SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
+      if (previous && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
+        if (previous.state !== "REQUEST_READY") throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
+      }
+      const executionId = previous?.state === "REQUEST_READY" ? previous.executionId : randomUUID();
+      const attempt = previous?.state === "REQUEST_READY" ? previous.attempt : (previous?.attempt || 0) + 1;
+      const request = createExecutionRequestV1({
+        executionId, post, target, account, authorization, readiness: target.readiness, artifact, createdAt: nowIso()
+      });
+      if (previous?.state === "REQUEST_READY" && previous.submitState === "NOT_STARTED") {
+        previous.request = request;
+        previous.lastRefreshedAt = request.createdAt;
+        const current = requireItem(state.posts, postId, "Post");
+        current.idempotencyKey ||= post.idempotencyKey;
+        current.executionState = "REQUEST_READY";
+        return previous;
+      }
+      const row = {
+        executionId, jobId: post.id, campaignId: post.campaignId, attempt,
+        state: "REQUEST_READY", submitState: "NOT_STARTED", recoveryClassification: "NONE",
+        request, createdAt: request.createdAt, dispatchedAt: null
+      };
+      state.executionRequests.push(row);
+      const current = requireItem(state.posts, postId, "Post");
+      current.idempotencyKey ||= post.idempotencyKey;
+      current.executionState = "REQUEST_READY";
+      current.executionId = executionId;
+      current.jobLifecycle ||= [{ state: "CREATED", at: current.createdAt || row.createdAt }];
+      current.jobLifecycle.push({ state: "EXECUTION_REQUEST_READY", at: row.createdAt, executionId });
+      return row;
+    });
+    return result.result;
+  }
+
+  async readyExecutionRequests() {
+    const state = await this.store.read();
+    return (state.executionRequests || []).filter((item) => {
+      if (item.state !== "REQUEST_READY" || item.submitState !== "NOT_STARTED") return false;
+      const post = state.posts.find((candidate) => candidate.id === item.jobId);
+      const target = state.targets.find((candidate) => candidate.id === post?.targetId);
+      if (!post || post.status !== "queued" || !target) return false;
+      const account = (state.executionAccounts || []).find((candidate) => candidate.id === executionAccountKey(target.channel, target.accountId));
+      if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId) return false;
+      const binding = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
+      return isReadinessFresh(target.readiness, binding, new Date(), this.readinessTtlMs) && evaluateQueue(post, state).allowed;
+    });
+  }
+
+  async recordExecutionReceipt(executionId, input, actor = "execution-adapter") {
+    const receipt = validateExecutionReceiptV1(input);
+    if (receipt.executionId !== executionId) throw new Error("Receipt executionId does not match request");
+    const result = await this.store.mutate(actor, "execution_receipt_recorded", (state) => {
+      const request = (state.executionRequests || []).find((item) => item.executionId === executionId);
+      if (!request) throw new Error(`Execution request not found: ${executionId}`);
+      if (request.jobId !== receipt.jobId || request.attempt !== receipt.attempt) throw new Error("Receipt job/attempt does not match execution request");
+      state.executionReceipts ||= [];
+      const priorReceipt = state.executionReceipts.find((item) => item.executionId === executionId && item.attempt === receipt.attempt);
+      if (priorReceipt) {
+        if (JSON.stringify(priorReceipt.receipt) === JSON.stringify(receipt)) return priorReceipt;
+        throw new Error("A different receipt already exists for this execution attempt");
+      }
+      if (["SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(request.state)) throw new Error("Execution result is terminal and cannot be overwritten");
+      if (request.state === "SUBMIT_SENT" && receipt.submitState === "FAILED") throw new Error("A submitted execution cannot be downgraded to FAILED");
+      const post = requireItem(state.posts, request.jobId, "Post");
+      const row = { executionId, jobId: receipt.jobId, attempt: receipt.attempt, receivedAt: nowIso(), receipt };
+      state.executionReceipts.push(row);
+      request.submitState = receipt.submitState;
+      request.recoveryClassification = receipt.recoveryClassification;
+      request.lastReceiptAt = row.receivedAt;
+      if (receipt.submitState === "SUBMIT_SENT") {
+        request.state = "SUBMIT_SENT";
+        request.dispatchedAt ||= receipt.startedAt;
+        post.executionState = "SUBMIT_SENT";
+      } else if (receipt.submitState === "UNKNOWN") {
+        request.state = "SUBMIT_RESULT_UNKNOWN";
+        request.dispatchedAt ||= receipt.startedAt;
+        post.executionState = "SUBMIT_RESULT_UNKNOWN";
+      } else if (receipt.submitState === "CONFIRMED") {
+        request.state = "CONFIRMED";
+        request.dispatchedAt ||= receipt.startedAt;
+        request.publicationUrl = receipt.publicationUrl;
+        request.publicationReference = receipt.publicationReference;
+        post.executionState = "CONFIRMED";
+      } else if (receipt.submitState === "FAILED") {
+        if (request.state === "SUBMIT_SENT") throw new Error("A submitted execution cannot be marked as safely failed");
+        request.state = "FAILED";
+        post.executionState = "FAILED";
+      }
+      return row;
+    });
+    return result.result;
   }
 
   async expireCampaignAuthorizations(actor = "scheduler") {
@@ -989,6 +1301,23 @@ export class SeedingService {
         }
       }
       return expired;
+    });
+    return result.result;
+  }
+
+  async registerExecutionAccount(input, actor = "operator") {
+    const account = normalizeExecutionAccount(input);
+    const result = await this.store.mutate(actor, "execution_account_registered", (state) => {
+      const collision = (state.executionAccounts || []).find((item) => item.platform === account.platform && item.profileId === account.profileId && item.id !== account.id && item.status === "enabled");
+      if (collision) throw new Error(`Browser profile ${account.profileId} is already bound to another ${account.platform} account`);
+      state.executionAccounts ||= [];
+      const existing = state.executionAccounts.find((item) => item.id === account.id);
+      if (existing) {
+        Object.assign(existing, account, { createdAt: existing.createdAt, lastReadinessAt: existing.lastReadinessAt || account.lastReadinessAt });
+        return existing;
+      }
+      state.executionAccounts.push(account);
+      return account;
     });
     return result.result;
   }
@@ -1210,6 +1539,12 @@ export class SeedingService {
       }
       return post;
     });
+    if (result.result.campaignAuthorizationId) {
+      const readinessResult = await this.refreshCampaignJobReadiness(result.result.id, actor);
+      if (readinessResult.status === "queued") await this.prepareExecutionRequest(result.result.id, actor);
+      const latest = await this.store.read();
+      return latest.posts.find((item) => item.id === result.result.id) || result.result;
+    }
     return result.result;
   }
 
@@ -1222,6 +1557,7 @@ export class SeedingService {
         name: String(input.name || "").trim(),
         url: channelUrl(input.channel, input.url),
         accountId: String(input.accountId || "").trim(),
+        profileId: String(input.profileId || "").trim() || null,
         status: input.status || "needs_review",
         rulesStatus: input.rulesStatus || (CHANNELS[input.channel].requiresRulesReview ? "pending" : "not_required"),
         locale: input.locale || "en",
@@ -1229,12 +1565,19 @@ export class SeedingService {
         consentBasis: input.consentBasis ? String(input.consentBasis).trim() : null,
         audienceSource: input.audienceSource ? String(input.audienceSource).trim() : null,
         unsubscribeMechanism: input.unsubscribeMechanism ? String(input.unsubscribeMechanism).trim() : null,
-        readiness: normalizeTargetReadiness(input.readiness, input.status || "needs_review"),
+        readiness: null,
         createdAt: nowIso()
       };
       if (!target.name || !target.url || !target.accountId) {
         throw new Error("Target name, URL and accountId are required");
       }
+      if (target.profileId) {
+        const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+        if (!account || account.profileId !== target.profileId) throw new Error("Target profileId must match a registered execution account");
+      }
+      target.readiness = normalizeTargetReadiness(input.readiness, input.status || "needs_review", {
+        platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id
+      }, this.readinessTtlMs);
       if (CHANNELS[input.channel].requiresConsent && target.status === "active" &&
           (!target.consentBasis || !target.audienceSource || !target.unsubscribeMechanism)) {
         throw new Error("Active email targets require consentBasis, audienceSource and unsubscribeMechanism");
@@ -1248,11 +1591,25 @@ export class SeedingService {
   async updateTarget(targetId, input, actor = "operator") {
     const result = await this.store.mutate(actor, "target_updated", (state) => {
       const target = requireItem(state.targets, targetId, "Target");
-      for (const field of ["name", "url", "accountId", "status", "rulesStatus", "locale", "notes", "consentBasis", "audienceSource", "unsubscribeMechanism"]) {
+      const priorAccountKey = executionAccountKey(target.channel, target.accountId);
+      const priorProfileId = target.profileId || null;
+      for (const field of ["name", "url", "accountId", "profileId", "status", "rulesStatus", "locale", "notes", "consentBasis", "audienceSource", "unsubscribeMechanism"]) {
         if (input[field] !== undefined) target[field] = input[field];
       }
-      if (input.readiness !== undefined) target.readiness = normalizeTargetReadiness(input.readiness, target.status);
-      else target.readiness = normalizeTargetReadiness(target.readiness, target.status);
+      const accountChanged = priorAccountKey !== executionAccountKey(target.channel, target.accountId) || priorProfileId !== (target.profileId || null);
+      if (target.profileId) {
+        const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+        if (!account || account.profileId !== target.profileId) throw new Error("Target profileId must match a registered execution account");
+      }
+      if (input.readiness !== undefined) target.readiness = normalizeTargetReadiness(input.readiness, target.status, {
+        platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id
+      }, this.readinessTtlMs);
+      else if (accountChanged) target.readiness = normalizeTargetReadiness(null, target.status, {
+        platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id
+      }, this.readinessTtlMs);
+      else target.readiness = normalizeTargetReadiness(target.readiness, target.status, {
+        platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id
+      }, this.readinessTtlMs);
       if (target.readiness.state !== "ready") target.status = "needs_review";
       if (input.status === "active" && target.readiness.state !== "ready") {
         throw new Error("Target cannot become active until readiness state is ready");

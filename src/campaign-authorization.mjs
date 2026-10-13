@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { executionAccountKey } from "./readiness.mjs";
 
 const SUPPORTED_AUTH_STATUSES = new Set(["active", "paused", "expired", "revoked"]);
 const sha256Pattern = /^[a-f0-9]{64}$/i;
@@ -206,6 +207,7 @@ export function evaluateCampaignAuthorization(post, state, now = new Date()) {
   if (!authorization || authorization.campaignId !== post.campaignId) return { allowed: false, reasons: ["campaign_authorization_missing"] };
   const campaign = (state.campaigns || []).find((item) => item.id === post.campaignId);
   const target = (state.targets || []).find((item) => item.id === post.targetId);
+  const account = target ? (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId)) : null;
   const reasons = [];
   if (!campaign || campaign.status !== "active") reasons.push("campaign_not_active");
   if (!SUPPORTED_AUTH_STATUSES.has(authorization.status) || authorization.status !== "active") reasons.push("campaign_authorization_not_active");
@@ -215,7 +217,9 @@ export function evaluateCampaignAuthorization(post, state, now = new Date()) {
   if (!Number.isFinite(Date.parse(authorization.validUntil)) || now > new Date(authorization.validUntil)) reasons.push("campaign_authorization_expired");
   if (!campaign || authorization.campaignBinding !== campaignScopeFingerprint(campaign)) reasons.push("campaign_scope_changed");
   if (!target) reasons.push("target_missing");
-  const destination = authorization.destinations?.find((item) => item.targetId === post.targetId && item.platform === target?.channel && item.accountId === target?.accountId && item.targetUrl === target?.url && (!item.profileId || item.profileId === (target?.profileId || target?.browserProfileId || null)));
+  if (!account || account.status !== "enabled") reasons.push("execution_account_unavailable");
+  if (account && target?.profileId !== account.profileId) reasons.push("execution_profile_mismatch");
+  const destination = authorization.destinations?.find((item) => item.targetId === post.targetId && item.platform === target?.channel && item.accountId === target?.accountId && item.targetUrl === target?.url && item.profileId === account?.profileId && target?.profileId === account?.profileId);
   if (!destination) reasons.push("destination_not_authorized");
   if (post.assetPath) {
     const asset = authorization.approvedAssets?.find((item) => item.artifactId === post.artifactId && item.sha256 === post.assetSha256);

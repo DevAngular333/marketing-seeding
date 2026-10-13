@@ -20,11 +20,20 @@ async function campaignFixture({ channels = ["threads"], rateLimits = {}, allowR
   const checkedAt = new Date().toISOString();
   const targets = [];
   for (const channel of channels) {
+    const accountId = `${channel}_fixture_account`;
+    const profileId = `${channel}-fixture-profile`;
+    await service.registerExecutionAccount({
+      platform: channel,
+      accountId,
+      profileId,
+      expectedIdentityUrl: channel === "linkedin" ? "https://www.linkedin.com/in/fixture-owner" : undefined
+    }, "operator");
     targets.push(await service.createTarget({
       channel,
       name: `${channel} fixture target`,
       url: channel === "linkedin" ? "https://www.linkedin.com/company/fixture" : "https://www.threads.net/@fixture",
-      accountId: `${channel}_fixture_account`,
+      accountId,
+      profileId,
       status: "active",
       readiness: {
         state: "ready",
@@ -37,7 +46,7 @@ async function campaignFixture({ channels = ["threads"], rateLimits = {}, allowR
     id: `auth-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     validFrom: new Date(Date.now() - 60_000).toISOString(),
     validUntil: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
-    destinations: targets.map((target) => ({ platform: target.channel, accountId: target.accountId, targetId: target.id })),
+    destinations: targets.map((target) => ({ platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id })),
     approvedAssets: [],
     contentBoundary: {
       mode: "approved_copy_set",
@@ -141,6 +150,7 @@ test("same-platform/account copy duplicates are blocked across different targets
     name: "Second fixture target for same account",
     url: "https://www.threads.net/@fixture/second",
     accountId: targets[0].accountId,
+    profileId: targets[0].profileId,
     status: "active",
     readiness: {
       state: "ready",

@@ -32,7 +32,7 @@ Campaign -> Draft-only schedule -> Schedule run receipt
 - reference thiếu được đếm bằng `unresolvedReferences`, không âm thầm loại bỏ;
 - dashboard dùng các lane giống Product Map/Feature/Story để inspect toàn bộ flow.
 
-## State v3
+## State v4
 
 State thêm collections theo kiểu additive:
 
@@ -41,8 +41,18 @@ State thêm collections theo kiểu additive:
 - `schedules`: lịch daily draft-only theo campaign và channel;
 - `scheduleRuns`: receipt thành công/thất bại/blocked, luôn `externalSideEffects=false`.
 - `campaignAuthorizations`: bounded campaign-level authority and child-job scope binding.
+- `executionAccounts`: explicit platform-account to isolated browser-profile binding, health and readiness timestamp.
+- `executionRequests` / `executionReceipts`: versioned request/receipt boundary and non-redispatchable submit state.
 
-`src/store.mjs` chấp nhận state v1/v2 và UTF-8 BOM, migrate nguyên dữ liệu sang v3 bằng atomic write. Migration không suy ra campaign authorization từ `approvedAt` cũ.
+`src/store.mjs` accepts state v1/v2/v3 and UTF-8 BOM, migrating additively to v4. Migration does not infer campaign authorization or account/profile bindings from legacy approvals or target data.
+
+## PR2 readiness and execution boundary
+
+State schema v4 adds `executionAccounts`, `executionRequests`, and `executionReceipts`. Migrations from v1/v2/v3 are additive and do not infer account/profile identity from legacy targets or per-job approvals.
+
+Authorized jobs with missing or stale readiness enter `READINESS_CHECKING`, call the configured platform provider, persist a result bound to platform/account/profile/target, and reevaluate queue eligibility. The LinkedIn provider uses the ORCA Browser profile to verify session identity, feed, and composer; it closes the composer without entering content or submitting.
+
+Queue-eligible jobs produce `ExecutionRequestV1`; adapter results use `ExecutionReceiptV1`. `SUBMIT_SENT` and unknown outcomes are never automatically redispatched. PR2 defines this boundary but does not implement real publishing or mark a post published from an unverified receipt.
 
 ## Adapter/channel policy
 

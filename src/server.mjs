@@ -7,6 +7,9 @@ import { SeedingService } from "./service.mjs";
 import { appRoot, autoGtmFeedFile, browserAutomationFile, dailyAutomationFile, dailyAutomationReceiptFile, publicRoot, stateFile } from "./paths.mjs";
 import { FixtureWorkerBridge } from "./fixture-worker-bridge.mjs";
 import { readAutoGtmFeed } from "./auto-gtm-feed.mjs";
+import { OrcaCliClient } from "./orca-browser-client.mjs";
+import { LinkedInReadinessProvider } from "./linkedin-readiness.mjs";
+import { configuredReadinessTtlMs } from "./readiness.mjs";
 
 async function loadLocalEnv() {
   try {
@@ -42,7 +45,11 @@ if (!Number.isFinite(trafficPollMinutes) || trafficPollMinutes < 0 || (trafficPo
 }
 const store = new JsonStore(stateFile, { requireLease: true });
 await store.acquireWriterLease();
-const service = new SeedingService(store);
+const readinessTtlMs = configuredReadinessTtlMs();
+const service = new SeedingService(store, {
+  readinessTtlMs,
+  readinessProviders: { linkedin: new LinkedInReadinessProvider(new OrcaCliClient(), { ttlMs: readinessTtlMs }) }
+});
 let initializedState;
 try {
   initializedState = await service.init();
@@ -200,6 +207,9 @@ function automationCanMutate(method, pathname) {
   if (method === "PATCH" && /^\/api\/campaigns\/[^/]+$/.test(pathname)) return true;
   if (method !== "POST") return false;
   if (/^\/api\/campaigns\/[^/]+\/queue-ready-jobs$/.test(pathname)) return true;
+  if (/^\/api\/campaigns\/[^/]+\/readiness-check$/.test(pathname)) return true;
+  if (/^\/api\/posts\/[^/]+\/execution-request$/.test(pathname)) return true;
+  if (/^\/api\/execution-requests\/[^/]+\/receipt$/.test(pathname)) return true;
   return [
     /^\/api\/campaigns$/,
     /^\/api\/posts$/,
@@ -289,6 +299,10 @@ const server = http.createServer(async (request, response) => {
       }
       return sendJson(response, 200, await service.snapshot());
     }
+    if (request.method === "GET" && url.pathname === "/api/execution-requests/ready") {
+      if (!new Set(["operator", "automation"]).has(role)) return sendJson(response, 401, { ok: false, error: "execution_read_token_required" });
+      return sendJson(response, 200, await service.readyExecutionRequests());
+    }
     if (request.method === "GET" && url.pathname === "/api/dashboard") {
       return sendJson(response, 200, {
         ...(await service.dashboard()),
@@ -319,6 +333,9 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/targets") {
       return sendJson(response, 201, await service.createTarget(await readJson(request), actor));
     }
+    if (request.method === "POST" && url.pathname === "/api/execution-accounts") {
+      return sendJson(response, 201, await service.registerExecutionAccount(await readJson(request), actor));
+    }
     if (request.method === "POST" && url.pathname === "/api/community-memberships") {
       return sendJson(response, 201, await service.createCommunityMembership(await readJson(request), actor));
     }
@@ -338,6 +355,10 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, await service.setCampaignAuthorizationStatus(match[1], match[2] === "pause" ? "paused" : "active", actor));
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/queue-ready-jobs$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.queueAuthorizedCampaignJobs(match[1], actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/readiness-check$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 200, await service.queueAuthorizedCampaignJobs(match[1], actor));
     }
@@ -388,6 +409,14 @@ const server = http.createServer(async (request, response) => {
     match = url.pathname.match(/^\/api\/posts\/([^/]+)\/transition$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 200, await service.transitionPost(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/posts\/([^/]+)\/execution-request$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.prepareExecutionRequest(match[1], actor));
+    }
+    match = url.pathname.match(/^\/api\/execution-requests\/([^/]+)\/receipt$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 201, await service.recordExecutionReceipt(match[1], await readJson(request), actor));
     }
     match = url.pathname.match(/^\/api\/posts\/([^/]+)\/metrics$/);
     if (request.method === "POST" && match) {

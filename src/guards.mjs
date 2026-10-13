@@ -1,9 +1,10 @@
 import { CHANNELS, TRANSITIONS } from "./constants.mjs";
 import { createHash } from "node:crypto";
 import { evaluateCampaignAuthorization } from "./campaign-authorization.mjs";
+import { DEFAULT_READINESS_TTL_MS, isReadinessFresh, readinessBinding } from "./readiness.mjs";
 
 const ACTIVE_PUBLICATION_STATUSES = new Set(["queued", "publishing", "processing", "published"]);
-export const CAMPAIGN_READINESS_MAX_AGE_MS = 5 * 60 * 1000;
+export const CAMPAIGN_READINESS_MAX_AGE_MS = DEFAULT_READINESS_TTL_MS;
 
 export function normalizeContent(value = "") {
   return value.toLowerCase().replace(/https?:\/\/\S+/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
@@ -48,13 +49,20 @@ export function evaluateQueue(post, state, now = new Date()) {
     : null;
   if (campaignAuthorization) reasons.push(...campaignAuthorization.reasons);
   if (campaignAuthorization) {
-    if (target.readiness?.checks?.sessionValid !== true) reasons.push("session_not_verified");
-    if (target.readiness?.checks?.composerCapable !== true) reasons.push("composer_capability_not_verified");
-    if (target.readiness?.checks?.platformAvailable !== true) reasons.push("platform_availability_not_verified");
+    const expectedReadiness = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
+    if (!target.profileId) reasons.push("execution_profile_missing");
+    if (target.readiness?.capabilities?.sessionAuthenticated !== true && target.readiness?.checks?.sessionValid !== true) reasons.push("session_not_verified");
+    if (target.readiness?.capabilities?.composerAvailable !== true && target.readiness?.checks?.composerCapable !== true) reasons.push("composer_capability_not_verified");
+    if (target.readiness?.capabilities?.feedReachable !== true && target.readiness?.checks?.platformAvailable !== true) reasons.push("platform_availability_not_verified");
     const readinessCheckedAt = Date.parse(target.readiness?.checkedAt || "");
     if (!Number.isFinite(readinessCheckedAt)) reasons.push("readiness_timestamp_missing");
     else if (readinessCheckedAt > now.getTime() + 30_000) reasons.push("readiness_timestamp_in_future");
-    else if (now.getTime() - readinessCheckedAt > CAMPAIGN_READINESS_MAX_AGE_MS) reasons.push("readiness_evidence_stale");
+    else if (!isReadinessFresh(target.readiness, expectedReadiness, now, CAMPAIGN_READINESS_MAX_AGE_MS)) {
+      if (Date.parse(target.readiness?.expiresAt || "") <= now.getTime()) reasons.push("readiness_expired");
+      else if (target.profileId && target.readiness?.binding !== readinessBinding(expectedReadiness)) reasons.push("readiness_binding_mismatch");
+      else if (now.getTime() - readinessCheckedAt > CAMPAIGN_READINESS_MAX_AGE_MS) reasons.push("readiness_evidence_stale");
+      else reasons.push("readiness_not_ready");
+    }
   }
   if (!campaignAuthorization && hasCampaignAuthorization) reasons.push("campaign_authorization_missing");
   if (!campaignAuthorization && !hasCampaignAuthorization && !post.approvedAt) reasons.push("human_approval_required");

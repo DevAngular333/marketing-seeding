@@ -1,0 +1,151 @@
+import { createHash } from "node:crypto";
+
+export const EXECUTION_REQUEST_SCHEMA_VERSION = 1;
+export const EXECUTION_RECEIPT_SCHEMA_VERSION = 1;
+export const SUBMIT_STATES = Object.freeze(["NOT_STARTED", "SUBMIT_SENT", "CONFIRMED", "UNKNOWN", "FAILED"]);
+export const EXECUTION_STATES = Object.freeze(["REQUEST_READY", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED"]);
+
+const sha256Pattern = /^[a-f0-9]{64}$/i;
+const secretKeyPattern = /(password|passwd|cookie|bearer|token|credential|mfa|passkey|sessionstorage|localstorage|secret|authorizationheader)/i;
+const errorClasses = new Set(["AUTH_REQUIRED", "ACCOUNT_MISMATCH", "CONTENT_MISMATCH", "MEDIA_MISMATCH", "UPLOAD_ERROR", "UNKNOWN_COMPOSER", "PLATFORM_ERROR", "NETWORK_ERROR", "TIMEOUT", "VALIDATION_ERROR", "NONE"]);
+const recoveryClasses = new Set(["RECOVERABLE", "HUMAN_REQUIRED", "UNKNOWN", "NONE"]);
+
+function required(value, label) {
+  const text = String(value ?? "").trim();
+  if (!text) throw new Error(`${label} is required`);
+  return text;
+}
+
+function assertNoSecrets(value, path = "contract") {
+  if (!value || typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    if (secretKeyPattern.test(key)) throw new Error(`Execution contract cannot include secret-like field ${path}.${key}`);
+    assertNoSecrets(child, `${path}.${key}`);
+  }
+}
+
+export function contentSha256(content) {
+  return createHash("sha256").update(String(content || "")).digest("hex");
+}
+
+export function validateExecutionRequestV1(input) {
+  if (!input || typeof input !== "object" || input.schemaVersion !== EXECUTION_REQUEST_SCHEMA_VERSION) {
+    throw new Error("ExecutionRequestV1 schemaVersion must equal 1");
+  }
+  assertNoSecrets(input);
+  const request = {
+    schemaVersion: 1,
+    executionId: required(input.executionId, "executionId"),
+    jobId: required(input.jobId, "jobId"),
+    campaignId: required(input.campaignId, "campaignId"),
+    platform: required(input.platform, "platform"),
+    accountId: required(input.accountId, "accountId"),
+    profileId: required(input.profileId, "profileId"),
+    target: {
+      targetId: required(input.target?.targetId, "target.targetId"),
+      url: required(input.target?.url, "target.url")
+    },
+    audience: required(input.audience, "audience"),
+    content: {
+      contentId: required(input.content?.contentId, "content.contentId"),
+      sha256: required(input.content?.sha256, "content.sha256").toLowerCase(),
+      payload: String(input.content?.payload ?? "")
+    },
+    media: Array.isArray(input.media) ? input.media.map((item, index) => ({
+      artifactId: required(item.artifactId, `media[${index}].artifactId`),
+      reference: required(item.reference, `media[${index}].reference`),
+      sha256: required(item.sha256, `media[${index}].sha256`).toLowerCase(),
+      type: required(item.type, `media[${index}].type`)
+    })) : [],
+    authorization: {
+      authorizationId: required(input.authorization?.authorizationId, "authorization.authorizationId"),
+      binding: required(input.authorization?.binding, "authorization.binding")
+    },
+    idempotencyKey: required(input.idempotencyKey, "idempotencyKey"),
+    readiness: {
+      state: required(input.readiness?.state, "readiness.state"),
+      checkedAt: required(input.readiness?.checkedAt, "readiness.checkedAt"),
+      expiresAt: required(input.readiness?.expiresAt, "readiness.expiresAt"),
+      binding: required(input.readiness?.binding, "readiness.binding")
+    },
+    createdAt: required(input.createdAt, "createdAt")
+  };
+  if (!sha256Pattern.test(request.content.sha256) || request.content.sha256 !== contentSha256(request.content.payload)) {
+    throw new Error("ExecutionRequestV1 content hash does not match payload");
+  }
+  if (request.media.some((item) => !sha256Pattern.test(item.sha256))) throw new Error("ExecutionRequestV1 media entries require SHA-256 digests");
+  if (request.readiness.state !== "READY") throw new Error("ExecutionRequestV1 requires READY readiness");
+  for (const field of ["checkedAt", "expiresAt", "createdAt"]) {
+    if (!Number.isFinite(Date.parse(request[field] || request.readiness[field] || ""))) throw new Error(`ExecutionRequestV1 ${field} must be an ISO timestamp`);
+  }
+  if (Date.parse(request.readiness.expiresAt) <= Date.parse(request.readiness.checkedAt)) throw new Error("ExecutionRequestV1 readiness expiry must follow checkedAt");
+  return request;
+}
+
+export function validateExecutionReceiptV1(input) {
+  if (!input || typeof input !== "object" || input.schemaVersion !== EXECUTION_RECEIPT_SCHEMA_VERSION) {
+    throw new Error("ExecutionReceiptV1 schemaVersion must equal 1");
+  }
+  assertNoSecrets(input);
+  const receipt = {
+    schemaVersion: 1,
+    executionId: required(input.executionId, "executionId"),
+    jobId: required(input.jobId, "jobId"),
+    attempt: Number(input.attempt),
+    startedAt: required(input.startedAt, "startedAt"),
+    finishedAt: required(input.finishedAt, "finishedAt"),
+    readinessResult: {
+      state: required(input.readinessResult?.state, "readinessResult.state").toUpperCase(),
+      checkedAt: required(input.readinessResult?.checkedAt, "readinessResult.checkedAt"),
+      reasonCode: String(input.readinessResult?.reasonCode || "ready").slice(0, 80)
+    },
+    submitState: required(input.submitState, "submitState").toUpperCase(),
+    publicationUrl: input.publicationUrl ? String(input.publicationUrl) : null,
+    publicationReference: input.publicationReference ? String(input.publicationReference) : null,
+    errorClassification: String(input.errorClassification || "NONE").toUpperCase(),
+    recoveryClassification: String(input.recoveryClassification || "NONE").toUpperCase(),
+    telemetry: {
+      durationMs: Number(input.telemetry?.durationMs ?? 0),
+      browserCommands: Number(input.telemetry?.browserCommands ?? 0),
+      computerUseCalls: Number(input.telemetry?.computerUseCalls ?? 0),
+      retries: Number(input.telemetry?.retries ?? 0)
+    }
+  };
+  if (!Number.isSafeInteger(receipt.attempt) || receipt.attempt < 1) throw new Error("ExecutionReceiptV1 attempt must be a positive integer");
+  for (const field of ["startedAt", "finishedAt"]) if (!Number.isFinite(Date.parse(receipt[field]))) throw new Error(`ExecutionReceiptV1 ${field} must be an ISO timestamp`);
+  if (Date.parse(receipt.finishedAt) < Date.parse(receipt.startedAt)) throw new Error("ExecutionReceiptV1 finishedAt cannot precede startedAt");
+  if (!new Set(["READY", "BLOCKED", "HUMAN_REQUIRED", "UNKNOWN"]).has(receipt.readinessResult.state)) throw new Error("ExecutionReceiptV1 readinessResult state is invalid");
+  if (!SUBMIT_STATES.includes(receipt.submitState)) throw new Error("ExecutionReceiptV1 submitState is invalid");
+  if (!errorClasses.has(receipt.errorClassification)) throw new Error("ExecutionReceiptV1 errorClassification is invalid");
+  if (!recoveryClasses.has(receipt.recoveryClassification)) throw new Error("ExecutionReceiptV1 recoveryClassification is invalid");
+  for (const [name, value] of Object.entries(receipt.telemetry)) {
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error(`ExecutionReceiptV1 telemetry.${name} must be a nonnegative integer`);
+  }
+  if (receipt.submitState === "CONFIRMED" && !receipt.publicationUrl && !receipt.publicationReference) {
+    throw new Error("CONFIRMED receipt requires a publication URL or reference");
+  }
+  if (["SUBMIT_SENT", "UNKNOWN"].includes(receipt.submitState) && receipt.recoveryClassification === "RECOVERABLE") {
+    throw new Error("A possibly submitted execution cannot be classified as safely recoverable");
+  }
+  return receipt;
+}
+
+export function createExecutionRequestV1({ executionId, post, target, account, authorization, readiness, artifact, createdAt = new Date().toISOString() }) {
+  return validateExecutionRequestV1({
+    schemaVersion: 1,
+    executionId,
+    jobId: post.id,
+    campaignId: post.campaignId,
+    platform: target.channel,
+    accountId: account.accountId,
+    profileId: account.profileId,
+    target: { targetId: target.id, url: target.url },
+    audience: post.audience,
+    content: { contentId: post.contentId, sha256: contentSha256(post.content), payload: post.content },
+    media: artifact ? [{ artifactId: artifact.id, reference: artifact.path, sha256: artifact.sha256, type: artifact.mimeType || artifact.mediaType || "application/octet-stream" }] : [],
+    authorization: { authorizationId: authorization.id, binding: authorization.binding },
+    idempotencyKey: post.idempotencyKey,
+    readiness: { state: "READY", checkedAt: readiness.checkedAt, expiresAt: readiness.expiresAt, binding: readiness.binding },
+    createdAt
+  });
+}
