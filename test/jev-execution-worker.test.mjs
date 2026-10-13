@@ -286,6 +286,8 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
   const mediaHash = createHash("sha256").update(bytes).digest("hex");
   let phase = "feed";
   let postClickCount = 0;
+  let mountMediaInput = true;
+  let previewReady = true;
   const calls = [];
   const request = {
     executionId: "exec-dry", jobId: "job-dry", campaignId: "campaign-dry", platform: "linkedin",
@@ -301,27 +303,29 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     async waitForFeed() {},
     async snapshot() {
       if (phase === "feed") return '- button "Start a post" [ref=trigger]';
-      if (phase === "file") return '- input file [ref=file]';
       return '- textbox "Post editor" [ref=editor]\n- button "Phương tiện truyền thông" [expanded=false, ref=media]\n- button "Post" [ref=post]';
     },
     async evaluate(_id, expression) {
       if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: phase === "feed" };
       if (expression.includes("candidates[0].click()")) { phase = "composer"; return { clicked: true }; }
-      if (expression.includes("mediaControlClick")) { calls.push(["media-control-dom-fallback"]); phase = "file"; return { mediaControlClick: true, dialogCount: 1, editorCount: 1, controlCount: 1 }; }
       if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: true, dialogCount: phase === "feed" ? 0 : 1, editorCount: phase === "feed" ? 0 : 1, audience: true, postButton: true, mediaControl: true, advertisingControls: 0 };
       if (expression.includes("const expected = \"public\"")) return { dialogCount: 1, audienceMatch: true };
       if (expression.includes("contenteditable") && expression.includes("editorCount")) return { dialogCount: 1, editorCount: 1, text: "approved draft" };
-      if (expression.includes("input[type=") && expression.includes("fileCount")) return { dialogCount: 1, fileCount: phase === "uploaded" ? 1 : 0, filename: phase === "uploaded" ? "approved.mp4" : "", videoCount: phase === "uploaded" ? 1 : 0, imageCount: 0, uploadError: false };
+      if (expression.includes("newestMatchesSelector")) return { inputCount: phase === "media" || phase === "uploaded" ? (mountMediaInput ? 3 : 2) : 2, newestMatchesSelector: mountMediaInput, accept: "video/*", multiple: false, disabled: false, visible: false, selectedCount: phase === "uploaded" ? 1 : 0, mediaEditorVisible: phase === "media" || phase === "uploaded", dialogCount: 1 };
+      if (expression.includes("length > 2") && expression.includes("input[type=")) return mountMediaInput && (phase === "media" || phase === "uploaded");
+      if (expression.includes("videoWidth") && expression.includes("fileCount")) return { dialogCount: 1, fileCount: phase === "uploaded" ? 1 : 0, filename: phase === "uploaded" ? "approved.mp4" : "", mediaType: phase === "uploaded" ? "video/mp4" : "", videoCount: phase === "uploaded" && previewReady ? 1 : 0, videoWidth: phase === "uploaded" && previewReady ? 1280 : 0, videoHeight: phase === "uploaded" && previewReady ? 720 : 0, imageCount: 0, uploadError: false };
       if (expression.includes("const expected = new URL")) return { domain: true, targetMatched: true };
       return {};
     },
+    async waitForExpression(_id, expression, timeoutMs) { calls.push(["wait-expression", expression, timeoutMs]); if (!expression.includes("input[type=") || phase !== "media" || !mountMediaInput) throw new Error("bounded mount wait failed"); },
     async click(_id, ref) {
       calls.push(["click", ref]);
       if (ref === "trigger") phase = "composer";
+      else if (ref === "media") phase = "media";
       else if (ref === "post") { postClickCount += 1; phase = "submitted"; }
     },
     async fill(_id, ref, value) { calls.push(["fill", ref, value]); },
-    async upload(_id, ref, file) { calls.push(["upload", ref, file]); phase = "uploaded"; },
+    async uploadSelector(_id, selector, file) { calls.push(["upload-selector", selector, file]); phase = "uploaded"; },
     async keypress(_id, key) { calls.push(["keypress", key]); phase = "feed"; }
   };
   try {
@@ -333,10 +337,28 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
       ["navigate", "https://www.linkedin.com/feed/"], ["wait-url", "https://www.linkedin.com/feed/"]
     ]);
     assert.deepEqual(calls.filter(([name, ref]) => name === "click" && ref === "post"), []);
-    assert.ok(calls.some(([name]) => name === "upload"));
-    assert.ok(calls.some(([name]) => name === "media-control-dom-fallback"));
+    assert.ok(calls.some(([name, selector]) => name === "upload-selector" && selector === "input[type=file]:last-of-type"));
+    assert.ok(calls.some(([name]) => name === "wait-expression"));
     assert.equal(phase, "feed");
     assert.equal(result.computerUseCalls, 0);
+    assert.equal(postClickCount, 0, "dry-run must stop before Post");
+
+    const uploadCountBeforeMismatch = calls.filter(([name]) => name === "upload-selector").length;
+    const hashMismatch = await adapter.execute({ ...request, media: [{ ...request.media[0], sha256: "0".repeat(64) }] }, { dryRun: true, expectedIdentityUrl: "https://www.linkedin.com/in/owner" });
+    assert.equal(hashMismatch.errorClassification, "MEDIA_MISMATCH");
+    assert.equal(calls.filter(([name]) => name === "upload-selector").length, uploadCountBeforeMismatch, "hash mismatch must block attachment");
+
+    mountMediaInput = false;
+    const missingInput = await new LinkedInAdapter(browser, { mediaTimeoutMs: 5 }).execute(request, { dryRun: true, expectedIdentityUrl: "https://www.linkedin.com/in/owner" });
+    assert.equal(missingInput.errorClassification, "UPLOAD_ERROR");
+    assert.equal(calls.filter(([name]) => name === "upload-selector").length, uploadCountBeforeMismatch, "missing input must not attempt upload");
+
+    mountMediaInput = true;
+    previewReady = false;
+    const missingPreview = await new LinkedInAdapter(browser, { mediaTimeoutMs: 5 }).execute(request, { dryRun: true, expectedIdentityUrl: "https://www.linkedin.com/in/owner" });
+    assert.equal(missingPreview.errorClassification, "UPLOAD_ERROR", "upload command alone must not count as attachment success");
+    assert.equal(postClickCount, 0);
+    previewReady = true;
 
     const postClicksBefore = calls.filter(([name, ref]) => name === "click" && ref === "post").length;
     const blockedLive = await adapter.execute(request, {

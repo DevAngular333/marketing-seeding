@@ -106,25 +106,33 @@ const AUDIENCE_EXPRESSION = (audience) => `(() => {
 const MEDIA_STATE_EXPRESSION = `(() => {
   const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter((node) => node.getClientRects().length);
   const dialog = dialogs.length === 1 ? dialogs[0] : null;
-  const file = dialog ? Array.from(dialog.querySelectorAll('input[type="file"]')).find((node) => node.files?.length) : null;
-  const videos = dialog ? Array.from(dialog.querySelectorAll('video')).filter((node) => node.getClientRects().length && (node.readyState >= 1 || node.poster)) : [];
+  const files = Array.from(document.querySelectorAll('input[type="file"]'));
+  const file = [...files].reverse().find((node) => node.files?.length) || null;
+  const videos = dialog ? Array.from(dialog.querySelectorAll('video')).filter((node) => node.getClientRects().length && node.readyState >= 1 && node.videoWidth > 0 && node.videoHeight > 0) : [];
   const images = dialog ? Array.from(dialog.querySelectorAll('img')).filter((node) => node.getClientRects().length && node.naturalWidth > 0) : [];
   const body = dialog?.innerText || '';
-  return { dialogCount: dialogs.length, fileCount: file?.files?.length || 0, filename: file?.files?.[0]?.name || '', videoCount: videos.length, imageCount: images.length, uploadError: /upload failed|couldn't upload|cannot upload|upload error|tải lên thất bại/i.test(body) };
+  return { dialogCount: dialogs.length, fileCount: file?.files?.length || 0, filename: file?.files?.[0]?.name || '', mediaType: file?.files?.[0]?.type || '', videoCount: videos.length, videoWidth: videos[0]?.videoWidth || 0, videoHeight: videos[0]?.videoHeight || 0, imageCount: images.length, uploadError: /upload failed|couldn't upload|cannot upload|upload error|tải lên thất bại/i.test(body) };
+})()`;
+const MEDIA_INPUT_STATE_EXPRESSION = `(() => {
+  const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+  const newest = inputs.at(-1) || null;
+  const selectorTarget = document.querySelector('input[type="file"]:last-of-type');
+  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter((node) => node.getClientRects().length);
+  const dialogText = dialogs.length === 1 ? dialogs[0].innerText || '' : '';
+  return {
+    inputCount: inputs.length,
+    newestMatchesSelector: Boolean(newest && selectorTarget === newest),
+    accept: newest?.accept || '',
+    multiple: newest?.multiple === true,
+    disabled: newest?.disabled === true,
+    visible: Boolean(newest?.getClientRects().length),
+    selectedCount: newest?.files?.length || 0,
+    mediaEditorVisible: /media editor|tr\u00ecnh ch\u1ec9nh s\u1eeda|ch\u1ec9nh s\u1eeda ph\u01b0\u01a1ng ti\u1ec7n/i.test(dialogText),
+    dialogCount: dialogs.length
+  };
 })()`;
 
-const MEDIA_CONTROL_CLICK_EXPRESSION = `(() => {
-  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter((node) => node.getClientRects().length);
-  const dialog = dialogs.length === 1 ? dialogs[0] : null;
-  const editors = dialog ? Array.from(dialog.querySelectorAll('[role="textbox"],textarea,[contenteditable="true"]')).filter((node) => node.getClientRects().length) : [];
-  const inputs = dialog ? Array.from(dialog.querySelectorAll('input[type="file"]')) : [];
-  const controls = dialog ? Array.from(dialog.querySelectorAll('button,[role="button"]')).filter((node) => node.getClientRects().length && /photo|video|media|phương tiện truyền thông|ảnh/i.test([node.getAttribute('aria-label') || '', node.innerText || ''].join(' '))) : [];
-  if (dialogs.length !== 1 || editors.length !== 1 || controls.length !== 1 || inputs.length !== 0) {
-    return { mediaControlClick: false, dialogCount: dialogs.length, editorCount: editors.length, controlCount: controls.length, fileInputCount: inputs.length };
-  }
-  controls[0].click();
-  return { mediaControlClick: true, dialogCount: dialogs.length, editorCount: editors.length, controlCount: controls.length };
-})()`;
+const MEDIA_INPUT_MOUNTED_EXPRESSION = (priorCount) => `(() => document.querySelectorAll('input[type="file"]').length > ${Number(priorCount)})()`;
 
 const FEED_VERIFICATION_EXPRESSION = (content, mediaExpected, expectedIdentityUrl) => `(() => {
   const expected = ${JSON.stringify(content)}.trim();
@@ -260,7 +268,7 @@ export class LinkedInAdapter {
     const media = context.media || { mediaHashMatched: true, mediaPreviewConfirmed: true };
     const gates = {
       authorizationValid: true, readinessFresh: true, accountMatch: true, profileMatch: true, targetMatch: context.targetVerified === true,
-      contentHashMatch: true, mediaHashMatch: media.mediaHashMatched, audienceMatch: true,
+      contentHashMatch: true, mediaHashMatch: media.mediaHashMatched, audienceMatch: media.audienceMatch === true,
       composerConfirmed: true, mediaPreviewConfirmed: media.mediaPreviewConfirmed,
       noDuplicateReceipt: true, noExistingConfirmedPublication: true
     };
@@ -359,33 +367,50 @@ export class LinkedInAdapter {
 
   async #attachMedia(request, pageId, snapshot) {
     const media = validateMediaDescriptor(request);
-    if (!media) return { mediaHashMatched: true, mediaPreviewConfirmed: true, mediaAttachMs: 0, mediaReadyMs: 0 };
+    if (!media) return { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true, mediaAttachMs: 0, mediaReadyMs: 0 };
     const attachStarted = Date.now();
     const fileHash = await sha256File(media.path);
     if (fileHash !== media.sha256) throw Object.assign(new Error("Media hash differs from the approved artifact"), { code: "MEDIA_MISMATCH" });
     if (!await verifyMediaType(media.path, media.type)) throw Object.assign(new Error("Media file type does not match the approved descriptor"), { code: "MEDIA_MISMATCH" });
-    const mediaButton = findRef(snapshot, /button.*(?:photo|video|media|phương tiện truyền thông|ảnh)/i);
+    const mediaButton = findRef(snapshot, /button.*(?:photo|video|media|ph\u01b0\u01a1ng ti\u1ec7n truy\u1ec1n th\u00f4ng|\u1ea3nh)/i);
     if (!mediaButton) throw Object.assign(new Error("LinkedIn media control is not uniquely identified"), { code: "MEDIA_MISMATCH" });
+    const before = await this.browser.evaluate(pageId, MEDIA_INPUT_STATE_EXPRESSION);
+    if (!Number.isInteger(before?.inputCount) || before.dialogCount !== 1) throw Object.assign(new Error("LinkedIn composer file-input state is ambiguous"), { code: "UPLOAD_ERROR" });
     await this.browser.click(pageId, mediaButton);
-    let fileSnapshot = await this.browser.snapshot(pageId);
-    let fileInput = findRef(fileSnapshot, /(?:file|upload).*(?:input|button)|input.*file/i);
-    if (!fileInput) {
-      const fallback = await this.browser.evaluate(pageId, MEDIA_CONTROL_CLICK_EXPRESSION).catch(() => ({ mediaControlClick: false }));
-      if (fallback.mediaControlClick === true) {
-        fileSnapshot = await this.browser.snapshot(pageId);
-        fileInput = findRef(fileSnapshot, /(?:file|upload).*(?:input|button)|input.*file/i);
+    try {
+      if (typeof this.browser.waitForExpression === "function") {
+        await this.browser.waitForExpression(pageId, MEDIA_INPUT_MOUNTED_EXPRESSION(before.inputCount), this.mediaTimeoutMs);
+      } else {
+        await waitFor(this.browser, pageId, MEDIA_INPUT_STATE_EXPRESSION, (state) => state?.inputCount > before.inputCount, this.mediaTimeoutMs);
       }
+    } catch {
+      throw Object.assign(new Error("LinkedIn did not mount a new media file input after opening the media editor"), { code: "UPLOAD_ERROR" });
     }
-    if (!fileInput) throw Object.assign(new Error("ORCA did not expose a direct file input for the composer"), { code: "UPLOAD_ERROR" });
-    await this.browser.upload(pageId, fileInput, media.path);
+    const input = await this.browser.evaluate(pageId, MEDIA_INPUT_STATE_EXPRESSION);
+    const accepted = String(input.accept || "").toLowerCase();
+    const extension = path.extname(media.path).toLowerCase();
+    const typeAllowed = !accepted || accepted.includes("video/*") || accepted.includes(media.type.toLowerCase()) || accepted.includes(extension);
+    if (input.inputCount !== before.inputCount + 1 || input.dialogCount !== 1 || input.mediaEditorVisible !== true || input.newestMatchesSelector !== true || input.visible || input.disabled || input.selectedCount !== 0 || !typeAllowed) {
+      throw Object.assign(new Error("New LinkedIn media input is not uniquely safe to use"), { code: "UPLOAD_ERROR" });
+    }
+    if (typeof this.browser.uploadSelector !== "function") throw Object.assign(new Error("ORCA direct selector upload is unavailable"), { code: "UPLOAD_ERROR" });
+    await this.browser.uploadSelector(pageId, 'input[type=file]:last-of-type', media.path);
     const mediaAttachMs = Date.now() - attachStarted;
     const mediaReadyStarted = Date.now();
     const basename = path.basename(media.path).toLowerCase();
-    const preview = await waitFor(this.browser, pageId, MEDIA_STATE_EXPRESSION, (value) => value?.fileCount === 1 && value?.filename?.toLowerCase() === basename && (media.type.startsWith("video/") ? value.videoCount > 0 : value.imageCount > 0), this.mediaTimeoutMs);
+    let preview;
+    try {
+      preview = await waitFor(this.browser, pageId, MEDIA_STATE_EXPRESSION, (value) => value?.fileCount === 1 && value?.filename?.toLowerCase() === basename && (media.type.startsWith("video/") ? value.videoCount > 0 : value.imageCount > 0), this.mediaTimeoutMs);
+    } catch {
+      throw Object.assign(new Error("LinkedIn did not confirm the attached media preview"), { code: "UPLOAD_ERROR" });
+    }
     if (preview.uploadError || preview.dialogCount !== 1) throw Object.assign(new Error("LinkedIn media preview is not valid"), { code: "UPLOAD_ERROR" });
-    return { mediaHashMatched: true, mediaPreviewConfirmed: true, mediaAttachMs, mediaReadyMs: Date.now() - mediaReadyStarted };
+    if (media.type.startsWith("video/") && preview.mediaType && !preview.mediaType.toLowerCase().startsWith("video/")) throw Object.assign(new Error("LinkedIn attached file type differs from the approved video"), { code: "UPLOAD_ERROR" });
+    if (media.type.startsWith("video/") && (!preview.videoWidth || !preview.videoHeight)) throw Object.assign(new Error("LinkedIn video preview has not loaded dimensions"), { code: "UPLOAD_ERROR" });
+    const audience = await this.browser.evaluate(pageId, AUDIENCE_EXPRESSION(request.audience));
+    if (audience.dialogCount !== 1 || audience.audienceMatch !== true) throw Object.assign(new Error("LinkedIn audience changed while attaching media"), { code: "TARGET_MISMATCH" });
+    return { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true, mediaAttachMs, mediaReadyMs: Date.now() - mediaReadyStarted };
   }
-
   async #safeClose(pageId) {
     await this.browser.keypress(pageId, "Escape");
     let snapshot = await this.browser.snapshot(pageId);

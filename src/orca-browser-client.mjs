@@ -108,6 +108,12 @@ export class OrcaCliClient {
     await this.#run(["upload", "--element", element, "--files", filePath, "--page", pageId, "--worktree", this.worktree]);
   }
 
+  async uploadSelector(pageId, selector, filePath) {
+    const quote = (value) => `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+    const command = `upload ${quote(selector)} ${quote(filePath)} --json`;
+    await this.#run(["exec", "--command", command, "--page", pageId, "--worktree", this.worktree]);
+  }
+
   async keypress(pageId, key) {
     await this.#run(["keypress", "--key", key, "--page", pageId, "--worktree", this.worktree]);
   }
