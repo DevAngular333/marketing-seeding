@@ -51,6 +51,32 @@ async function waitFor(browser, pageId, expression, predicate, timeoutMs = 15_00
   throw Object.assign(new Error("LinkedIn state wait timed out"), { code: "PAGE_LOAD_TIMEOUT" });
 }
 
+async function waitForLinkedInIdentity(browser, pageId, identityPath, timeoutMs = 10_000) {
+  const expression = linkedInReadinessExpressions().context(identityPath);
+  let identity = await browser.evaluate(pageId, expression);
+  if (identity.securityChallenge) throw Object.assign(new Error("LinkedIn security challenge requires human action"), { code: "SECURITY_CHALLENGE" });
+  if (identity.loginRequired) throw Object.assign(new Error("LinkedIn login form or auth route is visible"), { code: "AUTH_REQUIRED" });
+  if (identity.sessionAuthenticated && identity.identityVerified) return identity;
+
+  // URL navigation can complete before LinkedIn hydrates its authenticated shell.
+  // Wait for positive session evidence instead of treating an intermediate page as
+  // an authentication failure. Explicit login/challenge evidence still fails fast.
+  if (typeof browser.waitForExpression === "function") {
+    const readyExpression = `(() => { const state = (${expression}); return state.securityChallenge || state.loginRequired || (state.sessionAuthenticated && state.identityVerified); })()`;
+    await browser.waitForExpression(pageId, readyExpression, timeoutMs).catch(() => undefined);
+    identity = await browser.evaluate(pageId, expression);
+  } else {
+    identity = await waitFor(browser, pageId, expression,
+      (state) => state?.securityChallenge || state?.loginRequired || (state?.sessionAuthenticated && state?.identityVerified), timeoutMs);
+  }
+
+  if (identity.securityChallenge) throw Object.assign(new Error("LinkedIn security challenge requires human action"), { code: "SECURITY_CHALLENGE" });
+  if (identity.loginRequired) throw Object.assign(new Error("LinkedIn login form or auth route is visible"), { code: "AUTH_REQUIRED" });
+  if (!identity.sessionAuthenticated) throw Object.assign(new Error("LinkedIn authenticated page did not finish loading"), { code: "PAGE_LOAD_TIMEOUT" });
+  if (!identity.identityVerified) throw Object.assign(new Error("LinkedIn account identity is ambiguous or mismatched"), { code: "ACCOUNT_MISMATCH" });
+  return identity;
+}
+
 const TARGET_EXPRESSION = (url) => `(() => {
   const expected = new URL(${JSON.stringify(url)});
   const actual = new URL(location.href);
@@ -174,10 +200,7 @@ export class LinkedInAdapter {
     await this.browser.waitForUrl(pageId, request.target.url, 15_000);
     const actual = await this.browser.showTab(pageId);
     if (actual.profileId !== request.profileId) throw Object.assign(new Error("Profile changed during navigation"), { code: "ACCOUNT_MISMATCH" });
-    const identity = await this.browser.evaluate(pageId, linkedInReadinessExpressions().context(identityPath));
-    if (identity.securityChallenge) throw Object.assign(new Error("LinkedIn security challenge requires human action"), { code: "SECURITY_CHALLENGE" });
-    if (identity.loginRequired || !identity.sessionAuthenticated) throw Object.assign(new Error("LinkedIn authentication is required"), { code: "AUTH_REQUIRED" });
-    if (!identity.identityVerified) throw Object.assign(new Error("LinkedIn account identity is ambiguous or mismatched"), { code: "ACCOUNT_MISMATCH" });
+    await waitForLinkedInIdentity(this.browser, pageId, identityPath);
   }
 
   async prepareExecution(request, { account } = {}) {

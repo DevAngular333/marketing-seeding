@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 export const EXECUTION_REQUEST_SCHEMA_VERSION = 1;
 export const EXECUTION_RECEIPT_SCHEMA_VERSION = 1;
 export const SUBMIT_STATES = Object.freeze(["NOT_STARTED", "SUBMIT_SENT", "CONFIRMED", "UNKNOWN", "FAILED"]);
-export const EXECUTION_STATES = Object.freeze(["REQUEST_READY", "DRY_RUN_COMPLETE", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED"]);
+export const EXECUTION_STATES = Object.freeze(["REQUEST_READY", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED"]);
 
 const sha256Pattern = /^[a-f0-9]{64}$/i;
 const secretKeyPattern = /(password|passwd|cookie|bearer|token|credential|mfa|passkey|sessionstorage|localstorage|secret|authorizationheader)/i;

@@ -1254,10 +1254,11 @@ export class SeedingService {
       state.executionRequests ||= [];
       const previous = state.executionRequests.filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
       if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
-      if (previous && previous.state === "DRY_RUN_COMPLETE" && !dryRun) {
-        // A dry-run record must never be upgraded or redispatched as a live request.
+      if (previous && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state) && (!dryRun || previous.submitState !== "NOT_STARTED")) {
+        // A completed no-submit record may be followed by a separately requested
+        // live attempt only through normal live eligibility; it is never reused.
       } else if (previous && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
-        if (previous.state !== "REQUEST_READY") throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
+        if (previous.state !== "REQUEST_READY" && !(dryRun && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state))) throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
         if (Boolean(previous.request?.dryRun) !== dryRun) throw new Error("Execution request mode cannot be changed after creation");
       }
       const reusePrevious = previous?.state === "REQUEST_READY" && Boolean(previous.request?.dryRun) === dryRun;
@@ -1513,8 +1514,12 @@ export class SeedingService {
       state.executionReceipts.push(row);
       if (receipt.dryRun) {
         if (request.request?.dryRun === true) {
-          request.state = "DRY_RUN_COMPLETE";
-          request.executionPhase = "DRY_RUN_COMPLETE";
+          const gatesPassed = receipt.errorClassification === "NONE"
+            && receipt.verificationGates
+            && Object.values(receipt.verificationGates).length > 0
+            && Object.values(receipt.verificationGates).every((passed) => passed === true);
+          request.state = gatesPassed ? "DRY_RUN_COMPLETE" : "DRY_RUN_FAILED";
+          request.executionPhase = request.state;
           request.dryRunCompletedAt = row.receivedAt;
         }
         return row;

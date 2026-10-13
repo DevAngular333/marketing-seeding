@@ -9,6 +9,7 @@ The local server owns the canonical state writer and wires one `JevExecutionWork
 The normal safe test mode is restricted to one explicitly named request per process run:
 
 - Dry-run: set `SEEDING_JEV_WORKER_ENABLED=true` and `SEEDING_JEV_DRY_RUN_EXECUTION_ID=<executionId>`.
+- Operator-only pre-submit dry-run: `POST /api/posts/:id/execution-request/dry-run`, then `POST /api/execution-requests/:id/run-dry-run`. This explicitly marked request traverses the same in-process worker, adapter registry, and LinkedIn adapter. It does not enter the live queue.
 - Controlled one-job live test: set `SEEDING_JEV_WORKER_ENABLED=true`, `SEEDING_JEV_LIVE_ENABLED=true`, and `SEEDING_JEV_LIVE_EXECUTION_ID=<executionId>`. The request must also be marked `testJob`.
 - Campaign-autonomous live mode: set `SEEDING_JEV_WORKER_ENABLED=true`, `SEEDING_JEV_LIVE_ENABLED=true`, and `SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED=true`. Only non-test jobs inside an active campaign authorization with `allowLiveExecution=true` are eligible.
 
@@ -16,12 +17,14 @@ Both live modes require an active campaign authorization with `allowLiveExecutio
 
 Before using either mode, register the exact LinkedIn account and its dedicated ORCA profile with `expectedIdentityUrl`. The URL is only an identity selector; the provider verifies the authenticated session and matching LinkedIn profile link without persisting account page content. If identity, profile, session, composer, or destination is ambiguous, the job stops.
 
+The operator-only pre-submit dry-run ignores only publish-time gates: local schedule slot, publication cadence/daily/concurrency limits, `allowLiveExecution`, and target activation status. It still requires a current campaign authorization within its validity window, exact platform/account/profile/target/content/media/audience scope, registered healthy account binding, fresh bound `READY` readiness, valid artifact hash/type, and duplicate-publication protection. A dry-run does not change post queue/lifecycle state, submit state, or live eligibility. It holds the ordinary execution/profile lease and returns `DRY_RUN_COMPLETE` only when all pre-submit verification gates pass; an unsuccessful dry-run returns `DRY_RUN_FAILED` and can only be retried as a new operator-requested no-submit attempt.
+
 ## Execution sequence
 
 1. Acquire a durable lease for execution, job, and platform/profile.
 2. Refresh/check readiness through the registered platform provider and verify the account/profile binding.
 3. Refresh the existing request under its current `executionId` and record `EXECUTING` for live mode.
-4. The adapter uses only the expected ORCA profile, navigates directly, verifies account identity and target, classifies the composer structurally, checks audience and content hash, validates the media file SHA-256, attaches it using the browser file input, and confirms the preview.
+4. The adapter uses only the expected ORCA profile, navigates directly, waits for LinkedIn's authenticated shell to hydrate after navigation, verifies account identity and target, classifies the composer structurally, checks audience and content hash, validates the media file SHA-256, attaches it using the browser file input, and confirms the preview.
 5. Dry-run stops and closes the composer. Its `dryRun: true`, `NOT_STARTED` receipt is auditable but does not consume the live request or alter its submission state.
 6. In live mode, the control plane rechecks authorization, readiness, content, asset, audience, profile, idempotency, and duplicate state while holding the lease. It persists `SUBMIT_SENT_INTENT` before the adapter performs one Post click.
 7. The adapter marks `SUBMIT_SENT`, waits for the feed, and verifies the resulting content, media presence, author identity, and LinkedIn reference. A failure after intent is `UNKNOWN`; it is never redispatched.

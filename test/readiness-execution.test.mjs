@@ -289,6 +289,40 @@ test("operator DRY-RUN traverses the worker while live schedule, concurrency and
   assert.equal((await fixtureState.service.readyExecutionRequests()).length, 0);
 });
 
+test("failed no-submit dry-run stays distinct and can be explicitly retried as a new attempt", async (context) => {
+  const fixtureState = await fixture({ platform: "linkedin", allowLiveExecution: false, provider: { async checkReadiness() { return ready(); } } });
+  context.after(() => rm(fixtureState.directory, { recursive: true, force: true }));
+  await fixtureState.service.refreshCampaignJobReadiness(fixtureState.post.id, "operator", { force: true });
+  const first = await fixtureState.service.prepareExecutionRequest(fixtureState.post.id, "operator", { dryRun: true });
+  const at = new Date().toISOString();
+  await fixtureState.service.recordExecutionReceipt(first.executionId, {
+    schemaVersion: 1,
+    executionId: first.executionId,
+    jobId: fixtureState.post.id,
+    attempt: first.attempt,
+    startedAt: at,
+    finishedAt: at,
+    readinessResult: { state: "READY", checkedAt: at },
+    submitState: "NOT_STARTED",
+    dryRun: true,
+    errorClassification: "AUTH_REQUIRED",
+    recoveryClassification: "HUMAN_REQUIRED",
+    telemetry: { durationMs: 10, browserCommands: 1, computerUseCalls: 0, retries: 0 },
+    verificationGates: { passed: false }
+  }, "operator");
+  let state = await fixtureState.service.snapshot();
+  assert.equal(state.executionRequests.find((item) => item.executionId === first.executionId).state, "DRY_RUN_FAILED");
+
+  const second = await fixtureState.service.prepareExecutionRequest(fixtureState.post.id, "operator", { dryRun: true });
+  assert.notEqual(second.executionId, first.executionId);
+  assert.equal(second.attempt, first.attempt + 1);
+  assert.equal(second.request.dryRun, true);
+  assert.equal(second.submitState, "NOT_STARTED");
+  state = await fixtureState.service.snapshot();
+  assert.equal(state.executionRequests.find((item) => item.executionId === first.executionId).state, "DRY_RUN_FAILED");
+  assert.equal(state.posts.find((item) => item.id === fixtureState.post.id).executionState, undefined);
+});
+
 test("stale readiness refreshes while schedule still blocks execution", async () => {
   let calls = 0;
   const tomorrow = new Date(Date.now() + 24 * 60 * 60_000).getUTCDay();

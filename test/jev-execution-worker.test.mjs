@@ -344,3 +344,59 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("LinkedIn adapter waits for the authenticated shell after navigation instead of misclassifying hydration as auth failure", async () => {
+  let phase = "feed";
+  let hydrated = false;
+  let identityChecks = 0;
+  let hydrationWaits = 0;
+  const request = {
+    executionId: "exec-hydration", jobId: "job-hydration", campaignId: "campaign-hydration", platform: "linkedin",
+    accountId: "account-1", profileId: "profile-1", target: { targetId: "target-1", url: "https://www.linkedin.com/feed/" },
+    audience: "public", content: { contentId: "content-1", sha256: createHash("sha256").update("draft").digest("hex"), payload: "draft" }, media: []
+  };
+  const browser = {
+    async listTabs() { return [{ id: "page-1", profileId: "profile-1", url: "https://www.linkedin.com/feed/" }]; },
+    async showTab() { return { pageId: "page-1", profileId: "profile-1", url: "https://www.linkedin.com/feed/" }; },
+    async navigate() { hydrated = false; },
+    async waitForUrl() {},
+    async waitForFeed() {},
+    async waitForExpression(_id, expression, timeoutMs) {
+      assert.match(expression, /sessionAuthenticated/);
+      assert.equal(timeoutMs, 10_000);
+      hydrationWaits += 1;
+      hydrated = true;
+    },
+    async snapshot() {
+      if (phase === "feed") return '- button "Start a post" [ref=trigger]';
+      return '- textbox "Post editor" [ref=editor]\\n- button "Post" [ref=post]';
+    },
+    async evaluate(_id, expression) {
+      if (expression.includes("const expectedPath")) {
+        identityChecks += 1;
+        return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: hydrated, identityVerified: hydrated, feedReachable: hydrated };
+      }
+      if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: true, routeCompatible: true, dialogCount: phase === "feed" ? 0 : 1, editorCount: phase === "feed" ? 0 : 1, audience: true, postButton: true, mediaControl: true, advertisingControls: 0, confirmed: phase !== "feed" };
+      if (expression.includes('const expected = "public"')) return { dialogCount: 1, audienceMatch: true };
+      if (expression.includes("contenteditable") && expression.includes("editorCount")) return { dialogCount: 1, editorCount: 1, text: "draft" };
+      if (expression.includes("const expected = new URL")) return { domain: true, targetMatched: true };
+      return {};
+    },
+    async click(_id, ref) { if (ref === "trigger") phase = "composer"; },
+    async fill() {},
+    async keypress() { phase = "feed"; }
+  };
+
+  const result = await new LinkedInAdapter(browser).execute(request, {
+    dryRun: true,
+    expectedIdentityUrl: "https://www.linkedin.com/in/owner"
+  });
+
+  assert.equal(result.submitState, "NOT_STARTED");
+  assert.equal(result.gates.passed, undefined);
+  assert.equal(result.gates.composerConfirmed, true);
+  assert.equal(result.gates.mediaPreviewConfirmed, true);
+  assert.equal(hydrationWaits, 1);
+  assert.ok(identityChecks >= 2);
+  assert.equal(phase, "feed");
+});
