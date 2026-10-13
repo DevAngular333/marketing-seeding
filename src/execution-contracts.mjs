@@ -122,6 +122,15 @@ export function validateExecutionReceiptV1(input) {
     reconciliation: input.reconciliation === true,
     errorClassification: String(input.errorClassification || "NONE").toUpperCase(),
     recoveryClassification: String(input.recoveryClassification || "NONE").toUpperCase(),
+    uploadFailure: input.uploadFailure ? {
+      subreason: required(input.uploadFailure.subreason, "uploadFailure.subreason").toUpperCase(),
+      dialogCount: Number(input.uploadFailure.dialogCount ?? 0),
+      fileInputCount: Number(input.uploadFailure.fileInputCount ?? 0),
+      selectedSurface: String(input.uploadFailure.selectedSurface || "unknown").slice(0, 40),
+      waitDurationMs: Number(input.uploadFailure.waitDurationMs ?? 0),
+      attachAttempted: input.uploadFailure.attachAttempted === true,
+      previewObserved: input.uploadFailure.previewObserved === true
+    } : null,
     telemetry: {
       durationMs: Number(input.telemetry?.durationMs ?? 0),
       browserCommands: Number(input.telemetry?.browserCommands ?? 0),
@@ -137,6 +146,9 @@ export function validateExecutionReceiptV1(input) {
       contentFillMs: Number(input.telemetry?.contentFillMs ?? 0),
       mediaAttachMs: Number(input.telemetry?.mediaAttachMs ?? 0),
       mediaReadyMs: Number(input.telemetry?.mediaReadyMs ?? 0),
+      mediaControlOpenMs: Number(input.telemetry?.mediaControlOpenMs ?? 0),
+      uploadTargetDiscoveryMs: Number(input.telemetry?.uploadTargetDiscoveryMs ?? 0),
+      fileAttachMs: Number(input.telemetry?.fileAttachMs ?? 0),
       preSubmitVerifyMs: Number(input.telemetry?.preSubmitVerifyMs ?? 0),
       cleanupMs: Number(input.telemetry?.cleanupMs ?? 0),
       totalDryRunMs: Number(input.telemetry?.totalDryRunMs ?? 0),
@@ -154,6 +166,14 @@ export function validateExecutionReceiptV1(input) {
   if (receipt.dryRun && receipt.submitState !== "NOT_STARTED") throw new Error("A dry-run receipt must remain NOT_STARTED");
   if (!errorClasses.has(receipt.errorClassification)) throw new Error("ExecutionReceiptV1 errorClassification is invalid");
   if (!recoveryClasses.has(receipt.recoveryClassification)) throw new Error("ExecutionReceiptV1 recoveryClassification is invalid");
+  if (receipt.uploadFailure) {
+    const subreasons = new Set(["MEDIA_DIALOG_NOT_FOUND", "MEDIA_DIALOG_AMBIGUOUS", "FILE_INPUT_NOT_MOUNTED", "FILE_INPUT_NOT_FOUND", "FILE_INPUT_AMBIGUOUS", "FILE_ATTACH_FAILED", "MEDIA_PREVIEW_NOT_FOUND", "MEDIA_PREVIEW_TIMEOUT", "MEDIA_PREVIEW_INVALID"]);
+    if (receipt.errorClassification !== "UPLOAD_ERROR" || !subreasons.has(receipt.uploadFailure.subreason)) throw new Error("ExecutionReceiptV1 uploadFailure is invalid");
+    if (!/^[a-z_]{2,40}$/.test(receipt.uploadFailure.selectedSurface)) throw new Error("ExecutionReceiptV1 uploadFailure.selectedSurface is invalid");
+    for (const field of ["dialogCount", "fileInputCount", "waitDurationMs"]) {
+      if (!Number.isSafeInteger(receipt.uploadFailure[field]) || receipt.uploadFailure[field] < 0) throw new Error(`ExecutionReceiptV1 uploadFailure.${field} is invalid`);
+    }
+  }
   for (const [name, value] of Object.entries(receipt.telemetry)) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error(`ExecutionReceiptV1 telemetry.${name} must be a nonnegative integer`);
   }

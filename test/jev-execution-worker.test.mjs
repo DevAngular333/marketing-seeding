@@ -103,6 +103,26 @@ test("JEV worker reports a failed no-submit dry-run truthfully", async () => {
   assert.equal(result.receipt.verificationGates.passed, false);
 });
 
+test("worker receipt retains a bounded LinkedIn upload subreason and evidence", async () => {
+  const fixture = executionFixture();
+  const uploadFailure = {
+    subreason: "FILE_INPUT_NOT_MOUNTED", dialogCount: 2, fileInputCount: 0,
+    selectedSurface: "media_editor_dialog", waitDurationMs: 8000,
+    attachAttempted: false, previewObserved: false
+  };
+  const adapter = { async execute() {
+    return { submitState: "NOT_STARTED", errorClassification: "UPLOAD_ERROR", reasonCode: "upload_error", recoveryClassification: "RECOVERABLE",
+      uploadFailure, gates: { passed: false }, startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(), durationMs: 8, browserCommands: 4, computerUseCalls: 0 };
+  } };
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), workerId: "worker-upload", env: {} });
+  const result = await worker.run("exec-1", { dryRun: true });
+  assert.equal(result.status, "DRY_RUN_FAILED");
+  assert.deepEqual(result.receipt.uploadFailure, uploadFailure);
+  assert.equal(fixture.calls.find(([name]) => name === "receipt")[1].uploadFailure.subreason, "FILE_INPUT_NOT_MOUNTED");
+  assert.equal(result.receipt.submitState, "NOT_STARTED");
+});
+
 test("JEV worker refuses live execution unless exact one-job opt-in is present", async () => {
   const fixture = executionFixture();
   let adapterCalls = 0;
@@ -288,6 +308,7 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
   let postClickCount = 0;
   let mountMediaInput = true;
   let previewReady = true;
+  let uploadButtonClicked = false;
   const calls = [];
   const request = {
     executionId: "exec-dry", jobId: "job-dry", campaignId: "campaign-dry", platform: "linkedin",
@@ -306,6 +327,18 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
       return '- textbox "Post editor" [ref=editor]\n- button "Phương tiện truyền thông" [expanded=false, ref=media]\n- button "Post" [ref=post]';
     },
     async evaluate(_id, expression) {
+      if (expression.includes("LINKEDIN_MEDIA_SURFACE_STATE")) return { dialogCount: phase === "media" || phase === "uploaded" || phase === "media-next" ? 2 : 1, composerCount: 1, mediaDialogCount: phase === "media" || phase === "uploaded" || phase === "media-next" ? 1 : 0, fileInputCount: 2 };
+      if (expression.includes("LINKEDIN_MEDIA_OPEN")) { phase = "media"; return { clicked: true }; }
+      if (expression.includes("LINKEDIN_MEDIA_BASELINE")) return { fileInputCount: 2, selectedCount: 0 };
+      if (expression.includes("LINKEDIN_MEDIA_UPLOAD_BUTTON")) { uploadButtonClicked = true; return { clicked: true }; }
+      if (expression.includes("LINKEDIN_MEDIA_INPUT_")) return { fileInputCount: mountMediaInput && uploadButtonClicked ? 3 : 2, newInputCount: mountMediaInput && uploadButtonClicked ? 1 : 0, eligibleCount: mountMediaInput && uploadButtonClicked ? 1 : 0, selectorCount: expression.includes("LINKEDIN_MEDIA_INPUT_SELECT") ? 1 : 0, portalMounted: true };
+      if (expression.includes("LINKEDIN_MEDIA_PREVIEW_STATE")) return { composerCount: 1, mediaDialogCount: 1, selectedInputCount: 1, fileCount: phase === "uploaded" ? 1 : 0, filename: phase === "uploaded" ? "approved.mp4" : "", mediaType: "video/mp4", videoCount: phase === "uploaded" && previewReady ? 1 : 0, videoWidth: phase === "uploaded" && previewReady ? 1280 : 0, videoHeight: phase === "uploaded" && previewReady ? 720 : 0, uploadError: false };
+      if (expression.includes("LINKEDIN_MEDIA_FINISH_STATE")) return { composerCount: 1, mediaDialogCount: phase === "uploaded" || phase === "media-next" ? 1 : 0, nextEnabled: phase === "uploaded", doneEnabled: phase === "media-next" };
+      if (expression.includes("LINKEDIN_MEDIA_FINISH_CLICK")) { phase = expression.includes("const pattern = /^(next") ? "media-next" : "composer-final"; return { clicked: true }; }
+      if (expression.includes("LINKEDIN_MEDIA_CLEANUP_STATE")) return { path: phase === "feed" ? "/feed/" : "/sharing/compose", composerCount: phase === "feed" ? 0 : 1, mediaDialogCount: phase === "media" || phase === "uploaded" || phase === "media-next" ? 1 : 0, selectedFileCount: 0 };
+      if (expression.includes("LINKEDIN_MEDIA_CANCEL_EDITOR")) { phase = "composer"; return { clicked: true }; }
+      if (expression.includes("LINKEDIN_MEDIA_CLEAR_COMPOSER")) return { cleared: true };
+      if (expression.includes("LINKEDIN_MEDIA_CANCEL_COMPOSER")) { phase = "feed"; return { clicked: true }; }
       if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: phase === "feed" };
       if (expression.includes("candidates[0].click()")) { phase = "composer"; return { clicked: true }; }
       if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: true, dialogCount: phase === "feed" ? 0 : 1, editorCount: phase === "feed" ? 0 : 1, audience: true, postButton: true, mediaControl: true, advertisingControls: 0 };
@@ -334,11 +367,12 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     assert.equal(result.submitState, "NOT_STARTED");
     assert.equal(result.gates.mediaPreviewConfirmed, true, JSON.stringify(result));
     assert.deepEqual(calls.filter(([name]) => name === "navigate" || name === "wait-url"), [
-      ["navigate", "https://www.linkedin.com/feed/"], ["wait-url", "https://www.linkedin.com/feed/"]
+      ["navigate", "https://www.linkedin.com/feed/"], ["wait-url", "https://www.linkedin.com/feed/"],
+      ["navigate", "https://www.linkedin.com/feed/"]
     ]);
     assert.deepEqual(calls.filter(([name, ref]) => name === "click" && ref === "post"), []);
-    assert.ok(calls.some(([name, selector]) => name === "upload-selector" && selector === "input[type=file]:last-of-type"));
-    assert.ok(calls.some(([name]) => name === "wait-expression"));
+    assert.ok(calls.some(([name, selector]) => name === "upload-selector" && /^input\[data-orca-media-target=m[a-f0-9]{32}\]$/.test(selector)));
+    assert.equal(uploadButtonClicked, true);
     assert.equal(phase, "feed");
     assert.equal(result.computerUseCalls, 0);
     assert.equal(postClickCount, 0, "dry-run must stop before Post");
@@ -419,6 +453,9 @@ test("LinkedIn adapter waits for the authenticated shell after navigation instea
       return '- textbox "Post editor" [ref=editor]\\n- button "Post" [ref=post]';
     },
     async evaluate(_id, expression) {
+      if (expression.includes("LINKEDIN_MEDIA_CLEANUP_STATE")) return { path: phase === "feed" ? "/feed/" : "/sharing/compose", composerCount: phase === "feed" ? 0 : 1, mediaDialogCount: 0, selectedFileCount: 0 };
+      if (expression.includes("LINKEDIN_MEDIA_CLEAR_COMPOSER")) return { cleared: true };
+      if (expression.includes("LINKEDIN_MEDIA_CANCEL_COMPOSER")) { phase = "feed"; return { clicked: true }; }
       if (expression.includes("const expectedPath")) {
         identityChecks += 1;
         return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: hydrated, identityVerified: hydrated, feedReachable: hydrated };
@@ -464,6 +501,9 @@ test("LinkedIn composer trigger uses one strictly guarded direct DOM activation 
     async navigate() {}, async waitForUrl() {}, async waitForFeed() {},
     async snapshot() { return phase === "feed" ? '- button "Start a post" [ref=trigger]' : '- textbox "Post editor" [ref=editor]\\n- button "Post" [ref=post]'; },
     async evaluate(_id, expression) {
+      if (expression.includes("LINKEDIN_MEDIA_CLEANUP_STATE")) return { path: phase === "feed" ? "/feed/" : "/sharing/compose", composerCount: phase === "feed" ? 0 : 1, mediaDialogCount: 0, selectedFileCount: 0 };
+      if (expression.includes("LINKEDIN_MEDIA_CLEAR_COMPOSER")) return { cleared: true };
+      if (expression.includes("LINKEDIN_MEDIA_CANCEL_COMPOSER")) { phase = "feed"; return { clicked: true }; }
       if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: true };
       if (expression.includes("candidates[0].click()")) { directActivations += 1; phase = "composer"; return { clicked: true }; }
       if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: phase === "composer", routeCompatible: phase === "composer", dialogCount: phase === "composer" ? 1 : 0, editorCount: phase === "composer" ? 1 : 0, audience: phase === "composer", postButton: phase === "composer", mediaControl: phase === "composer", advertisingControls: 0, confirmed: phase === "composer" };

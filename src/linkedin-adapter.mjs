@@ -5,6 +5,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
 import { linkedInReadinessExpressions, openLinkedInComposer } from "./linkedin-readiness.mjs";
+import { attachLinkedInMedia, cleanupLinkedInComposer } from "./linkedin-media.mjs";
 
 
 function refOf(line) {
@@ -102,37 +103,6 @@ const AUDIENCE_EXPRESSION = (audience) => `(() => {
     : labels.some((label) => label.toLowerCase().includes(expected.toLowerCase()));
   return { dialogCount: dialogs.length, audienceMatch };
 })()`;
-
-const MEDIA_STATE_EXPRESSION = `(() => {
-  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter((node) => node.getClientRects().length);
-  const dialog = dialogs.length === 1 ? dialogs[0] : null;
-  const files = Array.from(document.querySelectorAll('input[type="file"]'));
-  const file = [...files].reverse().find((node) => node.files?.length) || null;
-  const videos = dialog ? Array.from(dialog.querySelectorAll('video')).filter((node) => node.getClientRects().length && node.readyState >= 1 && node.videoWidth > 0 && node.videoHeight > 0) : [];
-  const images = dialog ? Array.from(dialog.querySelectorAll('img')).filter((node) => node.getClientRects().length && node.naturalWidth > 0) : [];
-  const body = dialog?.innerText || '';
-  return { dialogCount: dialogs.length, fileCount: file?.files?.length || 0, filename: file?.files?.[0]?.name || '', mediaType: file?.files?.[0]?.type || '', videoCount: videos.length, videoWidth: videos[0]?.videoWidth || 0, videoHeight: videos[0]?.videoHeight || 0, imageCount: images.length, uploadError: /upload failed|couldn't upload|cannot upload|upload error|tải lên thất bại/i.test(body) };
-})()`;
-const MEDIA_INPUT_STATE_EXPRESSION = `(() => {
-  const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
-  const newest = inputs.at(-1) || null;
-  const selectorTarget = document.querySelector('input[type="file"]:last-of-type');
-  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter((node) => node.getClientRects().length);
-  const dialogText = dialogs.length === 1 ? dialogs[0].innerText || '' : '';
-  return {
-    inputCount: inputs.length,
-    newestMatchesSelector: Boolean(newest && selectorTarget === newest),
-    accept: newest?.accept || '',
-    multiple: newest?.multiple === true,
-    disabled: newest?.disabled === true,
-    visible: Boolean(newest?.getClientRects().length),
-    selectedCount: newest?.files?.length || 0,
-    mediaEditorVisible: /media editor|tr\u00ecnh ch\u1ec9nh s\u1eeda|ch\u1ec9nh s\u1eeda ph\u01b0\u01a1ng ti\u1ec7n/i.test(dialogText),
-    dialogCount: dialogs.length
-  };
-})()`;
-
-const MEDIA_INPUT_MOUNTED_EXPRESSION = (priorCount) => `(() => document.querySelectorAll('input[type="file"]').length > ${Number(priorCount)})()`;
 
 const FEED_VERIFICATION_EXPRESSION = (content, mediaExpected, expectedIdentityUrl) => `(() => {
   const expected = ${JSON.stringify(content)}.trim();
@@ -260,7 +230,7 @@ export class LinkedInAdapter {
   }
 
   async attachMedia(context) {
-    const media = await this.#attachMedia(context.request, context.pageId, context.snapshot);
+    const media = await this.#attachMedia(context.request, context.pageId);
     return { ...context, media };
   }
 
@@ -272,7 +242,7 @@ export class LinkedInAdapter {
       composerConfirmed: true, mediaPreviewConfirmed: media.mediaPreviewConfirmed,
       noDuplicateReceipt: true, noExistingConfirmedPublication: true
     };
-    const submit = findRef(await this.browser.snapshot(context.pageId), /button\s+["'](?:post|Ä‘Äƒng bÃ i|share)["']/i);
+    const submit = findRef(await this.browser.snapshot(context.pageId), /button\s+["\'](?:post|\u0111\u0103ng b\u00e0i|share)["\']/i);
     if (!submit || Object.values(gates).some((passed) => passed !== true)) throw Object.assign(new Error("LinkedIn pre-submit checks did not pass"), { code: "PRE_SUBMIT_GATE_FAILED" });
     return { ...context, gates, submitRef: submit };
   }
@@ -293,7 +263,7 @@ export class LinkedInAdapter {
   }
 
   async cleanup(context) {
-    if (context?.pageId) await this.#safeClose(context.pageId);
+    if (context?.pageId) await this.#safeClose(context.pageId, context.request);
     return context;
   }
 
@@ -365,65 +335,19 @@ export class LinkedInAdapter {
     return await this.browser.snapshot(pageId);
   }
 
-  async #attachMedia(request, pageId, snapshot) {
+  async #attachMedia(request, pageId) {
     const media = validateMediaDescriptor(request);
     if (!media) return { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true, mediaAttachMs: 0, mediaReadyMs: 0 };
-    const attachStarted = Date.now();
     const fileHash = await sha256File(media.path);
     if (fileHash !== media.sha256) throw Object.assign(new Error("Media hash differs from the approved artifact"), { code: "MEDIA_MISMATCH" });
     if (!await verifyMediaType(media.path, media.type)) throw Object.assign(new Error("Media file type does not match the approved descriptor"), { code: "MEDIA_MISMATCH" });
-    const mediaButton = findRef(snapshot, /button.*(?:photo|video|media|ph\u01b0\u01a1ng ti\u1ec7n truy\u1ec1n th\u00f4ng|\u1ea3nh)/i);
-    if (!mediaButton) throw Object.assign(new Error("LinkedIn media control is not uniquely identified"), { code: "MEDIA_MISMATCH" });
-    const before = await this.browser.evaluate(pageId, MEDIA_INPUT_STATE_EXPRESSION);
-    if (!Number.isInteger(before?.inputCount) || before.dialogCount !== 1) throw Object.assign(new Error("LinkedIn composer file-input state is ambiguous"), { code: "UPLOAD_ERROR" });
-    await this.browser.click(pageId, mediaButton);
-    try {
-      if (typeof this.browser.waitForExpression === "function") {
-        await this.browser.waitForExpression(pageId, MEDIA_INPUT_MOUNTED_EXPRESSION(before.inputCount), this.mediaTimeoutMs);
-      } else {
-        await waitFor(this.browser, pageId, MEDIA_INPUT_STATE_EXPRESSION, (state) => state?.inputCount > before.inputCount, this.mediaTimeoutMs);
-      }
-    } catch {
-      throw Object.assign(new Error("LinkedIn did not mount a new media file input after opening the media editor"), { code: "UPLOAD_ERROR" });
-    }
-    const input = await this.browser.evaluate(pageId, MEDIA_INPUT_STATE_EXPRESSION);
-    const accepted = String(input.accept || "").toLowerCase();
-    const extension = path.extname(media.path).toLowerCase();
-    const typeAllowed = !accepted || accepted.includes("video/*") || accepted.includes(media.type.toLowerCase()) || accepted.includes(extension);
-    if (input.inputCount !== before.inputCount + 1 || input.dialogCount !== 1 || input.mediaEditorVisible !== true || input.newestMatchesSelector !== true || input.visible || input.disabled || input.selectedCount !== 0 || !typeAllowed) {
-      throw Object.assign(new Error("New LinkedIn media input is not uniquely safe to use"), { code: "UPLOAD_ERROR" });
-    }
-    if (typeof this.browser.uploadSelector !== "function") throw Object.assign(new Error("ORCA direct selector upload is unavailable"), { code: "UPLOAD_ERROR" });
-    await this.browser.uploadSelector(pageId, 'input[type=file]:last-of-type', media.path);
-    const mediaAttachMs = Date.now() - attachStarted;
-    const mediaReadyStarted = Date.now();
-    const basename = path.basename(media.path).toLowerCase();
-    let preview;
-    try {
-      preview = await waitFor(this.browser, pageId, MEDIA_STATE_EXPRESSION, (value) => value?.fileCount === 1 && value?.filename?.toLowerCase() === basename && (media.type.startsWith("video/") ? value.videoCount > 0 : value.imageCount > 0), this.mediaTimeoutMs);
-    } catch {
-      throw Object.assign(new Error("LinkedIn did not confirm the attached media preview"), { code: "UPLOAD_ERROR" });
-    }
-    if (preview.uploadError || preview.dialogCount !== 1) throw Object.assign(new Error("LinkedIn media preview is not valid"), { code: "UPLOAD_ERROR" });
-    if (media.type.startsWith("video/") && preview.mediaType && !preview.mediaType.toLowerCase().startsWith("video/")) throw Object.assign(new Error("LinkedIn attached file type differs from the approved video"), { code: "UPLOAD_ERROR" });
-    if (media.type.startsWith("video/") && (!preview.videoWidth || !preview.videoHeight)) throw Object.assign(new Error("LinkedIn video preview has not loaded dimensions"), { code: "UPLOAD_ERROR" });
+    const result = await attachLinkedInMedia(this.browser, pageId, media, { timeoutMs: this.mediaTimeoutMs });
     const audience = await this.browser.evaluate(pageId, AUDIENCE_EXPRESSION(request.audience));
     if (audience.dialogCount !== 1 || audience.audienceMatch !== true) throw Object.assign(new Error("LinkedIn audience changed while attaching media"), { code: "TARGET_MISMATCH" });
-    return { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true, mediaAttachMs, mediaReadyMs: Date.now() - mediaReadyStarted };
+    return { ...result, audienceMatch: true };
   }
-  async #safeClose(pageId) {
-    await this.browser.keypress(pageId, "Escape");
-    let snapshot = await this.browser.snapshot(pageId);
-    const composer = await this.browser.evaluate(pageId, linkedInReadinessExpressions().composer).catch(() => ({ dialogCount: 0 }));
-    if (composer.dialogCount > 0) {
-      const discard = findRef(snapshot, /button.*(?:discard|discard draft|hủy bỏ|hủy bản nháp)/i);
-      if (!discard) throw Object.assign(new Error("Composer could not be safely discarded"), { code: "UNKNOWN_COMPOSER" });
-      await this.browser.click(pageId, discard);
-      snapshot = await this.browser.snapshot(pageId);
-    }
-    const state = await this.browser.evaluate(pageId, linkedInReadinessExpressions().context("/feed"));
-    if (!state.linkedinDomain || !state.sessionAuthenticated || !state.identityVerified || state.securityChallenge) throw Object.assign(new Error("LinkedIn composer cleanup was not verified"), { code: "UNKNOWN_COMPOSER" });
-    return snapshot;
+  async #safeClose(pageId, request) {
+    await cleanupLinkedInComposer(this.browser, pageId, request.content.sha256);
   }
 
   async execute(request, { dryRun = true, liveEnabled = false, beforeSubmitIntent, onSubmitSent, account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl } = {}) {
@@ -454,12 +378,15 @@ export class LinkedInAdapter {
       lifecycleContext = await this.attachMedia(lifecycleContext);
       phaseTimings.mediaAttachMs = lifecycleContext.media?.mediaAttachMs || 0;
       phaseTimings.mediaReadyMs = lifecycleContext.media?.mediaReadyMs || 0;
+      phaseTimings.mediaControlOpenMs = lifecycleContext.media?.mediaControlOpenMs || 0;
+      phaseTimings.uploadTargetDiscoveryMs = lifecycleContext.media?.uploadTargetDiscoveryMs || 0;
+      phaseTimings.fileAttachMs = lifecycleContext.media?.fileAttachMs || 0;
       const media = lifecycleContext.media;
       const preSubmitStarted = Date.now();
       const gates = (await this.verifyPreSubmit({ ...lifecycleContext, media })).gates;
       phaseTimings.preSubmitVerifyMs = Date.now() - preSubmitStarted;
       lifecycleContext.gates = gates;
-      const submit = findRef(await this.browser.snapshot(pageId), /button\s+["'](?:post|đăng bài|share)["']/i);
+      const submit = findRef(await this.browser.snapshot(pageId), /button\s+["\'](?:post|\u0111\u0103ng b\u00e0i|share)["\']/i);
       if (!submit) throw Object.assign(new Error("LinkedIn Post button is not uniquely identified"), { code: "UNKNOWN_COMPOSER" });
       if (dryRun) {
         await timed("cleanupMs", () => this.cleanup(lifecycleContext));
@@ -500,10 +427,11 @@ export class LinkedInAdapter {
         telemetry: phaseTimings,
         errorClassification,
         recoveryClassification,
+        uploadFailure: error.uploadFailure || null,
         reasonCode: code.toLowerCase()
       };
     }
   }
 }
 
-export const linkedinAdapterExpressions = { target: TARGET_EXPRESSION, audience: AUDIENCE_EXPRESSION, editor: EDITOR_EXPRESSION, media: MEDIA_STATE_EXPRESSION };
+export const linkedinAdapterExpressions = { target: TARGET_EXPRESSION, audience: AUDIENCE_EXPRESSION, editor: EDITOR_EXPRESSION };

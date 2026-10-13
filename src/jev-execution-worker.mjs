@@ -63,6 +63,7 @@ export class JevExecutionWorker {
       reconciliation,
       errorClassification: errorClass(receiptResult, dryRun),
       recoveryClassification: recoveryClass(receiptResult),
+      uploadFailure: result.uploadFailure || undefined,
       telemetry: {
         durationMs: Math.max(0, Math.trunc(result.durationMs || Date.parse(finishedAt) - Date.parse(startedAt) || 0)),
         browserCommands: Math.max(0, Math.trunc(result.browserCommands || 0)),
