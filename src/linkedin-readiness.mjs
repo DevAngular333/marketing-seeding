@@ -78,6 +78,19 @@ async function sampleComposerState(browser, pageId, timeoutMs) {
   return state;
 }
 
+async function waitForLinkedInFeed(browser, pageId, expectedPath, timeoutMs = 5_000) {
+  const started = Date.now();
+  let state;
+  do {
+    state = await browser.evaluate(pageId, CONTEXT_EXPRESSION(expectedPath));
+    if (state.feedReachable && state.sessionAuthenticated && state.identityVerified) return state;
+    if (state.loginRequired || state.securityChallenge) return state;
+    if (Date.now() - started >= timeoutMs) return state;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  } while (Date.now() - started < timeoutMs);
+  return state;
+}
+
 const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
   const visible = (node) => Boolean(node && node.getClientRects().length);
   const host = location.hostname.toLowerCase().replace(/^www\\./, '');
@@ -187,8 +200,7 @@ export class LinkedInReadinessProvider {
         };
       }
       await this.browser.pressEscape(pageId);
-      await this.browser.waitForFeed(pageId);
-      contextState = await this.browser.evaluate(pageId, CONTEXT_EXPRESSION(linkedInPath(identityReference)));
+      contextState = await waitForLinkedInFeed(this.browser, pageId, linkedInPath(identityReference));
       const composerClosed = contextState.feedReachable && contextState.identityVerified && contextState.sessionAuthenticated;
       if (!composerClosed) return { state: "UNKNOWN", reasonCode: "composer_close_unverified", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       const finishedAt = new Date();

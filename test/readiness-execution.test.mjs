@@ -609,7 +609,34 @@ test("LinkedIn readiness uses the bound ORCA profile and stops before content or
   assert.equal(calls.filter((call) => call === "composer-trigger-dom").length, 1);
   assert.equal(calls.filter((call) => call.startsWith("click:")).length, 0);
   assert.ok(calls.includes("escape"));
+  assert.equal(calls.includes("wait"), false, "closing the composer should use the bounded feed-state check, not a 10-second URL wait");
   assert.equal(calls.some((call) => call === "fill" || call === "submit"), false);
+});
+
+test("LinkedIn readiness verifies composer close with a bounded feed-state wait", async () => {
+  let escaped = false;
+  let closeChecks = 0;
+  const browser = {
+    async listProfiles() { return [{ id: "linkedin-profile-1" }]; },
+    async listTabs() { return [{ id: "page-1", profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }]; },
+    async showTab(id) { return { pageId: id, profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }; },
+    async evaluate(_id, expression) {
+      if (expression.includes("const expectedPath")) {
+        if (escaped) closeChecks += 1;
+        const feedReady = !escaped || closeChecks >= 2;
+        return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: feedReady, identityVerified: feedReady, feedReachable: feedReady };
+      }
+      if (expression.includes("candidates[0].click()")) return { clicked: true };
+      return { linkedinDomain: true, route: true, dialogCount: 1, editorCount: 1, audience: true, postButton: true, mediaControl: true, advertisingControls: 0, confirmed: true };
+    },
+    async pressEscape() { escaped = true; },
+    async waitForFeed() { assert.fail("already-on-feed composer close must not use a URL wait"); }
+  };
+  const result = await new LinkedInReadinessProvider(browser).checkReadiness({
+    platform: "linkedin", profileId: "linkedin-profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/test-owner"
+  });
+  assert.equal(result.state, "READY");
+  assert.equal(closeChecks, 2);
 });
 
 function evaluateLinkedInContext({ path = "/feed/", navigation = true, main = true, composer = true, loginForm = false, pageText = "" } = {}) {
