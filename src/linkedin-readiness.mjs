@@ -111,6 +111,23 @@ const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
   return { clicked: true };
 })()`;
 
+const CLOSE_EMPTY_COMPOSER_EXPRESSION = `(() => {
+  const visible = (node) => Boolean(node && node.getClientRects().length);
+  const host = location.hostname.toLowerCase().replace(/^www\\./, '');
+  const path = location.pathname.replace(/\\/$/, '').toLowerCase() || '/';
+  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter(visible);
+  if (host !== 'linkedin.com' || path !== '/sharing/compose' || dialogs.length !== 1) return { closed: false, reason: 'composer_identity_mismatch' };
+  const dialog = dialogs[0];
+  const editors = Array.from(dialog.querySelectorAll('[contenteditable="true"],[role="textbox"]')).filter(visible);
+  if (editors.length !== 1 || editors.some((node) => String(node.innerText || node.textContent || '').trim())) return { closed: false, reason: 'composer_has_content' };
+  const media = Array.from(dialog.querySelectorAll('video,[data-test-media-preview],[data-test-image-preview]')).filter(visible);
+  if (media.length) return { closed: false, reason: 'composer_has_media' };
+  const cancelButtons = Array.from(dialog.querySelectorAll('button[aria-label],button')).filter((node) => visible(node) && !node.disabled && /^(?:cancel|discard|close|hủy bỏ|đóng)$/i.test((node.getAttribute('aria-label') || node.innerText || '').replace(/\\s+/g, ' ').trim()));
+  if (cancelButtons.length !== 1) return { closed: false, reason: 'composer_close_control_ambiguous' };
+  cancelButtons[0].click();
+  return { closed: true };
+})()`;
+
 export async function openLinkedInComposer(browser, pageId, { mountTimeoutMs = 8_000, expectedIdentityPath = "/" } = {}) {
   let domFallbackUsed = false;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -217,7 +234,8 @@ export class LinkedInReadinessProvider {
           retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString()
         };
       }
-      await this.browser.pressEscape(pageId);
+      const closeResult = await this.browser.evaluate(pageId, CLOSE_EMPTY_COMPOSER_EXPRESSION);
+      if (!closeResult?.closed) return { state: "UNKNOWN", reasonCode: closeResult?.reason || "composer_close_unverified", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       contextState = await waitForLinkedInFeed(this.browser, pageId, linkedInPath(identityReference));
       const composerClosed = contextState.feedReachable && contextState.identityVerified && contextState.sessionAuthenticated;
       if (!composerClosed) return { state: "UNKNOWN", reasonCode: "composer_close_unverified", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
