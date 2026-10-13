@@ -46,10 +46,13 @@ const COMPOSER_EXPRESSION = `(() => {
   const postButton = controls.some((control) => control.tag === 'button' && fields(control).some((field) => /^(đăng bài|post|publish)(?:$|[\\s.…])/i.test(field)));
   const mediaControl = has(/media|photo|video|phương tiện truyền thông|ảnh/i);
   const closeControl = has(/close|dismiss|cancel|hủy|đóng/i);
+  const dialogText = dialogs.map((dialog) => (dialog.innerText || '').replace(/\\s+/g, ' ').trim()).join(' ');
+  const retryControl = has(/^(?:refresh|reload|try again|làm mới|thử lại)$/i);
+  const transientLoadError = dialogs.length === 1 && editors.length === 0 && retryControl && /something went wrong|we hit a snag|there was a problem|đã xảy ra sự cố ở phía chúng tôi|chúng tôi gặp sự cố/i.test(dialogText);
   const linkedinDomain = /(^|\\.)linkedin\\.com$/i.test(location.hostname);
   const confirmed = linkedinDomain && routeCompatible && dialogs.length === 1 && editors.length === 1 && audience && postButton && advertisingControls === 0;
   const signalCount = [routeCompatible, dialogs.length === 1, editors.length === 1, audience, postButton, mediaControl, closeControl].filter(Boolean).length;
-  return { linkedinDomain, route, routeCompatible, dialogCount: dialogs.length, editorCount: editors.length, audience, postButton, mediaControl, closeControl, advertisingControls, signalCount, confirmed };
+  return { linkedinDomain, route, routeCompatible, dialogCount: dialogs.length, editorCount: editors.length, audience, postButton, mediaControl, closeControl, advertisingControls, signalCount, transientLoadError, confirmed };
 })()`;
 
 function linkedInPath(value) {
@@ -108,16 +111,31 @@ const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
   return { clicked: true };
 })()`;
 
-export async function openLinkedInComposer(browser, pageId, { mountTimeoutMs = 8_000 } = {}) {
-  // ORCA's current click command acknowledges this custom role=button without
-  // dispatching a page click. Use the accessible label and strict feed/dialog
-  // preconditions to activate that one control directly through the browser DOM.
-  const activation = await browser.evaluate(pageId, COMPOSER_TRIGGER_DOM_CLICK);
-  let state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
-  if (classifyLinkedInComposerState(state) === "CONFIRMED") return { state, domFallbackUsed: activation?.clicked === true };
-  if (activation?.clicked !== true) return { state, domFallbackUsed: false, reasonCode: activation?.reason || "composer_trigger_not_activated" };
-  state = await sampleComposerState(browser, pageId, mountTimeoutMs);
-  return { state, domFallbackUsed: true };
+export async function openLinkedInComposer(browser, pageId, { mountTimeoutMs = 8_000, expectedIdentityPath = "/" } = {}) {
+  let domFallbackUsed = false;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    // ORCA's current click command acknowledges this custom role=button without
+    // dispatching a page click. Use the accessible label and strict feed/dialog
+    // preconditions to activate that one control directly through the browser DOM.
+    const activation = await browser.evaluate(pageId, COMPOSER_TRIGGER_DOM_CLICK);
+    let state = await browser.evaluate(pageId, COMPOSER_EXPRESSION);
+    domFallbackUsed ||= activation?.clicked === true;
+    if (classifyLinkedInComposerState(state) === "CONFIRMED") return { state, domFallbackUsed };
+    if (activation?.clicked !== true) return { state, domFallbackUsed, reasonCode: activation?.reason || "composer_trigger_not_activated" };
+    if (!state.transientLoadError) state = await sampleComposerState(browser, pageId, mountTimeoutMs);
+    if (classifyLinkedInComposerState(state) === "CONFIRMED") return { state, domFallbackUsed };
+    if (!state.transientLoadError || attempt > 0) return { state, domFallbackUsed };
+
+    // Retry this specific LinkedIn load error once, after returning to the feed
+    // and revalidating the same account/session. No content is entered or sent.
+    await browser.navigate(pageId, LINKEDIN_FEED_URL_FOR_READINESS);
+    await browser.waitForFeed(pageId);
+    const feed = await browser.evaluate(pageId, CONTEXT_EXPRESSION(expectedIdentityPath));
+    if (!feed.feedReachable || !feed.sessionAuthenticated || !feed.identityVerified || feed.securityChallenge) {
+      return { state, domFallbackUsed, reasonCode: "composer_retry_identity_unverified" };
+    }
+  }
+  return { state: {}, domFallbackUsed, reasonCode: "composer_retry_exhausted" };
 }
 
 function safeEvidence(value) {
@@ -187,7 +205,7 @@ export class LinkedInReadinessProvider {
         return { state: "UNKNOWN", reasonCode: "linkedin_feed_unavailable", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       }
 
-      const opened = await openLinkedInComposer(this.browser, pageId);
+      const opened = await openLinkedInComposer(this.browser, pageId, { expectedIdentityPath: linkedInPath(identityReference) });
       const composer = opened.state;
       if (opened.reasonCode) return { state: "BLOCKED", reasonCode: "composer_trigger_missing", retryable: true, recoveryClassification: "RECOVERABLE", checkedAt: checkedAt.toISOString() };
       const composerClassification = classifyLinkedInComposerState(composer);

@@ -639,6 +639,36 @@ test("LinkedIn readiness verifies composer close with a bounded feed-state wait"
   assert.equal(closeChecks, 2);
 });
 
+test("LinkedIn readiness recovers once from the explicit composer load error and rechecks identity", async () => {
+  let phase = "feed";
+  let activations = 0;
+  let feedNavigations = 0;
+  const browser = {
+    async listProfiles() { return [{ id: "linkedin-profile-1" }]; },
+    async listTabs() { return [{ id: "page-1", profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }]; },
+    async showTab(id) { return { pageId: id, profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }; },
+    async navigate(_id, url) { assert.match(url, /linkedin\.com\/feed\/$/); feedNavigations += 1; phase = "feed"; },
+    async waitForFeed() {},
+    async evaluate(_id, expression) {
+      if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: true };
+      if (expression.includes("candidates[0].click()")) {
+        activations += 1;
+        phase = activations === 1 ? "error" : "composer";
+        return { clicked: true };
+      }
+      if (phase === "error") return { linkedinDomain: true, route: true, routeCompatible: true, dialogCount: 1, editorCount: 0, transientLoadError: true, advertisingControls: 0, confirmed: false };
+      return { linkedinDomain: true, route: true, routeCompatible: true, dialogCount: 1, editorCount: 1, audience: true, postButton: true, mediaControl: true, closeControl: true, advertisingControls: 0, confirmed: true };
+    },
+    async pressEscape() { phase = "feed"; }
+  };
+  const result = await new LinkedInReadinessProvider(browser).checkReadiness({
+    platform: "linkedin", profileId: "linkedin-profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/test-owner"
+  });
+  assert.equal(result.state, "READY");
+  assert.equal(activations, 2);
+  assert.equal(feedNavigations, 1);
+});
+
 function evaluateLinkedInContext({ path = "/feed/", navigation = true, main = true, composer = true, loginForm = false, pageText = "" } = {}) {
   const visible = { getClientRects: () => [{}] };
   const anchor = { href: "https://www.linkedin.com/in/test-owner" };
@@ -686,7 +716,7 @@ test("LinkedIn auth detector requires explicit login evidence and recognizes sec
   assert.equal(challenge.securityChallenge, true);
 });
 
-function evaluateLinkedInComposer({ dialog = false, editor = false, audience = false, post = false, media = false, close = false, path = "/feed/" } = {}) {
+function evaluateLinkedInComposer({ dialog = false, editor = false, audience = false, post = false, media = false, close = false, errorText = "", retry = false, path = "/feed/" } = {}) {
   const visible = { getClientRects: () => [{}] };
   const makeControl = (tagName, text, ariaLabel = "") => ({
     ...visible, tagName,
@@ -697,11 +727,13 @@ function evaluateLinkedInComposer({ dialog = false, editor = false, audience = f
     ...(audience ? [makeControl("BUTTON", "Everyone")] : []),
     ...(post ? [makeControl("BUTTON", "Post")] : []),
     ...(media ? [makeControl("BUTTON", "Add media")] : []),
-    ...(close ? [makeControl("BUTTON", "", "Close") ] : [])
+    ...(close ? [makeControl("BUTTON", "", "Close") ] : []),
+    ...(retry ? [makeControl("BUTTON", "Làm mới")] : [])
   ];
   const editorNode = { ...visible };
   const dialogNode = {
     ...visible,
+    innerText: errorText,
     querySelectorAll(selector) {
       if (selector === '[contenteditable="true"],[role="textbox"]') return editor ? [editorNode] : [];
       if (selector === 'button,[role="button"],input,[role="combobox"]') return controls;
@@ -734,6 +766,13 @@ test("LinkedIn feed without an open composer is not classified as a composer", (
 
 test("an unrelated LinkedIn dialog is not classified as the post composer", () => {
   const state = evaluateLinkedInComposer({ dialog: true, close: true });
+  assert.equal(state.confirmed, false);
+  assert.equal(classifyLinkedInComposerState(state), "NOT_COMPOSER");
+});
+
+test("LinkedIn composer classifier identifies only the explicit retryable load-error structure", () => {
+  const state = evaluateLinkedInComposer({ dialog: true, retry: true, errorText: "Đã xảy ra sự cố ở phía chúng tôi. Hãy thử làm mới trang." });
+  assert.equal(state.transientLoadError, true);
   assert.equal(state.confirmed, false);
   assert.equal(classifyLinkedInComposerState(state), "NOT_COMPOSER");
 });
