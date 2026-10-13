@@ -13,6 +13,7 @@ import { configuredReadinessTtlMs } from "./readiness.mjs";
 import { LinkedInAdapter } from "./linkedin-adapter.mjs";
 import { JevExecutionWorker } from "./jev-execution-worker.mjs";
 import { PlatformAdapterRegistry, ReadinessProviderRegistry } from "./platform-registries.mjs";
+import { isAuthorizedLocalShutdown, runtimeMetadata } from "./service-lifecycle.mjs";
 
 async function loadLocalEnv() {
   try {
@@ -35,6 +36,9 @@ const host = String(process.env.SEEDING_HOST || "127.0.0.1").trim() || "127.0.0.
 const port = Number(process.env.SEEDING_PORT || 4318);
 const operatorToken = String(process.env.SEEDING_OPERATOR_TOKEN || "").trim();
 const automationToken = String(process.env.SEEDING_AUTOMATION_TOKEN || "").trim();
+const controlToken = String(process.env.SEEDING_CONTROL_TOKEN || "").trim();
+const sourceCommit = String(process.env.SEEDING_BUILD_COMMIT || "");
+const sourceDirty = process.env.SEEDING_BUILD_DIRTY === "true";
 const trafficPollMinutes = Number(process.env.SEEDING_TRAFFIC_POLL_MINUTES || 0);
 if (operatorToken.length < 32) {
   throw new Error("SEEDING_OPERATOR_TOKEN must contain at least 32 characters");
@@ -316,14 +320,26 @@ const server = http.createServer(async (request, response) => {
   const role = requestRole(request);
   const actor = role === "operator" ? "local-human-operator" : role === "automation" ? "local-draft-automation" : "read-only-client";
   try {
+    if (request.method === "POST" && url.pathname === "/internal/shutdown") {
+      if (!isAuthorizedLocalShutdown({
+        remoteAddress: request.socket.remoteAddress,
+        authorization: request.headers.authorization,
+        expectedToken: controlToken
+      })) return sendJson(response, 404, { ok: false, error: "not_found" });
+      sendJson(response, 202, { ok: true, shutdown: "accepted" });
+      setImmediate(shutdown);
+      return;
+    }
     if (!["GET", "HEAD"].includes(request.method) && (!role || (role === "automation" && !automationCanMutate(request.method, url.pathname)))) {
       return sendJson(response, 401, { ok: false, error: "operator_token_required" }, {
         "www-authenticate": "Bearer realm=\"global-seeding\""
       });
     }
     if (request.method === "GET" && url.pathname === "/health") {
+      const state = await service.snapshot();
       return sendJson(response, 200, {
         ok: true, service: "global-seeding", stateFile,
+        runtime: runtimeMetadata({ pid: process.pid, sourceCommit, sourceDirty, state }),
         trafficCollector: trafficRuntime,
         dailyProduction: await readDailyProductionAutomation(),
         browserTracking: await readBrowserTrafficAutomation(),
@@ -520,13 +536,22 @@ if (trafficPollMinutes > 0) {
 }
 
 function shutdown() {
+  if (shuttingDown) return;
   shuttingDown = true;
   if (trafficTimer) clearTimeout(trafficTimer);
   if (campaignQueueTimer) clearTimeout(campaignQueueTimer);
   if (jevExecutionTimer) clearTimeout(jevExecutionTimer);
   fixtureWorker.stop();
   server.close(() => {
-    store.releaseWriterLease().finally(() => process.exit(0));
+    void (async () => {
+      while (trafficRuntime.running || campaignQueueRunning || jevExecutionRunning || fixtureWorker.running) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await store.releaseWriterLease();
+    })().then(() => process.exit(0)).catch((error) => {
+      process.stderr.write(`Service shutdown failed ${JSON.stringify({ reason: error.code || "writer_lock_release_failed" })}\n`);
+      process.exit(1);
+    });
   });
 }
 process.on("SIGINT", shutdown);
