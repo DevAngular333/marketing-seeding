@@ -22,7 +22,7 @@ The operator-only pre-submit dry-run ignores only publish-time gates: local sche
 ## Execution sequence
 
 1. Acquire a durable lease for execution, job, and platform/profile.
-2. Refresh/check readiness through the registered platform provider and verify the account/profile binding.
+2. Reuse bound `READY` readiness while its TTL is valid; otherwise refresh/check through the registered provider. Verify the account/profile binding in either case.
 3. Refresh the existing request under its current `executionId` and record `EXECUTING` for live mode.
 4. The adapter uses only the expected ORCA profile, navigates directly, waits for LinkedIn's authenticated shell to hydrate after navigation, verifies account identity and target, classifies the composer structurally, checks audience and content hash, validates the media file SHA-256, attaches it using the browser file input, and confirms the preview.
 5. Dry-run stops and closes the composer. Its `dryRun: true`, `NOT_STARTED` receipt is auditable but does not consume the live request or alter its submission state.

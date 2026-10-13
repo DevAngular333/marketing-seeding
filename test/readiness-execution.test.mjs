@@ -214,12 +214,13 @@ test("allowLiveExecution=false permits readiness but never queues or prepares ex
 
 test("operator DRY-RUN traverses the worker while live schedule, concurrency and publish gates remain blocked", async (context) => {
   const otherWeekday = (new Date().getUTCDay() + 1) % 7;
+  let providerCalls = 0;
   const fixtureState = await fixture({
     platform: "linkedin",
     allowLiveExecution: false,
     maxConcurrency: 1,
     schedule: { timezone: "UTC", weekdays: [otherWeekday], startLocal: "20:00", endLocal: "20:30" },
-    provider: { async checkReadiness() { return ready(); } }
+    provider: { async checkReadiness() { providerCalls += 1; return ready(); } }
   });
   context.after(() => rm(fixtureState.directory, { recursive: true, force: true }));
   await fixtureState.service.store.mutate("test", "set_dry_run_preconditions", (state) => {
@@ -268,7 +269,9 @@ test("operator DRY-RUN traverses the worker while live schedule, concurrency and
     async reconcile() { throw new Error("not used in dry-run"); }
   });
   const worker = new JevExecutionWorker({ service: fixtureState.service, adapterRegistry: registry, workerId: "dry-run-test", env: {} });
+  const providerCallsBeforeWorker = providerCalls;
   const result = await worker.run(requestRow.executionId, { dryRun: true });
+  assert.equal(providerCalls, providerCallsBeforeWorker, "fresh readiness is reused instead of launching a duplicate browser probe");
   assert.equal(result.status, "DRY_RUN_COMPLETE");
   assert.equal(result.receipt.dryRun, true);
   assert.equal(result.receipt.submitState, "NOT_STARTED");
