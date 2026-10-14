@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { JsonStore } from "../src/store.mjs";
 import { SeedingService } from "../src/service.mjs";
-import { FixtureWorkerBridge } from "../src/fixture-worker-bridge.mjs";
+import { fixtureAutomationUrl, FixtureWorkerBridge } from "../src/fixture-worker-bridge.mjs";
+
+test("fixture adapter paths become valid file URLs on POSIX and Windows", () => {
+  assert.equal(fixtureAutomationUrl("/tmp/marketing fixture", "linux"), "file:///tmp/marketing%20fixture/src/automation.mjs");
+  assert.equal(fixtureAutomationUrl("C:\\build-agentic-AI\\marketing-seeding-fixture", "win32"), "file:///C:/build-agentic-AI/marketing-seeding-fixture/src/automation.mjs");
+});
 
 test("fixture worker bridge records a dry-run receipt without publishing", async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "seeding-fixture-bridge-"));
@@ -78,7 +82,7 @@ test("E2E live flag records a read-only DOM timeout and never publishes", async 
 });
 
 test("E2E adapter reports network errors without publishing", async () => {
-  const { FixtureAutomation } = await import(pathToFileURL(path.join(process.env.MARKETING_FIXTURE_ROOT || "D:\\build-agentic-AI\\marketing-seeding-fixture", "src", "automation.mjs")).href);
+  const { FixtureAutomation } = await import(fixtureAutomationUrl());
   const page = { async goto() { throw new Error("simulated network error"); } };
   const result = await new FixtureAutomation({ page }).publishMock({ id: "network-1", platform: "fixture", targetUrl: "https://fixture.local/network", content: "x", e2eLive: true });
   assert.equal(result.status, "e2e_network_error");

@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const FIXTURE_ROOT = path.resolve(process.env.MARKETING_FIXTURE_ROOT || "D:\\build-agentic-AI\\marketing-seeding-fixture");
-const fixtureAutomationModule = pathToFileURL(path.join(FIXTURE_ROOT, "src", "automation.mjs")).href;
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const FIXTURE_ROOT = path.resolve(process.env.MARKETING_FIXTURE_ROOT || path.join(moduleDir, "..", "test", "fixtures", "marketing-seeding-fixture"));
+export function fixtureAutomationUrl(root = FIXTURE_ROOT, platform = process.platform) {
+  const paths = platform === "win32" ? path.win32 : path.posix;
+  return pathToFileURL(paths.join(root, "src", "automation.mjs"), { windows: platform === "win32" }).href;
+}
+const fixtureAutomationModule = fixtureAutomationUrl();
 let adapterPromise;
 async function loadFixtureAdapter() { adapterPromise ||= import(fixtureAutomationModule); return adapterPromise; }
 function boolEnv(name, fallback = false) {

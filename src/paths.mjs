@@ -1,9 +1,10 @@
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 export const appRoot = path.resolve(moduleDir, "..");
-export const agenticRoot = path.resolve(process.env.AGENTIC_ROOT || "D:\\build-agentic-AI");
+export const agenticRoot = path.resolve(process.env.AGENTIC_ROOT || path.join(os.homedir(), "build-agentic-AI"));
 export const publicRoot = path.join(appRoot, "public");
 export const dataDir = path.resolve(
   process.env.SEEDING_DATA_DIR || path.join(agenticRoot, ".agentic", "marketing-seeding")

@@ -1,8 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 import { attachLinkedInMedia, cleanupLinkedInComposer, selectLinkedInUploadInput } from "../src/linkedin-media.mjs";
 
 const media = { path: "D:\\approved.mp4", type: "video/mp4" };
+
+test("LinkedIn media filename extraction accepts Windows and POSIX paths", () => {
+  assert.equal(path.win32.basename("D:\\approved.mp4"), "approved.mp4");
+  assert.equal(path.win32.basename("/tmp/approved.mp4"), "approved.mp4");
+});
 
 function browserFixture(options = {}) {
   let phase = "composer";

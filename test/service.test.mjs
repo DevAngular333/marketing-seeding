@@ -26,11 +26,20 @@ async function fixture(prefix = "seeding-fixture-") {
 
 test("R19 bootstrap is idempotent and does not fabricate publication evidence", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "seeding-test-"));
+  const productRepo = path.join(directory, "design-os-3d-blender");
+  await mkdir(productRepo);
   const file = path.join(directory, "state.json");
   const service = new SeedingService(new JsonStore(file));
   await service.init();
-  await service.bootstrapR19("test");
-  await service.bootstrapR19("test");
+  const priorProductRepo = process.env.SEEDING_R19_PRODUCT_REPO;
+  try {
+    process.env.SEEDING_R19_PRODUCT_REPO = productRepo;
+    await service.bootstrapR19("test");
+    await service.bootstrapR19("test");
+  } finally {
+    if (priorProductRepo === undefined) delete process.env.SEEDING_R19_PRODUCT_REPO;
+    else process.env.SEEDING_R19_PRODUCT_REPO = priorProductRepo;
+  }
   const state = JSON.parse(await readFile(file, "utf8"));
   assert.equal(state.campaigns.length, 1);
   assert.equal(state.targets.length, 7);
@@ -40,6 +49,9 @@ test("R19 bootstrap is idempotent and does not fabricate publication evidence", 
   ]));
   assert.equal(state.posts.every((post) => post.status === "needs_review"), true);
   assert.equal(state.posts.every((post) => !post.publicationUrl && !post.evidence), true);
+  assert.equal(state.campaigns[0].productRepo, await realpath(productRepo));
+  assert.equal(state.campaigns[0].assetPath, null);
+  assert.equal(state.posts.every((post) => post.assetPath === null), true);
   assert.equal(new Set(state.posts.map((post) => post.content)).size, 7);
 });
 
@@ -316,7 +328,7 @@ test("browser observations require permalink evidence and preserve unknown metri
   const verified = await service.recordBrowserObservation(post.id, { ...base, reactions: 2, comments: 1 }, "browser-collector");
   assert.equal(verified.metricSnapshot.source, "browser:threads");
   assert.equal(verified.metricSnapshot.provenance.kind, "browser_verified");
-  assert.equal(verified.metricSnapshot.provenance.screenshotPath, screenshotPath);
+  assert.equal(verified.metricSnapshot.provenance.screenshotPath, await realpath(screenshotPath));
   assert.equal(verified.metricSnapshot.impressions, null);
   assert.equal(verified.metricSnapshot.coverage.impressions, "unknown");
   assert.equal(verified.metricsChanged, true);

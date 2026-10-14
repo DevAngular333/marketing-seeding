@@ -21,7 +21,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Start-SeedingDashboard
 
 Open `http://127.0.0.1:4318`. On first launch, the app creates runtime state and random operator tokens in `%AGENTIC_ROOT%\.agentic\marketing-seeding`. Git ignores this directory. Run `node src\cli.mjs bootstrap-r19` if you want to create the sample R19 campaign, and `node src\cli.mjs status` to inspect the local state. `Get-SeedingDashboardStatus.ps1` checks whether the local server is ready. Keep the local runtime directory when updating the source if you want to preserve campaign history. On another machine, set `$env:AGENTIC_ROOT` to that machine's control-plane directory before starting the app; runtime data remains local to that machine.
 
-By default, the server stores runtime data under `D:\build-agentic-AI\.agentic\marketing-seeding` and reads the Auto-GTM feed under `D:\build-agentic-AI\.agentic\gtm`. Set `AGENTIC_ROOT` to the local control-plane folder on your machine, or set `SEEDING_DATA_DIR` and `SEEDING_AUTO_GTM_FEED_FILE` to choose explicit local paths. Each machine keeps its own runtime state; GitHub does not synchronize campaign data. Do not commit those files or put token values in `.env.example`, documentation, or screenshots.
+By default, the server stores runtime data under `build-agentic-AI/.agentic/marketing-seeding` in the current user's home directory and reads the Auto-GTM feed under `build-agentic-AI/.agentic/gtm`. Set `AGENTIC_ROOT` to another local control-plane folder, or set `SEEDING_DATA_DIR` and `SEEDING_AUTO_GTM_FEED_FILE` to choose explicit local paths. Each machine keeps its own runtime state; GitHub does not synchronize campaign data. Do not commit those files or put token values in `.env.example`, documentation, or screenshots.
 
 To rebuild the UI, run `pnpm.cmd install` and `pnpm.cmd build` inside `ui`, then copy the generated `ui\dist` files into `public`. A fresh clone can run immediately because the current frontend build is included in `public`.
 
@@ -283,7 +283,7 @@ ambiguous layouts are `unknown`; it never substitutes zero. The `Collect API dat
 
 The optional `SEEDING_FIXTURE_WORKER=1` bridge observes `queued` or
 `awaiting_publish` posts and runs the local adapter from
-`MARKETING_FIXTURE_ROOT`. It records a `fixtureAutomation` receipt in the
+`MARKETING_FIXTURE_ROOT`, which defaults to the repository's bundled test fixture. It records a `fixtureAutomation` receipt in the
 dashboard, but intentionally leaves `post.status` and the real
 `publicationUrl` unchanged. `CLOAKBROWSER_CDP_URL` is read from `.env`; CDP
 attachment requires the explicit `SEEDING_FIXTURE_CDP_ENABLED=1` flag and the

@@ -14,6 +14,7 @@ import { assertLiveGrantMatchesExecution, createLiveExecutionGrantV1, liveGrantE
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 import { activeExecutionForPost, recordSubmissionUnknown, unresolvedSubmission, UNKNOWN_POST_STATUS } from "./submission-uncertainty.mjs";
+import { appRoot } from "./paths.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
   "schedule_timestamp_invalid",
@@ -672,7 +673,8 @@ export class SeedingService {
   }
 
   async bootstrapR19(actor = "operator") {
-    const productRepo = await requireProductRepo("D:\\design-os-3d-blender");
+    const productRepo = await requireProductRepo(process.env.SEEDING_R19_PRODUCT_REPO || path.resolve(appRoot, "..", "design-os-3d-blender"));
+    const assetPath = process.env.SEEDING_R19_MEDIA_PATH ? path.resolve(process.env.SEEDING_R19_MEDIA_PATH) : null;
     const result = await this.store.mutate(actor, "bootstrap_r19", (state) => {
       const createdAt = nowIso();
       addSeedDefaults(state.campaigns, {
@@ -680,7 +682,7 @@ export class SeedingService {
         name: "R19 GT course market validation",
         objective: "Validate global demand for an agentic Blender workflow course using a real media artifact.",
         productRepo,
-        assetPath: "C:\\Users\\Admin\\Desktop\\GT-Purple-Drift-Exploded-R19-FullHD.mp4",
+        assetPath,
         audience: ["Blender artists", "3D educators", "AI automation builders", "indie makers"],
         status: "active",
         createdAt
@@ -761,7 +763,7 @@ export class SeedingService {
         campaignId: "campaign_r19_gt_course_validation",
         targetId: target.id,
         content: R19_CHANNEL_CONTENT[target.channel],
-        assetPath: "C:\\Users\\Admin\\Desktop\\GT-Purple-Drift-Exploded-R19-FullHD.mp4",
+        assetPath,
         language: "en",
         status: "needs_review",
         approvedAt: null,

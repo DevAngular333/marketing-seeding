@@ -173,7 +173,7 @@ export async function attachLinkedInMedia(browser, pageId, media, { timeoutMs = 
   }
   const fileAttachMs = Date.now() - attachStarted;
   const readyStarted = Date.now();
-  const expectedName = path.basename(media.path).toLowerCase();
+  const expectedName = path.win32.basename(media.path).toLowerCase();
   const firstPreview = await browser.evaluate(pageId, previewState(marker));
   if (firstPreview?.uploadError) fail("MEDIA_PREVIEW_INVALID");
   const ready = firstPreview?.fileCount === 1 && firstPreview.filename?.toLowerCase() === expectedName && firstPreview.videoCount > 0
