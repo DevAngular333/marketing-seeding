@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 export const EXECUTION_REQUEST_SCHEMA_VERSION = 1;
 export const EXECUTION_RECEIPT_SCHEMA_VERSION = 1;
+export const PUBLICATION_CANDIDATE_MAX_AGE_MS = 30 * 60_000;
 export const SUBMIT_STATES = Object.freeze(["NOT_STARTED", "SUBMIT_SENT", "CONFIRMED", "UNKNOWN", "FAILED"]);
 export const EXECUTION_STATES = Object.freeze(["REQUEST_READY", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED", "CANCELLED_PRE_SUBMIT", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED"]);
 
@@ -14,6 +15,24 @@ function required(value, label) {
   const text = String(value ?? "").trim();
   if (!text) throw new Error(`${label} is required`);
   return text;
+}
+
+export function isPreSubmitMediaIntegrityProven(evidence, expected) {
+  return Boolean(evidence && expected &&
+    evidence.artifactId === expected.artifactId &&
+    evidence.expectedSha256 === expected.sha256 &&
+    evidence.localFileSha256 === expected.sha256 &&
+    evidence.mediaType === expected.type &&
+    evidence.attached === true && evidence.previewReady === true);
+}
+
+function hasStrongPublicationIdentity(evidence, publicationUrl) {
+  const details = evidence?.verificationDetails;
+  const candidate = details?.candidate;
+  return evidence?.accountMatched === true && evidence?.targetMatched === true && evidence?.contentHashMatched === true &&
+    details?.authorIdentity?.matched === true && details?.contentMatch?.matched === true &&
+    candidate?.timestampMatched === true && Boolean(candidate?.postId || candidate?.activityUrn) &&
+    Boolean(candidate?.permalink) && candidate.permalink === publicationUrl;
 }
 
 function assertNoSecrets(value, path = "contract") {
@@ -120,6 +139,14 @@ export function validateExecutionReceiptV1(input) {
       mediaHash: input.publicationEvidence.mediaHash ? String(input.publicationEvidence.mediaHash).toLowerCase() : null,
       verificationMethod: required(input.publicationEvidence.verificationMethod, "publicationEvidence.verificationMethod"),
       evidenceReference: input.publicationEvidence.evidenceReference ? String(input.publicationEvidence.evidenceReference) : null,
+      preSubmitMediaIntegrity: input.publicationEvidence.preSubmitMediaIntegrity ? {
+        artifactId: required(input.publicationEvidence.preSubmitMediaIntegrity.artifactId, "publicationEvidence.preSubmitMediaIntegrity.artifactId"),
+        expectedSha256: required(input.publicationEvidence.preSubmitMediaIntegrity.expectedSha256, "publicationEvidence.preSubmitMediaIntegrity.expectedSha256").toLowerCase(),
+        localFileSha256: required(input.publicationEvidence.preSubmitMediaIntegrity.localFileSha256, "publicationEvidence.preSubmitMediaIntegrity.localFileSha256").toLowerCase(),
+        mediaType: required(input.publicationEvidence.preSubmitMediaIntegrity.mediaType, "publicationEvidence.preSubmitMediaIntegrity.mediaType"),
+        attached: input.publicationEvidence.preSubmitMediaIntegrity.attached === true,
+        previewReady: input.publicationEvidence.preSubmitMediaIntegrity.previewReady === true
+      } : null,
       verificationDetails: input.publicationEvidence.verificationDetails && typeof input.publicationEvidence.verificationDetails === "object" ? {
         executionId: input.publicationEvidence.verificationDetails.executionId ? String(input.publicationEvidence.verificationDetails.executionId) : null,
         submittedAt: input.publicationEvidence.verificationDetails.submittedAt ? String(input.publicationEvidence.verificationDetails.submittedAt) : null,
@@ -212,14 +239,9 @@ export function validateExecutionReceiptV1(input) {
   if (receipt.submitState === "CONFIRMED" && !receipt.publicationUrl && !receipt.publicationReference) {
     throw new Error("CONFIRMED receipt requires a publication URL or reference");
   }
-  if (receipt.submitState === "CONFIRMED" && (!receipt.publicationEvidence || receipt.publicationEvidence.accountMatched !== true || receipt.publicationEvidence.targetMatched !== true || receipt.publicationEvidence.contentHashMatched !== true || receipt.publicationEvidence.mediaHashMatched !== true)) {
-    throw new Error("CONFIRMED receipt requires positive account, target, content, and media evidence");
-  }
+  if (receipt.submitState === "CONFIRMED" && (!receipt.publicationEvidence || receipt.publicationEvidence.accountMatched !== true || receipt.publicationEvidence.targetMatched !== true || receipt.publicationEvidence.contentHashMatched !== true)) throw new Error("CONFIRMED receipt requires positive account, target, and content evidence");
   if (receipt.dryRun && (receipt.publicationUrl || receipt.publicationReference || receipt.publicationEvidence)) {
     throw new Error("Dry-run receipt cannot contain publication evidence");
-  }
-  if (receipt.submitState === "CONFIRMED" && (!receipt.publicationEvidence || receipt.publicationEvidence.accountMatched !== true || receipt.publicationEvidence.targetMatched !== true || receipt.publicationEvidence.contentHashMatched !== true || receipt.publicationEvidence.mediaHashMatched !== true)) {
-    throw new Error("CONFIRMED receipt requires positive account, target, content, and media evidence");
   }
   if (receipt.dryRun && (receipt.publicationUrl || receipt.publicationReference || receipt.publicationEvidence)) {
     throw new Error("Dry-run receipt cannot contain publication evidence");
@@ -227,17 +249,28 @@ export function validateExecutionReceiptV1(input) {
   if (receipt.publicationEvidence && !Number.isFinite(Date.parse(receipt.publicationEvidence.verifiedAt))) throw new Error("publicationEvidence.verifiedAt must be an ISO timestamp");
   if (receipt.publicationEvidence && !/^[a-f0-9]{64}$/i.test(receipt.publicationEvidence.contentHash)) throw new Error("publicationEvidence.contentHash must be a SHA-256 digest");
   if (receipt.publicationEvidence?.mediaHash && !/^[a-f0-9]{64}$/i.test(receipt.publicationEvidence.mediaHash)) throw new Error("publicationEvidence.mediaHash must be a SHA-256 digest");
+  if (receipt.publicationEvidence?.preSubmitMediaIntegrity) {
+    const integrity = receipt.publicationEvidence.preSubmitMediaIntegrity;
+    if (!sha256Pattern.test(integrity.expectedSha256) || !sha256Pattern.test(integrity.localFileSha256)) throw new Error("preSubmitMediaIntegrity hashes must be SHA-256 digests");
+  }
   if (receipt.publicationEvidence?.verificationDetails) {
     const details = receipt.publicationEvidence.verificationDetails;
     for (const field of ["submittedAt", "observedAt"]) {
       if (details[field] && !Number.isFinite(Date.parse(details[field]))) throw new Error(`publicationEvidence.verificationDetails.${field} must be an ISO timestamp`);
     }
+    if (details.candidate?.timestamp && !Number.isFinite(Date.parse(details.candidate.timestamp))) throw new Error("publicationEvidence.verificationDetails.candidate.timestamp must be an ISO timestamp");
     if (details.contentMatch?.expectedSha256 && !/^[a-f0-9]{64}$/i.test(details.contentMatch.expectedSha256)) throw new Error("publicationEvidence.verificationDetails.contentMatch.expectedSha256 must be a SHA-256 digest");
     if (details.media && !["MATCHED", "NOT_VERIFIABLE", "MISMATCHED"].includes(details.media.hashStatus)) throw new Error("publicationEvidence.verificationDetails.media.hashStatus is invalid");
     if (details.executionId && details.executionId !== receipt.executionId) throw new Error("publicationEvidence.verificationDetails.executionId must match the receipt");
     if (details.contentMatch?.expectedSha256 && details.contentMatch.expectedSha256 !== receipt.publicationEvidence.contentHash) throw new Error("publicationEvidence content identity does not match verification details");
     if (details.submittedAt && details.observedAt && Date.parse(details.observedAt) < Date.parse(details.submittedAt)) throw new Error("publicationEvidence observation cannot precede submission");
     if (details.media && details.media.hashStatus !== "MATCHED" && receipt.publicationEvidence.mediaHashMatched) throw new Error("Unverified media identity cannot be recorded as mediaHashMatched");
+    if (details.media?.hashStatus === "NOT_VERIFIABLE" && (receipt.publicationEvidence.mediaHash !== null || receipt.publicationEvidence.mediaHashMatched)) throw new Error("NOT_VERIFIABLE publication media cannot claim a matched hash");
+    if (details.media?.hashStatus === "MISMATCHED" && receipt.submitState === "CONFIRMED") throw new Error("MISMATCHED publication media cannot be confirmed");
+    if (receipt.submitState === "CONFIRMED" && details.media?.hashStatus === "NOT_VERIFIABLE" &&
+        (!receipt.publicationEvidence.preSubmitMediaIntegrity || !hasStrongPublicationIdentity(receipt.publicationEvidence, receipt.publicationUrl))) {
+      throw new Error("NOT_VERIFIABLE publication media requires pre-submit integrity and strong publication identity evidence");
+    }
   }
   if (["SUBMIT_SENT", "UNKNOWN"].includes(receipt.submitState) && receipt.recoveryClassification === "RECOVERABLE") {
     throw new Error("A possibly submitted execution cannot be classified as safely recoverable");

@@ -8,6 +8,10 @@ const content = "Cedar Lantern 7Q4K distinctive validation post";
 const submittedAt = "2026-10-14T13:00:00.000Z";
 const expectedIdentityUrl = "https://www.linkedin.com/in/owner";
 const media = [{ artifactId: "artifact-1", reference: "/tmp/validation.mp4", sha256: "a".repeat(64), type: "video/mp4" }];
+const preSubmitMediaIntegrity = {
+  artifactId: media[0].artifactId, expectedSha256: media[0].sha256, localFileSha256: media[0].sha256,
+  mediaType: media[0].type, attached: true, previewReady: true
+};
 
 function request({ withMedia = true } = {}) {
   return {
@@ -93,14 +97,49 @@ test("older matching post is rejected by submit-time proximity", async () => {
   assert.equal(result.publicationEvidence.verificationDetails.candidate.timestampMatched, false);
 });
 
-test("DOM video presence records NOT_VERIFIABLE and never claims the artifact hash matched", async () => {
+test("video presence without proven pre-submit integrity remains UNKNOWN", async () => {
   const browser = browserFor({ "https://www.linkedin.com/feed/": [candidate()] });
   const result = await new LinkedInPublicationVerifier(browser, { timeoutMs: 30 }).verify(request(), "page-1", { expectedIdentityUrl, submittedAt });
-  assert.equal(result.state, "UNKNOWN", "canonical receipts currently require positive media identity evidence");
-  assert.equal(result.reasonCode, "publication_media_identity_not_verifiable");
+  assert.equal(result.state, "UNKNOWN");
+  assert.equal(result.reasonCode, "pre_submit_media_integrity_missing");
   assert.equal(result.publicationEvidence.mediaHashMatched, false);
   assert.equal(result.publicationEvidence.mediaHash, null);
   assert.deepEqual(result.publicationEvidence.verificationDetails.media, { present: true, type: "video", hashStatus: "NOT_VERIFIABLE" });
+});
+
+test("LinkedIn video with strong publication identity and exact pre-submit artifact integrity confirms without claiming post-submit hash", async () => {
+  const browser = browserFor({ "https://www.linkedin.com/feed/": [candidate()] });
+  const result = await new LinkedInPublicationVerifier(browser, { timeoutMs: 30 }).verify(request(), "page-1", { expectedIdentityUrl, submittedAt, preSubmitMediaIntegrity });
+  assert.equal(result.state, "CONFIRMED");
+  assert.equal(result.publicationEvidence.mediaHashMatched, false);
+  assert.equal(result.publicationEvidence.mediaHash, null);
+  assert.deepEqual(result.publicationEvidence.preSubmitMediaIntegrity, preSubmitMediaIntegrity);
+  assert.equal(result.publicationEvidence.verificationDetails.media.hashStatus, "NOT_VERIFIABLE");
+  assert.equal(result.publicationEvidence.verificationDetails.candidate.postId, "987654321");
+  assert.equal(result.publicationEvidence.verificationDetails.candidate.permalink, result.publicationUrl);
+  const receipt = validateExecutionReceiptV1({
+    schemaVersion: 1, executionId: "execution-1", jobId: "job-1", attempt: 1,
+    startedAt: submittedAt, finishedAt: result.verifiedAt,
+    readinessResult: { state: "READY", checkedAt: submittedAt }, submitState: "CONFIRMED", dryRun: false,
+    publicationUrl: result.publicationUrl, publicationReference: result.publicationReference,
+    publicationEvidence: result.publicationEvidence, telemetry: {}
+  });
+  assert.equal(receipt.publicationEvidence.mediaHashMatched, false);
+});
+
+test("content and author without stable post ID and permalink cannot confirm", async () => {
+  const browser = browserFor({ "https://www.linkedin.com/feed/": [candidate({ activityId: null, activityUrn: null, publicationUrl: null })] });
+  const result = await new LinkedInPublicationVerifier(browser, { timeoutMs: 30 }).verify(request(), "page-1", { expectedIdentityUrl, submittedAt, preSubmitMediaIntegrity });
+  assert.equal(result.state, "UNKNOWN");
+});
+
+test("wrong pre-submit artifact digest cannot authorize NOT_VERIFIABLE LinkedIn media", async () => {
+  const browser = browserFor({ "https://www.linkedin.com/feed/": [candidate()] });
+  const result = await new LinkedInPublicationVerifier(browser, { timeoutMs: 30 }).verify(request(), "page-1", {
+    expectedIdentityUrl, submittedAt, preSubmitMediaIntegrity: { ...preSubmitMediaIntegrity, localFileSha256: "0".repeat(64) }
+  });
+  assert.equal(result.state, "UNKNOWN");
+  assert.equal(result.publicationEvidence.mediaHashMatched, false);
 });
 
 test("receipt contract preserves read-only UNKNOWN candidate evidence", async () => {
@@ -183,9 +222,10 @@ test("reconciliation delegates to the same verifier with the original submit tim
   };
   const verifier = { async verify(...args) { calls.push(args); return { state: "UNKNOWN", reasonCode: "publication_not_observed" }; } };
   const adapter = new LinkedInAdapter(browser, { verifier });
-  const result = await adapter.reconcile(request(), { account: { identityReference: expectedIdentityUrl }, submittedAt });
+  const result = await adapter.reconcile(request(), { account: { identityReference: expectedIdentityUrl }, submittedAt, preSubmitMediaIntegrity });
   assert.equal(result.submitState, "UNKNOWN");
   assert.equal(calls.length, 1);
   assert.equal(calls[0][2].submittedAt, submittedAt);
   assert.equal(calls[0][2].executionId, "execution-1");
+  assert.deepEqual(calls[0][2].preSubmitMediaIntegrity, preSubmitMediaIntegrity);
 });

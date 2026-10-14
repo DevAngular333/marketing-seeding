@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
 import { linkedInReadinessExpressions, openLinkedInComposer } from "./linkedin-readiness.mjs";
 import { attachLinkedInMedia, cleanupLinkedInComposer } from "./linkedin-media.mjs";
+import { isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS } from "./execution-contracts.mjs";
 
 
 function refOf(line) {
@@ -158,15 +159,14 @@ function validateMediaDescriptor(request) {
 }
 
 export class LinkedInPublicationVerifier {
-  constructor(browser, { timeoutMs = 9_000, maxCandidateAgeMs = 30 * 60_000 } = {}) {
+  constructor(browser, { timeoutMs = 9_000, maxCandidateAgeMs = PUBLICATION_CANDIDATE_MAX_AGE_MS } = {}) {
     this.browser = browser;
     this.timeoutMs = timeoutMs;
     this.maxCandidateAgeMs = maxCandidateAgeMs;
   }
 
-  async verify(request, pageId, { expectedIdentityUrl, submittedAt } = {}) {
+  async verify(request, pageId, { expectedIdentityUrl, submittedAt, preSubmitMediaIntegrity } = {}) {
     if (!expectedIdentityUrl) return { state: "UNKNOWN", reasonCode: "expected_identity_missing" };
-    const observedAt = new Date().toISOString();
     const submittedMs = Date.parse(submittedAt || "");
     if (!Number.isFinite(submittedMs)) return { state: "UNKNOWN", reasonCode: "submit_timestamp_missing" };
     const expression = LINKEDIN_VERIFICATION_EXPRESSION(request.content.payload, expectedIdentityUrl);
@@ -208,6 +208,7 @@ export class LinkedInPublicationVerifier {
         // A secondary surface may be unavailable; preserve any evidence collected elsewhere.
       }
     }
+    const observedAt = new Date().toISOString();
     const candidates = observations.map((candidate) => {
       const url = candidate.publicationUrl ? new URL(candidate.publicationUrl) : null;
       const stableId = candidate.activityId || null;
@@ -215,12 +216,15 @@ export class LinkedInPublicationVerifier {
       const timestampMatched = Number.isFinite(timestamp) && timestamp >= submittedMs && timestamp <= submittedMs + this.maxCandidateAgeMs;
       const permalinkMatched = Boolean(url && /(^|\.)linkedin\.com$/i.test(url.hostname) && url.pathname !== "/" && stableId);
       const expectedMediaType = request.media?.[0]?.type?.startsWith("video/") ? "video" : request.media?.[0]?.type?.startsWith("image/") ? "image" : null;
-      const mediaVerification = !expectedMediaType ? candidate.mediaPresent ? "MISMATCHED" : "MATCHED" : !candidate.mediaPresent ? "NOT_VERIFIABLE" : candidate.mediaType !== expectedMediaType ? "MISMATCHED" : "NOT_VERIFIABLE";
+      const mediaVerification = !expectedMediaType ? candidate.mediaPresent ? "MISMATCHED" : "MATCHED" : !candidate.mediaPresent || candidate.mediaType !== expectedMediaType ? "MISMATCHED" : "NOT_VERIFIABLE";
       return { ...candidate, permalinkMatched, stableId, timestampMatched, mediaVerification, permalink: url?.toString() || null };
     }).sort((left, right) => (Number(right.authorMatched) + Number(right.contentMatched) + Number(right.timestampMatched) + Number(right.permalinkMatched)) - (Number(left.authorMatched) + Number(left.contentMatched) + Number(left.timestampMatched) + Number(left.permalinkMatched)));
     const candidate = candidates[0] || null;
     const candidateConfirmed = Boolean(candidate?.authorMatched && candidate.contentMatched && candidate.timestampMatched && candidate.permalinkMatched);
+    const expectedMedia = request.media?.[0] || null;
+    const preSubmitIntegrityMatched = expectedMedia && isPreSubmitMediaIntegrityProven(preSubmitMediaIntegrity, expectedMedia);
     const mediaHashMatched = candidateConfirmed && candidate?.mediaVerification === "MATCHED";
+    const mediaObservationAccepted = !expectedMedia || mediaHashMatched || (candidate?.mediaVerification === "NOT_VERIFIABLE" && preSubmitIntegrityMatched);
     const evidenceReference = candidate?.permalink || candidate?.activityUrn || `linkedin-search:${request.executionId}`;
     const verificationEvidence = {
       verifiedAt: observedAt, accountMatched: candidate?.authorMatched === true, targetMatched: Boolean(candidate?.permalinkMatched),
@@ -228,6 +232,7 @@ export class LinkedInPublicationVerifier {
       accountId: request.accountId, profileId: request.profileId, targetId: request.target.targetId,
       contentHash: request.content.sha256, mediaHash: mediaHashMatched ? request.media?.[0]?.sha256 || null : null,
       verificationMethod: "linkedin_read_only_activity_dom", evidenceReference,
+      preSubmitMediaIntegrity: preSubmitMediaIntegrity || null,
       verificationDetails: {
         executionId: request.executionId, submittedAt: new Date(submittedMs).toISOString(), observedAt,
         authorIdentity: { expectedPath: identity.pathname.replace(/\/$/, "").toLowerCase(), observedPath: candidate?.authorPath || null, matched: candidate?.authorMatched === true },
@@ -238,7 +243,7 @@ export class LinkedInPublicationVerifier {
       }
     };
     if (!candidateConfirmed) return { state: "UNKNOWN", reasonCode: candidate ? "publication_candidate_evidence_incomplete" : "publication_not_observed", publicationUrl: candidate?.permalink || undefined, publicationReference: evidenceReference, verificationEvidence, publicationEvidence: verificationEvidence };
-    if (!mediaHashMatched) return { state: "UNKNOWN", reasonCode: candidate.mediaVerification === "MISMATCHED" ? "publication_media_type_mismatch" : "publication_media_identity_not_verifiable", publicationUrl: candidate.permalink, publicationReference: evidenceReference, verificationEvidence, publicationEvidence: verificationEvidence };
+    if (!mediaObservationAccepted) return { state: "UNKNOWN", reasonCode: candidate.mediaVerification === "MISMATCHED" ? "publication_media_type_mismatch" : "pre_submit_media_integrity_missing", publicationUrl: candidate.permalink, publicationReference: evidenceReference, verificationEvidence, publicationEvidence: verificationEvidence };
     return { state: "CONFIRMED", publicationUrl: candidate.permalink, publicationReference: evidenceReference, verifiedAt: observedAt, verificationEvidence, publicationEvidence: verificationEvidence };
   }
 }
@@ -359,7 +364,8 @@ export class LinkedInAdapter {
     return this.verifier.verify(context.request, context.pageId, {
       expectedIdentityUrl: context.expectedIdentityUrl,
       executionId: context.request.executionId,
-      submittedAt: context.submittedAt
+      submittedAt: context.submittedAt,
+      preSubmitMediaIntegrity: context.media?.preSubmitMediaIntegrity
     });
   }
 
@@ -373,7 +379,7 @@ export class LinkedInAdapter {
     return context;
   }
 
-  async reconcile(request, { account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl, submittedAt } = {}) {
+  async reconcile(request, { account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl, submittedAt, preSubmitMediaIntegrity } = {}) {
     const startedAt = new Date().toISOString();
     const began = Date.now();
     const commandStart = this.browser.browserCommandCount?.() ?? 0;
@@ -390,7 +396,7 @@ export class LinkedInAdapter {
       }
       const target = await this.browser.evaluate(page.pageId, TARGET_EXPRESSION(LINKEDIN_FEED_URL_FOR_READINESS));
       if (!target.domain || !target.targetMatched) throw Object.assign(new Error("LinkedIn feed target is not verified"), { code: "TARGET_MISMATCH" });
-      const verification = await this.verifier.verify(request, page.pageId, { expectedIdentityUrl, executionId: request.executionId, submittedAt });
+      const verification = await this.verifier.verify(request, page.pageId, { expectedIdentityUrl, executionId: request.executionId, submittedAt, preSubmitMediaIntegrity });
       return {
         ...verification,
         submitState: verification.state === "CONFIRMED" ? "CONFIRMED" : "UNKNOWN",
@@ -445,7 +451,10 @@ export class LinkedInAdapter {
     const result = await attachLinkedInMedia(this.browser, pageId, media, { timeoutMs: this.mediaTimeoutMs });
     const audience = await this.browser.evaluate(pageId, AUDIENCE_EXPRESSION(request.audience));
     if (audience.dialogCount !== 1 || audience.audienceMatch !== true) throw Object.assign(new Error("LinkedIn audience changed while attaching media"), { code: "TARGET_MISMATCH" });
-    return { ...result, audienceMatch: true };
+    return { ...result, audienceMatch: true, preSubmitMediaIntegrity: {
+      artifactId: media.artifactId, expectedSha256: media.sha256, localFileSha256: fileHash,
+      mediaType: media.type, attached: true, previewReady: result.mediaPreviewConfirmed === true
+    } };
   }
   async #safeClose(pageId, request) {
     await cleanupLinkedInComposer(this.browser, pageId, request.content.sha256);

@@ -37,7 +37,7 @@ function executionFixture(overrides = {}) {
   const context = {
     requestRow, request, post: { id: "job-1", status: "queued" }, target: { profileId: "profile-1" },
     account: { status: "enabled", health: "healthy", accountId: "account-1", profileId: "profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/owner" },
-    authorization: { allowLiveExecution: false }
+    authorization: { allowLiveExecution: false }, state: { executionReceipts: [] }
   };
   const calls = [];
   const service = {
@@ -215,12 +215,18 @@ test("uncertain submit is reconciled without invoking the publishing method agai
   const fixture = executionFixture();
   fixture.requestRow.state = "SUBMIT_RESULT_UNKNOWN";
   fixture.requestRow.submitState = "UNKNOWN";
+  const preSubmitMediaIntegrity = { artifactId: "artifact-1", expectedSha256: "a".repeat(64), localFileSha256: "a".repeat(64), mediaType: "video/mp4", attached: true, previewReady: true };
+  fixture.context.state.executionReceipts.push({
+    executionId: "exec-1", attempt: 1, receivedAt: new Date().toISOString(),
+    receipt: { publicationEvidence: { preSubmitMediaIntegrity } }
+  });
   let executeCalls = 0;
   let reconcileCalls = 0;
   const adapter = {
     async execute() { executeCalls += 1; throw new Error("must not redispatch"); },
-    async reconcile() {
+    async reconcile(_request, options) {
       reconcileCalls += 1;
+      assert.deepEqual(options.preSubmitMediaIntegrity, preSubmitMediaIntegrity);
       return {
         submitState: "UNKNOWN", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
         durationMs: 5, browserCommands: 2, computerUseCalls: 0, retries: 0,
@@ -395,9 +401,19 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
   };
   try {
     const adapter = new LinkedInAdapter(browser);
+    let integrityAtPreSubmit;
+    const verifyPreSubmit = adapter.verifyPreSubmit.bind(adapter);
+    adapter.verifyPreSubmit = async (context) => {
+      integrityAtPreSubmit = context.media.preSubmitMediaIntegrity;
+      return verifyPreSubmit(context);
+    };
     const result = await adapter.execute(request, { dryRun: true, expectedIdentityUrl: "https://www.linkedin.com/in/owner" });
     assert.equal(result.submitState, "NOT_STARTED");
     assert.equal(result.gates.mediaPreviewConfirmed, true, JSON.stringify(result));
+    assert.deepEqual(integrityAtPreSubmit, {
+      artifactId: "artifact-1", expectedSha256: mediaHash, localFileSha256: mediaHash,
+      mediaType: "video/mp4", attached: true, previewReady: true
+    });
     assert.deepEqual(calls.filter(([name]) => name === "navigate" || name === "wait-url"), [
       ["navigate", "https://www.linkedin.com/feed/"], ["wait-url", "https://www.linkedin.com/feed/"],
       ["navigate", "https://www.linkedin.com/feed/"]

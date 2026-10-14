@@ -189,9 +189,13 @@ export class JevExecutionWorker {
     try {
       await this.service.markExecutionReconciliationAttempt(executionId);
       const context = await this.service.executionContext(executionId);
+      const priorReceipt = (context.state.executionReceipts || [])
+        .filter((item) => item.executionId === executionId && item.attempt === context.requestRow.attempt)
+        .sort((left, right) => Date.parse(right.receivedAt || 0) - Date.parse(left.receivedAt || 0))[0];
       const result = await adapter.reconcile(context.request, {
         account: context.account,
-        submittedAt: context.requestRow.submitIntentAt || context.requestRow.dispatchedAt || null
+        submittedAt: context.requestRow.submitIntentAt || context.requestRow.dispatchedAt || null,
+        preSubmitMediaIntegrity: priorReceipt?.receipt?.publicationEvidence?.preSubmitMediaIntegrity || null
       });
       const receipt = this.#receipt(context.requestRow, context.request, result, { reconciliation: true });
       if (!(receipt.submitState === "UNKNOWN" && context.requestRow.state === "SUBMIT_RESULT_UNKNOWN")) {

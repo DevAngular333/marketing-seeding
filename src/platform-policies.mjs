@@ -20,6 +20,8 @@ function validateHttpsIdentityUrl(platform, value, { hosts, pathPattern }) {
   return url.toString();
 }
 
+export const POST_PUBLISH_MEDIA_HASH_CAPABILITIES = Object.freeze(["REQUIRED", "NOT_AVAILABLE"]);
+
 export class PlatformPolicyRegistry {
   #policies = new Map();
 
@@ -35,6 +37,8 @@ export class PlatformPolicyRegistry {
     if (allowedTargetHosts.some((host) => !/^[a-z0-9.-]+$/.test(host))) throw new Error(`Platform policy for ${key} has an invalid target host`);
     if (policy.normalizeIdentityUrl !== undefined && typeof policy.normalizeIdentityUrl !== "function") throw new Error(`Platform policy identity normalizer for ${key} must be a function`);
     if (policy.validateTargetUrl !== undefined && typeof policy.validateTargetUrl !== "function") throw new Error(`Platform policy URL validator for ${key} must be a function`);
+    const postPublishMediaHash = String(policy.postPublishMediaHash || "REQUIRED").toUpperCase();
+    if (!POST_PUBLISH_MEDIA_HASH_CAPABILITIES.includes(postPublishMediaHash)) throw new Error(`Platform policy for ${key} has an invalid post-publish media hash capability`);
     const normalized = {
       allowedTargetHosts,
       allowTargetSubdomains: policy.allowTargetSubdomains === true,
@@ -42,6 +46,7 @@ export class PlatformPolicyRegistry {
       validateTargetUrl: policy.validateTargetUrl || null,
       targetUrlError: String(policy.targetUrlError || "").trim() || null,
       requiresIdentityUrl: policy.requiresIdentityUrl === true,
+      postPublishMediaHash,
       defaultTargets: Array.isArray(policy.defaultTargets) ? structuredClone(policy.defaultTargets) : []
     };
     if (this.#policies.has(key)) throw new Error(`Platform policy is already registered: ${key}`);
@@ -119,6 +124,7 @@ export const defaultPlatformPolicies = new PlatformPolicyRegistry({
   linkedin: {
     allowedTargetHosts: ["linkedin.com", "lnkd.in"],
     requiresIdentityUrl: true,
+    postPublishMediaHash: "NOT_AVAILABLE",
     normalizeIdentityUrl: (value) => validateHttpsIdentityUrl("linkedin", value, {
       hosts: ["linkedin.com"],
       pathPattern: /^\/(?:in|company)\/[^/]+\/?$/i

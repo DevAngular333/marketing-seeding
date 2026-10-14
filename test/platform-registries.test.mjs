@@ -54,4 +54,6 @@ test("platform URL and account identity rules live in platform policy data", () 
   assert.throws(() => policies.normalizeIdentityUrl("test_social", null), /required/);
   assert.equal(defaultPlatformPolicies.allowsTargetUrl("linkedin", "https://www.linkedin.com/feed/"), true);
   assert.equal(defaultPlatformPolicies.allowsTargetUrl("linkedin", "https://threads.net/"), false);
+  assert.equal(defaultPlatformPolicies.resolve("linkedin").postPublishMediaHash, "NOT_AVAILABLE");
+  assert.equal(defaultPlatformPolicies.resolve("threads").postPublishMediaHash, "REQUIRED");
 });

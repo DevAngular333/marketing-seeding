@@ -8,7 +8,7 @@ import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
 import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
 import { classifyReadinessError, configuredReadinessTtlMs, executionAccountIdentityReference, executionAccountKey, isCanonicalOrcaProfileId, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
-import { createExecutionRequestV1, validateExecutionReceiptV1 } from "./execution-contracts.mjs";
+import { createExecutionRequestV1, isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateExecutionReceiptV1 } from "./execution-contracts.mjs";
 import { assertWindowExecutionBinding, normalizeOneTimeExecutionWindow, oneTimeExecutionWindowFingerprint, oneTimeExecutionWindowInBounds, oneTimeExecutionWindowStatus } from "./one-time-execution-window.mjs";
 import { assertLiveGrantMatchesExecution, createLiveExecutionGrantV1, liveGrantEffectiveStatus } from "./live-execution-grant.mjs";
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
@@ -1863,12 +1863,63 @@ export class SeedingService {
         const evidence = receipt.publicationEvidence;
         const target = requireItem(state.targets, post.targetId, "Target");
         const artifact = post.artifactId ? (state.artifacts || []).find((item) => item.id === post.artifactId) : null;
-        if (!evidence || evidence.accountMatched !== true || evidence.targetMatched !== true || evidence.contentHashMatched !== true || evidence.mediaHashMatched !== true || !receipt.publicationUrl) {
-          throw new Error("Confirmed receipt requires verified account, target, content, media, and permalink evidence");
+        if (post.artifactId && !artifact) throw new Error("Confirmed publication references a missing canonical media artifact");
+        if (!post.artifactId && request.request?.media?.length) throw new Error("Execution request contains media without a canonical job artifact");
+        if (!evidence || evidence.accountMatched !== true || evidence.targetMatched !== true || evidence.contentHashMatched !== true || !receipt.publicationUrl) {
+          throw new Error("Confirmed receipt requires verified account, target, content, and permalink evidence");
         }
         const postContentHash = createHash("sha256").update(post.content).digest("hex");
-        if (evidence.contentHash !== postContentHash || evidence.targetId !== target.id || evidence.accountId !== target.accountId || evidence.profileId !== target.profileId || evidence.mediaHash !== (artifact?.sha256 || null)) {
+        if (evidence.contentHash !== postContentHash || evidence.targetId !== target.id || evidence.accountId !== target.accountId || evidence.profileId !== target.profileId) {
           throw new Error("Publication evidence does not match the expected job identity");
+        }
+        if (!artifact) {
+          if (evidence.mediaHashMatched !== true || evidence.mediaHash !== null) throw new Error("Text-only publication requires media-not-applicable evidence");
+        } else {
+          const expectedMedia = {
+            artifactId: artifact.id,
+            sha256: artifact.sha256,
+            type: artifact.mimeType || artifact.mediaType || "application/octet-stream"
+          };
+          const requestMedia = request.request?.media?.[0];
+          if (!requestMedia || requestMedia.artifactId !== expectedMedia.artifactId || requestMedia.sha256 !== expectedMedia.sha256 || requestMedia.type !== expectedMedia.type) {
+            throw new Error("Execution request media binding does not match the canonical artifact");
+          }
+          const mediaEvidence = evidence.verificationDetails?.media;
+          if (!mediaEvidence || mediaEvidence.present !== true || mediaEvidence.hashStatus === "MISMATCHED") throw new Error("Publication media evidence is missing or mismatched");
+          if (mediaEvidence.type !== (expectedMedia.type.startsWith("video/") ? "video" : expectedMedia.type.startsWith("image/") ? "image" : expectedMedia.type)) {
+            throw new Error("Publication media type does not match the canonical artifact");
+          }
+          if (mediaEvidence.hashStatus === "MATCHED") {
+            if (evidence.mediaHashMatched !== true || evidence.mediaHash !== expectedMedia.sha256) throw new Error("Verifiable publication media hash does not match the canonical artifact");
+          } else if (mediaEvidence.hashStatus === "NOT_VERIFIABLE") {
+            const policy = this.platformPolicies.resolve(target.channel);
+            const preSubmitIntegrity = evidence.preSubmitMediaIntegrity;
+            if (policy?.postPublishMediaHash !== "NOT_AVAILABLE" || evidence.mediaHashMatched !== false || evidence.mediaHash !== null ||
+                mediaEvidence.present !== true || !isPreSubmitMediaIntegrityProven(preSubmitIntegrity, expectedMedia)) {
+              throw new Error("Publication media hash is unavailable without a matching platform capability and proven pre-submit artifact integrity");
+            }
+            const details = evidence.verificationDetails;
+            const candidate = details?.candidate;
+            if (details?.executionId !== executionId || !details?.authorIdentity?.matched || !details?.contentMatch?.matched ||
+                !candidate?.timestampMatched || !(candidate?.postId || candidate?.activityUrn) ||
+                !candidate?.permalink || candidate.permalink !== receipt.publicationUrl) {
+              throw new Error("Unverifiable publication media requires stable post identity, permalink, author, content, and submit-time evidence");
+            }
+            const submittedMs = Date.parse(details.submittedAt || request.submitIntentAt || request.dispatchedAt || "");
+            const observedMs = Date.parse(details.observedAt || "");
+            const candidateMs = Date.parse(candidate.timestamp || "");
+            if (!Number.isFinite(submittedMs) || !Number.isFinite(observedMs) || !Number.isFinite(candidateMs) || candidateMs < submittedMs || candidateMs > submittedMs + PUBLICATION_CANDIDATE_MAX_AGE_MS || candidateMs > observedMs) {
+              throw new Error("Unverifiable publication media requires a candidate timestamp within the submit-to-observation interval");
+            }
+            const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+            const expectedIdentity = account?.identityReference ? this.platformPolicies.normalizeIdentityUrl(target.channel, account.identityReference) : null;
+            const expectedAuthorPath = expectedIdentity ? new URL(expectedIdentity).pathname.replace(/\/$/, "").toLowerCase() : null;
+            if (!expectedAuthorPath || details.authorIdentity.expectedPath !== expectedAuthorPath || details.authorIdentity.observedPath !== expectedAuthorPath) {
+              throw new Error("Unverifiable publication media requires the registered author identity to match");
+            }
+          } else {
+            throw new Error("Publication media hash status is invalid for a media-bearing job");
+          }
         }
         const targetHost = new URL(target.url).hostname.toLowerCase().replace(/^www\./, "");
         const publicationHost = new URL(receipt.publicationUrl).hostname.toLowerCase().replace(/^www\./, "");

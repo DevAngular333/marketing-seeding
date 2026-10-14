@@ -503,6 +503,112 @@ test("verified confirmation receipt reconciles an intent to PUBLISHED and VERIFI
   assert.ok(after.posts.find((item) => item.id === post.id).jobLifecycle.some((item) => item.state === "VERIFIED"));
 });
 
+async function prepareMediaSubmitIntent(service, post, requestRow, target, { artifactId = "artifact-video", sha256 = "a".repeat(64), mimeType = "video/mp4" } = {}) {
+  const submittedAt = new Date(Date.now() - 10_000).toISOString();
+  const attemptId = `attempt-${artifactId}`;
+  await service.store.mutate("test", "simulate_media_submit_intent", (state) => {
+    const artifact = { id: artifactId, path: "/tmp/canonical-video.mp4", sha256, mimeType, mediaType: mimeType, createdAt: submittedAt };
+    state.artifacts.push(artifact);
+    const storedPost = state.posts.find((item) => item.id === post.id);
+    storedPost.artifactId = artifactId;
+    storedPost.status = "publishing";
+    storedPost.executionState = "SUBMIT_SENT_INTENT";
+    storedPost.publicationAttemptId = attemptId;
+    const storedRequest = state.executionRequests.find((item) => item.executionId === requestRow.executionId);
+    storedRequest.state = "SUBMIT_SENT_INTENT";
+    storedRequest.submitIntentAt = submittedAt;
+    storedRequest.request.media = [{ artifactId, reference: artifact.path, sha256, type: mimeType }];
+    state.publicationAttempts.push({ id: attemptId, postId: post.id, targetId: target.id, status: "prepared", executionId: requestRow.executionId, contentSha256: contentSha256(post.content) });
+  });
+  return { submittedAt, artifactId, sha256, mimeType };
+}
+
+function mediaVerificationReceipt({ platform = "linkedin", executionId, jobId, attempt, accountId, profileId, targetId, content, submittedAt, artifactId, sha256, mimeType, localFileSha256 = sha256, hashStatus = "NOT_VERIFIABLE", mediaHashMatched = false, mediaHash = null, mediaType = "video", mediaPresent = true } = {}) {
+  const verifiedAt = new Date().toISOString();
+  const permalink = platform === "linkedin" ? "https://www.linkedin.com/feed/update/urn:li:activity:987654321/" : "https://www.threads.net/@owner/post/verified";
+  return {
+    schemaVersion: 1, executionId, jobId, attempt,
+    startedAt: submittedAt, finishedAt: verifiedAt,
+    readinessResult: { state: "READY", checkedAt: submittedAt },
+    submitState: "CONFIRMED", publicationUrl: permalink, publicationReference: "urn:li:activity:987654321",
+    publicationEvidence: {
+      verifiedAt, accountMatched: true, targetMatched: true, contentHashMatched: true, mediaHashMatched,
+      accountId, profileId, targetId, contentHash: contentSha256(content), mediaHash,
+      verificationMethod: "linkedin_read_only_activity_dom", evidenceReference: permalink,
+      preSubmitMediaIntegrity: { artifactId, expectedSha256: sha256, localFileSha256, mediaType: mimeType, attached: true, previewReady: true },
+      verificationDetails: {
+        executionId, submittedAt, observedAt: verifiedAt,
+        authorIdentity: { expectedPath: "/in/test-owner", observedPath: "/in/test-owner", matched: true },
+        contentMatch: { expectedSha256: contentSha256(content), matched: true },
+        candidate: { surface: "feed", activityUrn: "urn:li:activity:987654321", postId: "987654321", permalink, timestamp: new Date(Date.parse(submittedAt) + 2_000).toISOString(), timestampMatched: true },
+        media: { present: mediaPresent, type: mediaType, hashStatus }
+      }
+    }, telemetry: {}
+  };
+}
+
+test("LinkedIn can verify a media publication with unavailable post hash when exact upload integrity and strong identity are proven", async (context) => {
+  const { directory, service, post, target } = await fixture({ platform: "linkedin", provider: { async checkReadiness() { return ready(); } } });
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const requestRow = (await service.snapshot()).executionRequests[0];
+  const media = await prepareMediaSubmitIntent(service, post, requestRow, target);
+  const receipt = mediaVerificationReceipt({
+    executionId: requestRow.executionId, jobId: post.id, attempt: 1, accountId: target.accountId,
+    profileId: target.profileId, targetId: target.id, content: post.content, submittedAt: media.submittedAt, ...media
+  });
+  await service.recordExecutionReceipt(requestRow.executionId, receipt, "jev-worker:test");
+  const after = await service.snapshot();
+  assert.equal(after.posts.find((item) => item.id === post.id).status, "published");
+  assert.equal(after.executionRequests[0].executionPhase, "VERIFIED");
+  assert.equal(after.executionReceipts[0].receipt.publicationEvidence.mediaHashMatched, false);
+  assert.equal(after.executionReceipts[0].receipt.publicationEvidence.verificationDetails.media.hashStatus, "NOT_VERIFIABLE");
+});
+
+test("NOT_VERIFIABLE publication media is rejected when pre-submit local artifact hash differs", async (context) => {
+  const { directory, service, post, target } = await fixture({ platform: "linkedin", provider: { async checkReadiness() { return ready(); } } });
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const requestRow = (await service.snapshot()).executionRequests[0];
+  const media = await prepareMediaSubmitIntent(service, post, requestRow, target);
+  const receipt = mediaVerificationReceipt({
+    executionId: requestRow.executionId, jobId: post.id, attempt: 1, accountId: target.accountId,
+    profileId: target.profileId, targetId: target.id, content: post.content, submittedAt: media.submittedAt,
+    ...media, localFileSha256: "0".repeat(64)
+  });
+  await assert.rejects(service.recordExecutionReceipt(requestRow.executionId, receipt, "jev-worker:test"), /pre-submit artifact integrity/);
+});
+
+test("MISMATCHED media and verifiable hash mismatch cannot reach VERIFIED", async (context) => {
+  const { directory, service, post, target } = await fixture({ platform: "linkedin", provider: { async checkReadiness() { return ready(); } } });
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const requestRow = (await service.snapshot()).executionRequests[0];
+  const media = await prepareMediaSubmitIntent(service, post, requestRow, target);
+  const common = {
+    executionId: requestRow.executionId, jobId: post.id, attempt: 1, accountId: target.accountId,
+    profileId: target.profileId, targetId: target.id, content: post.content, submittedAt: media.submittedAt, ...media
+  };
+  await assert.rejects(service.recordExecutionReceipt(requestRow.executionId, mediaVerificationReceipt({ ...common, hashStatus: "MISMATCHED" }), "jev-worker:test"), /MISMATCHED publication media/);
+  await assert.rejects(service.recordExecutionReceipt(requestRow.executionId, mediaVerificationReceipt({ ...common, hashStatus: "MATCHED", mediaHashMatched: true, mediaHash: "f".repeat(64) }), "jev-worker:test"), /hash does not match/);
+});
+
+test("hash-verifiable platform policy continues to require a matching post-publication media hash", async (context) => {
+  const { directory, service, post, target } = await fixture({ platform: "threads", provider: { async checkReadiness() { return ready(); } } });
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const requestRow = (await service.snapshot()).executionRequests[0];
+  const media = await prepareMediaSubmitIntent(service, post, requestRow, target);
+  const common = {
+    platform: "threads", executionId: requestRow.executionId, jobId: post.id, attempt: 1,
+    accountId: target.accountId, profileId: target.profileId, targetId: target.id,
+    content: post.content, submittedAt: media.submittedAt, ...media
+  };
+  await assert.rejects(service.recordExecutionReceipt(requestRow.executionId, mediaVerificationReceipt({ ...common, hashStatus: "NOT_VERIFIABLE" }), "jev-worker:test"), /matching platform capability/);
+  await service.recordExecutionReceipt(requestRow.executionId, mediaVerificationReceipt({
+    ...common, hashStatus: "MATCHED", mediaHashMatched: true, mediaHash: media.sha256
+  }), "jev-worker:test");
+  const after = await service.snapshot();
+  assert.equal(after.posts.find((item) => item.id === post.id).status, "published");
+  assert.equal(after.executionReceipts.at(-1).receipt.publicationEvidence.mediaHashMatched, true);
+});
+
 test("uncertain LinkedIn submissions enter rate-limited reconciliation without becoming dispatchable", async () => {
   const { service } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
   const request = (await service.snapshot()).executionRequests[0];
