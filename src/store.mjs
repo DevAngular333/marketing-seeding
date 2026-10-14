@@ -7,12 +7,13 @@ import { nowIso } from "./constants.mjs";
 export function createInitialState(now = new Date()) {
   const timestamp = nowIso(now);
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     revision: 0,
     createdAt: timestamp,
     updatedAt: timestamp,
     campaigns: [],
     campaignAuthorizations: [],
+    liveExecutionGrants: [],
     executionAccounts: [],
     executionRequests: [],
     executionReceipts: [],
@@ -37,7 +38,7 @@ export function createInitialState(now = new Date()) {
 }
 
 const STATE_COLLECTIONS = Object.freeze([
-  "campaigns", "campaignAuthorizations", "executionAccounts", "executionRequests", "executionReceipts", "executionLeases", "artifacts", "stories", "publicationAttempts", "schedules", "scheduleRuns", "targets", "posts",
+  "campaigns", "campaignAuthorizations", "liveExecutionGrants", "executionAccounts", "executionRequests", "executionReceipts", "executionLeases", "artifacts", "stories", "publicationAttempts", "schedules", "scheduleRuns", "targets", "posts",
   "metricSnapshots", "keywordSnapshots", "interactions", "replies", "conversions", "collectorRuns", "fixtureAutomationRuns", "communityMemberships", "auditLog"
 ]);
 
@@ -45,7 +46,7 @@ export function migrateState(input, now = new Date()) {
   const state = input && typeof input === "object" ? input : createInitialState(now);
   const sourceVersion = Number(state.schemaVersion || 1);
   if (!Number.isSafeInteger(sourceVersion) || sourceVersion < 1) throw new Error("Unsupported or invalid state schemaVersion");
-  if (sourceVersion > 5) throw new Error(`State schemaVersion ${sourceVersion} is newer than supported version 5`);
+  if (sourceVersion > 6) throw new Error(`State schemaVersion ${sourceVersion} is newer than supported version 6`);
   let changed = false;
   for (const key of STATE_COLLECTIONS) {
     if (!Array.isArray(state[key])) {
@@ -53,8 +54,8 @@ export function migrateState(input, now = new Date()) {
       changed = true;
     }
   }
-  if (sourceVersion < 5) {
-    state.schemaVersion = 5;
+  if (sourceVersion < 6) {
+    state.schemaVersion = 6;
     changed = true;
   }
   if (!Number.isSafeInteger(state.revision) || state.revision < 0) {
@@ -68,7 +69,7 @@ export function migrateState(input, now = new Date()) {
       id: randomUUID(),
       at: state.updatedAt,
       actor: "system",
-      event: "state_schema_migrated_v5",
+      event: "state_schema_migrated_v6",
       revision: state.revision
     });
   }
@@ -92,7 +93,7 @@ export class JsonStore {
       const migrated = migrateState(JSON.parse(text));
       if (migrated.changed) {
         if (this.requireLease && !this.#leaseHandle) throw new Error("Writer lease is required before state migration");
-        await copyFile(this.filePath, `${this.filePath}.schema-v5.bak`, fsConstants.COPYFILE_EXCL).catch((error) => {
+        await copyFile(this.filePath, `${this.filePath}.schema-v6.bak`, fsConstants.COPYFILE_EXCL).catch((error) => {
           if (error.code !== "EEXIST") throw error;
         });
         await this.#write(migrated.state);

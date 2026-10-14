@@ -93,7 +93,7 @@ test("managed service health reports its process and graceful shutdown releases 
       pid: child.pid,
       sourceCommit: "c5d24a9",
       sourceDirty: false,
-      schemaVersion: 5,
+      schemaVersion: 6,
       stateRevision: 0
     });
     const lockPath = path.join(dataDir, "state.json.writer.lock");
@@ -114,7 +114,7 @@ test("managed service health reports its process and graceful shutdown releases 
       assert.equal(status.writerLockPid, child.pid);
       assert.equal(status.writerLockMatchesService, true);
       assert.equal(status.sourceCommit, "c5d24a9");
-      assert.equal(status.schemaVersion, 5);
+      assert.equal(status.schemaVersion, 6);
       assert.equal(status.stateRevision, 0);
       await writeFile(path.join(dataDir, "server.pid.json"), JSON.stringify({ pid: child.pid + 100000, supervisorPid: 999999 }));
       const staleStatusText = execFileSync("powershell.exe", [

@@ -7,6 +7,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { createInitialState } from "../src/store.mjs";
+import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, publicationIdentityKey } from "../src/campaign-authorization.mjs";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -47,6 +48,24 @@ test("HTTP mutations require the local operator bearer token", async (context) =
       }] }]
   }));
   const initialState = createInitialState();
+  const fixtureCampaign = { id: "live-grant-campaign", status: "active", productRepo: appRoot, objective: "fixture", audience: [], landingUrl: null };
+  const fixtureTarget = { id: "live-grant-target", channel: "linkedin", accountId: "fixture-account", profileId: "11111111-2222-4333-8444-555555555555", url: "https://www.linkedin.com/feed/", status: "active" };
+  const fixturePost = { id: "live-grant-job", campaignId: fixtureCampaign.id, targetId: fixtureTarget.id, contentId: "fixture-content", content: "Fixture approved content", audience: "public", status: "blocked", campaignAuthorizationId: "live-grant-auth",
+    idempotencyKey: publicationIdentityKey({ campaignId: fixtureCampaign.id, contentId: "fixture-content", platform: "linkedin", accountId: fixtureTarget.accountId, targetId: fixtureTarget.id }) };
+  const fixtureAuthorization = {
+    id: "live-grant-auth", campaignId: fixtureCampaign.id, status: "active", campaignBinding: campaignScopeFingerprint(fixtureCampaign),
+    validFrom: new Date(Date.now() - 60_000).toISOString(), validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "linkedin", accountId: fixtureTarget.accountId, profileId: fixtureTarget.profileId, targetId: fixtureTarget.id, targetUrl: fixtureTarget.url }],
+    approvedAssets: [], contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(fixturePost.content)] },
+    audienceRules: { allowedAudiences: ["public"] }, allowLiveExecution: true
+  };
+  fixtureAuthorization.binding = campaignAuthorizationFingerprint(fixtureAuthorization);
+  fixturePost.campaignAuthorizationBinding = fixtureAuthorization.binding;
+  initialState.campaigns.push(fixtureCampaign);
+  initialState.targets.push(fixtureTarget);
+  initialState.posts.push(fixturePost);
+  initialState.executionAccounts.push({ id: "linkedin:fixture-account", platform: "linkedin", accountId: "fixture-account", profileId: fixtureTarget.profileId, status: "enabled", health: "healthy" });
+  initialState.campaignAuthorizations.push(fixtureAuthorization);
   initialState.collectorRuns.push({ id: "prior-cycle", postId: "fixture", channel: "threads", status: "unknown", at: new Date(Date.now() - 60 * 60_000).toISOString() });
   await writeFile(path.join(dataDir, "state.json"), JSON.stringify(initialState));
   const token = randomBytes(32).toString("hex");
@@ -92,6 +111,20 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal((await fetch(`${baseUrl}/api/posts/fixture-job/execution-request/dry-run`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/run-dry-run`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { authorization: `Bearer ${token}` } })).status, 200);
+  const grantPayload = JSON.stringify({ jobId: fixturePost.id,
+    validFrom: new Date(Date.now() - 30_000).toISOString(), validUntil: new Date(Date.now() + 10 * 60_000).toISOString(),
+    operatorAuthorizationReference: "server-fixture-approval" });
+  const grantHeaders = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+  assert.equal((await fetch(`${baseUrl}/api/live-execution-grants`, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: grantPayload })).status, 401);
+  const grantResponse = await fetch(`${baseUrl}/api/live-execution-grants`, { method: "POST", headers: grantHeaders, body: grantPayload });
+  assert.equal(grantResponse.status, 201);
+  const liveGrant = await grantResponse.json();
+  assert.equal(liveGrant.jobId, fixturePost.id);
+  assert.equal((await fetch(`${baseUrl}/api/live-execution-grants/${liveGrant.grantId}`, { headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await (await fetch(`${baseUrl}/api/live-execution-grants/${liveGrant.grantId}`, { headers: { authorization: `Bearer ${token}` } })).json()).status, "ACTIVE");
+  assert.equal((await fetch(`${baseUrl}/api/live-execution-grants/${liveGrant.grantId}/revoke`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/live-execution-grants/${liveGrant.grantId}/revoke`, { method: "POST", headers: { authorization: `Bearer ${token}` } })).status, 200);
+  assert.equal((await (await fetch(`${baseUrl}/api/live-execution-grants/${liveGrant.grantId}`, { headers: { authorization: `Bearer ${token}` } })).json()).status, "REVOKED");
   const body = JSON.stringify({ name: "Fixture", objective: "Auth test", productRepo: appRoot });
   assert.equal((await fetch(`${baseUrl}/api/campaigns`, {
     method: "POST", headers: { "content-type": "application/json" }, body

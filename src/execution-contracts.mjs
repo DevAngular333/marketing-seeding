@@ -63,6 +63,7 @@ export function validateExecutionRequestV1(input) {
       authorizationId: required(input.authorization?.authorizationId, "authorization.authorizationId"),
       binding: required(input.authorization?.binding, "authorization.binding")
     },
+    liveGrant: input.liveGrant ? { grantId: required(input.liveGrant.grantId, "liveGrant.grantId") } : null,
     idempotencyKey: required(input.idempotencyKey, "idempotencyKey"),
     readiness: {
       state: required(input.readiness?.state, "readiness.state"),
@@ -201,10 +202,11 @@ export function validateExecutionReceiptV1(input) {
   return receipt;
 }
 
-export function createExecutionRequestV1({ executionId, post, target, account, authorization, readiness, artifact, dryRun = false, createdAt = new Date().toISOString() }) {
+export function createExecutionRequestV1({ executionId, post, target, account, authorization, readiness, artifact, liveGrant = null, dryRun = false, createdAt = new Date().toISOString() }) {
   return validateExecutionRequestV1({
     schemaVersion: 1,
     executionId,
+    liveGrant: liveGrant ? { grantId: liveGrant.grantId } : null,
     jobId: post.id,
     campaignId: post.campaignId,
     platform: target.channel,

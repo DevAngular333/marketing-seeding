@@ -362,6 +362,20 @@ const server = http.createServer(async (request, response) => {
       }
       return sendJson(response, 200, await service.snapshot());
     }
+    if (request.method === "POST" && url.pathname === "/api/live-execution-grants") {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 201, await service.createLiveExecutionGrant(await readJson(request), actor));
+    }
+    let liveGrantMatch = url.pathname.match(/^\/api\/live-execution-grants\/([^/]+)$/);
+    if (request.method === "GET" && liveGrantMatch) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.getLiveExecutionGrant(liveGrantMatch[1]));
+    }
+    liveGrantMatch = url.pathname.match(/^\/api\/live-execution-grants\/([^/]+)\/revoke$/);
+    if (request.method === "POST" && liveGrantMatch) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.revokeLiveExecutionGrant(liveGrantMatch[1], actor));
+    }
     if (request.method === "GET" && url.pathname === "/api/execution-requests/ready") {
       if (!new Set(["operator", "automation"]).has(role)) return sendJson(response, 401, { ok: false, error: "execution_read_token_required" });
       return sendJson(response, 200, await service.readyExecutionRequests());

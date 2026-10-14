@@ -58,6 +58,23 @@ function executionFixture(overrides = {}) {
   return { request, requestRow, context, service, calls };
 }
 
+function attachFixtureGrant(fixture) {
+  const request = fixture.request;
+  request.liveGrant = { grantId: "grant-1" };
+  fixture.context.authorization.id = request.authorization.authorizationId;
+  fixture.context.authorization.binding = request.authorization.binding;
+  fixture.context.liveGrant = {
+    schemaVersion: 1, grantId: "grant-1", campaignAuthorizationId: request.authorization.authorizationId,
+    campaignAuthorizationBinding: request.authorization.binding, campaignId: request.campaignId,
+    jobId: request.jobId, boundExecutionId: request.executionId, platform: request.platform,
+    accountId: request.accountId, profileId: request.profileId, targetId: request.target.targetId,
+    content: { contentId: request.content.contentId, canonicalSha256: "b".repeat(64), rawSha256: request.content.sha256 },
+    media: [], audience: request.audience, idempotencyKey: request.idempotencyKey,
+    validFrom: new Date(Date.now() - 60_000).toISOString(), validUntil: new Date(Date.now() + 60_000).toISOString(),
+    maxExecutions: 1, createdAt: new Date().toISOString(), createdBy: "operator", operatorAuthorizationReference: "fixture-approval", status: "ACTIVE"
+  };
+}
+
 test("JEV worker runs a dry-run to the pre-submit boundary and records a non-terminal receipt", async () => {
   const fixture = executionFixture();
   let submitCalls = 0;
@@ -137,10 +154,24 @@ test("JEV worker refuses live execution unless exact one-job opt-in is present",
   assert.ok(fixture.calls.some(([name]) => name === "release"));
 });
 
-test("campaign-authorized autonomous live mode applies to non-test jobs only with explicit global opt-in", async () => {
+test("campaign live authorization and global worker opt-in cannot run an adapter without a job grant", async () => {
+  const fixture = executionFixture();
+  fixture.context.authorization.allowLiveExecution = true;
+  let adapterCalls = 0;
+  const worker = new JevExecutionWorker({ service: fixture.service,
+    adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }),
+    env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED: "true" } });
+  const result = await worker.run("exec-1", { dryRun: false });
+  assert.equal(result.status, "LIVE_NOT_AUTHORIZED");
+  assert.equal(adapterCalls, 0);
+  assert.equal(fixture.calls.some(([name]) => name === "intent"), false);
+});
+
+test("campaign-authorized autonomous live mode also requires a bound one-job grant", async () => {
   const fixture = executionFixture();
   fixture.request.testJob = false;
   fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
   let clickCount = 0;
   const adapter = {
     async execute(_request, options) {
@@ -211,6 +242,7 @@ test("worker executes a non-LinkedIn adapter without reading LinkedIn identity f
   fixture.request.target.url = "https://social.example/feed";
   Object.defineProperty(fixture.context.account, "expectedIdentityUrl", { get() { throw new Error("worker must not inspect platform-specific identity fields"); } });
   fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
   let executeCalls = 0;
   const adapter = {
     async execute(_request, context) {

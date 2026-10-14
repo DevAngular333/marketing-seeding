@@ -1,0 +1,13 @@
+# Single-use live execution grants
+
+State schema v6 adds `liveExecutionGrants[]` additively. Migration from v1–v5 creates an empty collection. It does not infer live permission from `approvedAt`, campaign authorization, or an existing execution request. The PR3.2 source branch is isolated from the running v5 service; deploying it requires a separate controlled runtime migration.
+
+`LiveExecutionGrantV1` binds one `campaignAuthorizationId` and binding, `campaignId`, `jobId`, destination tuple `(platform, accountId, profileId, targetId)`, exact `contentId`, canonical campaign content hash, raw payload SHA-256, approved media artifact IDs and hashes, audience, and publication idempotency key. It records `grantId`, `schemaVersion: 1`, `validFrom`, `validUntil`, `maxExecutions: 1`, `createdAt`, `createdBy`, `operatorAuthorizationReference`, `boundExecutionId`, and `status` (`ACTIVE`, `CONSUMED`, `EXPIRED`, `REVOKED`). No browser or account secrets are stored. A grant is valid for at most 24 hours and must fit inside the campaign authorization validity period.
+
+Only an authenticated operator may create, read, or revoke a grant through `POST /api/live-execution-grants`, `GET /api/live-execution-grants/:grantId`, and `POST /api/live-execution-grants/:grantId/revoke`. Creation derives scope from the canonical job and authorization. Automation cannot mint or revoke grants. If a live `REQUEST_READY` request already exists, creation binds the grant to that execution; otherwise `prepareExecutionRequest` binds it in the same state mutation that creates the request. A different execution ID cannot reuse that binding.
+
+The scheduler persists `EXPIRED` after the validity window ends. Read and submit checks also treat elapsed grants as expired before the scheduler's next tick.
+
+Dry-run requests do not reference or consume grants. Live dispatch requires an active, in-window, matching grant in addition to existing campaign authorization, readiness, account, schedule, rate, concurrency, duplicate and worker environment gates. `testJob` does not confer permission. Immediately before submit, the service rechecks all bindings and governance. In one serialized atomic store mutation it changes the grant to `CONSUMED` and records `SUBMIT_SENT_INTENT`. If the write fails, neither state is persisted and the adapter must not click Post. A consumed grant cannot authorize a second submit or be revoked back to active. An uncertain or submitted execution is never silently retried.
+
+No real grant or publication is created by PR3.2 implementation or tests. Tests use isolated temporary state and fake adapters.

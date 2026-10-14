@@ -5,13 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import { JsonStore, migrateState } from "../src/store.mjs";
 
-test("v1 state migrates additively to v5 without dropping existing records", () => {
+test("v1 state migrates additively to v6 without dropping existing records", () => {
   const original = { schemaVersion: 1, revision: 4, campaigns: [{ id: "c1" }], auditLog: [] };
   const { state, changed } = migrateState(original, new Date("2026-10-07T00:00:00.000Z"));
   assert.equal(changed, true);
-  assert.equal(state.schemaVersion, 5);
+  assert.equal(state.schemaVersion, 6);
   assert.deepEqual(state.campaigns, [{ id: "c1" }]);
   assert.deepEqual(state.campaignAuthorizations, []);
+  assert.deepEqual(state.liveExecutionGrants, []);
   assert.deepEqual(state.executionAccounts, []);
   assert.deepEqual(state.executionRequests, []);
   assert.deepEqual(state.executionReceipts, []);
@@ -19,19 +20,19 @@ test("v1 state migrates additively to v5 without dropping existing records", () 
   assert.deepEqual(state.artifacts, []);
   assert.deepEqual(state.stories, []);
   assert.equal(state.revision, 5);
-  assert.equal(state.auditLog.at(-1).event, "state_schema_migrated_v5");
+  assert.equal(state.auditLog.at(-1).event, "state_schema_migrated_v6");
 });
 
-test("store accepts a UTF-8 BOM state and persists schema v5", async () => {
+test("store accepts a UTF-8 BOM state and persists schema v6", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "seeding-migrate-"));
   const file = path.join(dir, "state.json");
   await writeFile(file, `\uFEFF${JSON.stringify({ schemaVersion: 1, revision: 0, campaigns: [], auditLog: [] })}`, "utf8");
   const state = await new JsonStore(file).init();
-  assert.equal(state.schemaVersion, 5);
+  assert.equal(state.schemaVersion, 6);
   assert.doesNotMatch(await readFile(file, "utf8"), /^\uFEFF/);
 });
 
-test("schema v2 migrates to v5 in an isolated fixture and preserves legacy approvals without promoting them", async () => {
+test("schema v2 migrates to v6 in an isolated fixture and preserves legacy approvals without promoting them", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "seeding-v2-v4-migrate-"));
   const file = path.join(dir, "state.json");
   const original = {
@@ -44,14 +45,14 @@ test("schema v2 migrates to v5 in an isolated fixture and preserves legacy appro
   await writeFile(file, JSON.stringify(original), "utf8");
 
   const state = await new JsonStore(file).init();
-  assert.equal(state.schemaVersion, 5);
+  assert.equal(state.schemaVersion, 6);
   assert.equal(state.revision, 10);
   assert.deepEqual(state.campaigns, original.campaigns);
   assert.deepEqual(state.posts, original.posts);
   assert.deepEqual(state.campaignAuthorizations, []);
   assert.equal(state.posts[0].approvedAt, original.posts[0].approvedAt);
-  assert.equal(state.auditLog.at(-1).event, "state_schema_migrated_v5");
-  const backup = JSON.parse(await readFile(`${file}.schema-v5.bak`, "utf8"));
+  assert.equal(state.auditLog.at(-1).event, "state_schema_migrated_v6");
+  const backup = JSON.parse(await readFile(`${file}.schema-v6.bak`, "utf8"));
   assert.deepEqual(backup, original);
 });
 
@@ -59,7 +60,7 @@ test("schema v3 retains campaign authorization and adds execution collections", 
   const authorization = { id: "auth-v3", campaignId: "campaign-v3", status: "active" };
   const { state, changed } = migrateState({ schemaVersion: 3, revision: 2, campaignAuthorizations: [authorization], auditLog: [] });
   assert.equal(changed, true);
-  assert.equal(state.schemaVersion, 5);
+  assert.equal(state.schemaVersion, 6);
   assert.deepEqual(state.campaignAuthorizations, [authorization]);
   assert.deepEqual(state.executionAccounts, []);
   assert.deepEqual(state.executionRequests, []);
@@ -71,13 +72,20 @@ test("schema v4 adds execution leases without dropping PR2 state", () => {
   const request = { executionId: "exec-v1", state: "REQUEST_READY" };
   const { state, changed } = migrateState({ schemaVersion: 4, revision: 3, executionRequests: [request], auditLog: [] });
   assert.equal(changed, true);
-  assert.equal(state.schemaVersion, 5);
+  assert.equal(state.schemaVersion, 6);
   assert.deepEqual(state.executionRequests, [request]);
   assert.deepEqual(state.executionLeases, []);
 });
 
+test("schema v5 gains empty grants without inferring live permission", () => {
+  const { state } = migrateState({ schemaVersion: 5, revision: 9, campaignAuthorizations: [{ id: "auth", allowLiveExecution: true }], auditLog: [] });
+  assert.equal(state.schemaVersion, 6);
+  assert.deepEqual(state.liveExecutionGrants, []);
+  assert.equal(state.campaignAuthorizations[0].allowLiveExecution, true);
+});
+
 test("migration rejects a future schema instead of downgrading it", () => {
-  assert.throws(() => migrateState({ schemaVersion: 6, revision: 9 }), /newer than supported/);
+  assert.throws(() => migrateState({ schemaVersion: 7, revision: 9 }), /newer than supported/);
 });
 
 test("runtime writer lease fences a second process/store owner", async () => {

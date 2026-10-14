@@ -1,5 +1,6 @@
 import { validateExecutionReceiptV1 } from "./execution-contracts.mjs";
 import { normalizePublicationVerification, PlatformAdapterRegistry } from "./platform-registries.mjs";
+import { assertLiveGrantMatchesExecution } from "./live-execution-grant.mjs";
 
 function readinessResult(request) {
   return {
@@ -35,8 +36,9 @@ export class JevExecutionWorker {
 
   #liveEnabled(executionId, context) {
     if (this.env.SEEDING_JEV_LIVE_ENABLED !== "true" || context.authorization?.allowLiveExecution !== true) return false;
-    if (context.request.testJob === true) return this.env.SEEDING_JEV_LIVE_EXECUTION_ID === executionId;
-    return this.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED === "true";
+    if (this.env.SEEDING_JEV_LIVE_EXECUTION_ID !== executionId && this.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED !== "true") return false;
+    try { return assertLiveGrantMatchesExecution(context.liveGrant, context.request, context.authorization); }
+    catch { return false; }
   }
 
   #receipt(requestRow, request, result, { dryRun = false, reconciliation = false } = {}) {

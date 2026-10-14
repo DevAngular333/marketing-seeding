@@ -80,7 +80,7 @@ test("stale readiness refreshes automatically and prepares one versioned executi
   assert.equal(state.executionRequests[0].request.profileId, target.profileId);
   assert.equal(state.executionRequests[0].request.audience, "public");
   assert.equal(state.executionRequests[0].request.readiness.state, "READY");
-  assert.equal((await service.readyExecutionRequests()).length, 1);
+  assert.equal((await service.readyExecutionRequests()).length, 0); // Request exists; live dispatch still requires a job grant.
 });
 
 test("queued request refreshes stale readiness without changing execution identity", async () => {
@@ -100,7 +100,7 @@ test("queued request refreshes stale readiness without changing execution identi
   assert.equal(after.executionRequests.length, 1);
   assert.equal(after.executionRequests[0].executionId, executionId);
   assert.ok(after.executionRequests[0].lastRefreshedAt);
-  assert.equal((await service.readyExecutionRequests()).length, 1);
+  assert.equal((await service.readyExecutionRequests()).length, 0); // Readiness does not mint live permission.
 });
 
 test("retryable readiness failure is bounded and scheduler reevaluates automatically", async () => {
@@ -153,7 +153,7 @@ test("expected_profile_missing can be rechecked only for a canonical bound Linke
   const results = await service.queueAuthorizedCampaignJobs(post.campaignId, "operator");
   assert.equal(calls, 2, JSON.stringify(results));
   assert.equal(results[0].readinessState, "READY");
-  assert.equal((await service.readyExecutionRequests()).length, 1);
+  assert.equal((await service.readyExecutionRequests()).length, 0); // A live grant is still absent.
 });
 
 test("readiness runs outside the publish schedule but schedule still blocks queueing", async () => {
@@ -464,7 +464,7 @@ test("dry-run receipt is auditable but does not consume or change the live execu
   const after = await service.snapshot();
   assert.equal(after.executionRequests[0].state, "REQUEST_READY");
   assert.equal(after.executionRequests[0].submitState, "NOT_STARTED");
-  assert.equal((await service.readyExecutionRequests()).length, 1);
+  assert.equal((await service.readyExecutionRequests()).length, 0); // Dry-run receipt does not create a live grant.
   assert.equal(after.executionReceipts[0].receipt.dryRun, true);
   assert.equal((await service.prepareExecutionRequest(post.id)).executionId, request.executionId);
 });

@@ -6,9 +6,10 @@ import { CHANNELS, nowIso } from "./constants.mjs";
 import { approvalFingerprint, assertReplyCanSend, assertTransition, evaluateQueue } from "./guards.mjs";
 import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs";
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
-import { campaignAuthorizationFingerprint, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
+import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
 import { classifyReadinessError, configuredReadinessTtlMs, executionAccountIdentityReference, executionAccountKey, isCanonicalOrcaProfileId, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
 import { createExecutionRequestV1, validateExecutionReceiptV1 } from "./execution-contracts.mjs";
+import { assertLiveGrantMatchesExecution, createLiveExecutionGrantV1, liveGrantEffectiveStatus } from "./live-execution-grant.mjs";
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 
@@ -517,6 +518,75 @@ export class SeedingService {
     return this.store.read();
   }
 
+  async createLiveExecutionGrant(input, actor = "operator") {
+    if (!["operator", "local-human-operator"].includes(actor)) throw new Error("Only an operator may create live execution grants");
+    const result = await this.store.mutate(actor, "live_execution_grant_created", (state) => {
+      const post = requireItem(state.posts, String(input.jobId || ""), "Post");
+      const campaign = requireItem(state.campaigns, post.campaignId, "Campaign");
+      const target = requireItem(state.targets, post.targetId, "Target");
+      const account = (state.executionAccounts || []).find((item) => item.platform === target.channel && item.accountId === target.accountId);
+      const authorization = requireItem(state.campaignAuthorizations || [], post.campaignAuthorizationId, "Campaign authorization");
+      if (campaign.status !== "active" || authorization.campaignBinding !== campaignScopeFingerprint(campaign)) throw new Error("Campaign scope is not active and unchanged");
+      const artifact = post.artifactId ? requireItem(state.artifacts || [], post.artifactId, "Artifact") : null;
+      if (["publishing", "processing", "published", "removed", "rejected"].includes(post.status)) throw new Error("Job cannot receive a live grant in its current state");
+      if ((state.executionRequests || []).some((item) => item.jobId === post.id && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state)) ||
+          (state.executionReceipts || []).some((item) => item.jobId === post.id && ["SUBMIT_SENT", "UNKNOWN", "CONFIRMED"].includes(item.receipt?.submitState))) {
+        throw new Error("Job has an existing or uncertain submission");
+      }
+      if ((state.liveExecutionGrants || []).some((item) => item.jobId === post.id && liveGrantEffectiveStatus(item) === "ACTIVE")) throw new Error("An active live grant already exists for this job");
+      const grant = createLiveExecutionGrantV1({ post, target, account, authorization, artifact, validFrom: input.validFrom, validUntil: input.validUntil, createdBy: actor, operatorAuthorizationReference: input.operatorAuthorizationReference });
+      const pending = (state.executionRequests || []).filter((item) => item.jobId === post.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
+      if (pending.length > 1) throw new Error("Multiple live executions are pending for this job");
+      if (pending.length === 1) {
+        pending[0].request.liveGrant = { grantId: grant.grantId };
+        grant.boundExecutionId = pending[0].executionId;
+        assertLiveGrantMatchesExecution(grant, pending[0].request, authorization, new Date(), { checkWindow: false });
+        pending[0].liveGrantId = grant.grantId;
+      }
+      state.liveExecutionGrants ||= [];
+      state.liveExecutionGrants.push(grant);
+      return grant;
+    });
+    return result.result;
+  }
+
+  async getLiveExecutionGrant(grantId) {
+    const state = await this.store.read();
+    const grant = (state.liveExecutionGrants || []).find((item) => item.grantId === grantId);
+    if (!grant) throw new Error(`Live execution grant not found: ${grantId}`);
+    return { ...grant, status: liveGrantEffectiveStatus(grant) };
+  }
+
+  async revokeLiveExecutionGrant(grantId, actor = "operator") {
+    if (!["operator", "local-human-operator"].includes(actor)) throw new Error("Only an operator may revoke live execution grants");
+    const result = await this.store.mutate(actor, "live_execution_grant_revoked", (state) => {
+      const grant = (state.liveExecutionGrants || []).find((item) => item.grantId === grantId);
+      if (!grant) throw new Error(`Live execution grant not found: ${grantId}`);
+      if (grant.status === "CONSUMED") throw new Error("A consumed grant cannot be revoked or reused");
+      if (grant.status === "REVOKED") return grant;
+      grant.status = "REVOKED";
+      grant.revokedAt = nowIso();
+      return grant;
+    });
+    return result.result;
+  }
+
+  async expireLiveExecutionGrants(actor = "scheduler") {
+    const snapshot = await this.store.read();
+    if (!(snapshot.liveExecutionGrants || []).some((grant) => grant.status === "ACTIVE" && liveGrantEffectiveStatus(grant) === "EXPIRED")) return [];
+    const result = await this.store.mutate(actor, "live_execution_grants_expired", (state) => {
+      const expired = [];
+      for (const grant of state.liveExecutionGrants || []) {
+        if (grant.status !== "ACTIVE" || liveGrantEffectiveStatus(grant) !== "EXPIRED") continue;
+        grant.status = "EXPIRED";
+        grant.expiredAt = nowIso();
+        expired.push(grant.grantId);
+      }
+      return expired;
+    });
+    return result.result;
+  }
+
   async flowGraph() {
     return buildMarketingFlowGraph(await this.store.read());
   }
@@ -1006,6 +1076,7 @@ export class SeedingService {
   }
 
   async queueDueCampaignJobs(actor = "scheduler") {
+    await this.expireLiveExecutionGrants(actor);
     await this.expireCampaignAuthorizations(actor);
     const state = await this.store.read();
     const now = Date.now();
@@ -1264,18 +1335,27 @@ export class SeedingService {
       const reusePrevious = previous?.state === "REQUEST_READY" && Boolean(previous.request?.dryRun) === dryRun;
       const executionId = reusePrevious ? previous.executionId : randomUUID();
       const attempt = reusePrevious ? previous.attempt : (previous?.attempt || 0) + 1;
+      const currentAuthorization = requireItem(state.campaignAuthorizations || [], authorization.id, "Campaign authorization");
+      const matchingGrants = dryRun ? [] : (state.liveExecutionGrants || []).filter((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE" && (!item.boundExecutionId || item.boundExecutionId === executionId));
+      if (matchingGrants.length > 1) throw new Error("Multiple active live grants match this job");
+      const liveGrant = matchingGrants[0] || null;
       const request = createExecutionRequestV1({
-        executionId, post, target, account, authorization, readiness: target.readiness, artifact, dryRun, createdAt: nowIso()
+        executionId, post, target, account, authorization, readiness: target.readiness, artifact, liveGrant, dryRun, createdAt: nowIso()
       });
+      if (liveGrant) {
+        liveGrant.boundExecutionId ||= executionId;
+        assertLiveGrantMatchesExecution(liveGrant, request, currentAuthorization, new Date(), { checkWindow: false });
+      }
       if (reusePrevious && previous.submitState === "NOT_STARTED") {
         previous.request = request;
+        previous.liveGrantId = liveGrant?.grantId || null;
         previous.lastRefreshedAt = request.createdAt;
         return previous;
       }
       const row = {
         executionId, jobId: post.id, campaignId: post.campaignId, attempt,
         state: "REQUEST_READY", submitState: "NOT_STARTED", recoveryClassification: "NONE",
-        request, dryRun, createdAt: request.createdAt, dispatchedAt: null
+        request, dryRun, liveGrantId: liveGrant?.grantId || null, createdAt: request.createdAt, dispatchedAt: null
       };
       state.executionRequests.push(row);
       if (!dryRun) {
@@ -1301,6 +1381,9 @@ export class SeedingService {
       if (!post || post.status !== "queued" || !target) return false;
       const account = (state.executionAccounts || []).find((candidate) => candidate.id === executionAccountKey(target.channel, target.accountId));
       if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId) return false;
+      const grant = (state.liveExecutionGrants || []).find((candidate) => candidate.grantId === item.request?.liveGrant?.grantId);
+      const authorization = (state.campaignAuthorizations || []).find((candidate) => candidate.id === post.campaignAuthorizationId);
+      try { assertLiveGrantMatchesExecution(grant, item.request, authorization); } catch { return false; }
       const binding = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
       return isReadinessFresh(target.readiness, binding, new Date(), this.readinessTtlMs) && evaluateQueue(post, state).allowed;
     });
@@ -1315,7 +1398,8 @@ export class SeedingService {
     const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
     const authorization = (state.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
     const artifact = post.artifactId ? (state.artifacts || []).find((item) => item.id === post.artifactId) : null;
-    return { requestRow, request: requestRow.request, post, target, account, authorization, artifact, state };
+    const liveGrant = (state.liveExecutionGrants || []).find((item) => item.grantId === requestRow.request?.liveGrant?.grantId) || null;
+    return { requestRow, request: requestRow.request, post, target, account, authorization, artifact, liveGrant, state };
   }
 
   async pendingExecutionReconciliations({ now = Date.now(), minIntervalMs = 60_000, maxAttempts = 10 } = {}) {
@@ -1412,14 +1496,13 @@ export class SeedingService {
 
   async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, verifiedGates = {} } = {}) {
     const snapshot = await this.executionContext(executionId);
-    const { request, post, target, account, authorization, artifact, state } = snapshot;
+    const { request, post, target, account, authorization, artifact, liveGrant } = snapshot;
     const expectedGates = ["authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"];
     if (expectedGates.some((key) => verifiedGates[key] !== true)) throw new Error("Pre-submit validation did not pass every required gate");
-    const controlledTestAuthorized = request.testJob === true && liveExecutionId === executionId;
-    const autonomousCampaignAuthorized = request.testJob !== true && autonomousLiveEnabled === true;
-    if (!liveEnabled || (!controlledTestAuthorized && !autonomousCampaignAuthorized) || authorization?.allowLiveExecution !== true) {
-      throw new Error("Live submit requires explicit worker mode, the matching one-job test ID or autonomous mode, and campaign authorization");
+    if (!liveEnabled || (liveExecutionId !== executionId && autonomousLiveEnabled !== true) || authorization?.allowLiveExecution !== true) {
+      throw new Error("Live submit requires explicit worker mode and campaign authorization");
     }
+    assertLiveGrantMatchesExecution(liveGrant, request, authorization);
     if (request.content.sha256 !== createHash("sha256").update(post.content).digest("hex") || request.content.payload !== post.content) throw new Error("Execution content changed after request creation");
     if (request.audience !== post.audience || !authorization.audienceRules.allowedAudiences.includes(post.audience)) throw new Error("Execution audience does not match authorized audience");
     if (artifact && (request.media.length !== 1 || request.media[0].artifactId !== artifact.id || request.media[0].reference !== artifact.path || request.media[0].sha256 !== artifact.sha256 || !authorization.approvedAssets.some((item) => item.artifactId === artifact.id && item.sha256 === artifact.sha256))) throw new Error("Execution media identity is not the approved artifact");
@@ -1434,6 +1517,20 @@ export class SeedingService {
       if (!requestRow || requestRow.state !== "REQUEST_READY" || requestRow.submitState !== "NOT_STARTED") throw new Error("Execution is no longer dispatchable");
       if (!persistedLease || persistedLease.profileKey !== `${target.channel}:${target.profileId}`) throw new Error("A valid execution lease is required");
       const currentAuthorization = (currentState.campaignAuthorizations || []).find((item) => item.id === currentPost.campaignAuthorizationId);
+      const currentTarget = requireItem(currentState.targets, currentPost.targetId, "Target");
+      const currentAccount = (currentState.executionAccounts || []).find((item) => item.id === executionAccountKey(currentTarget.channel, currentTarget.accountId));
+      const currentGrant = (currentState.liveExecutionGrants || []).find((item) => item.grantId === requestRow.request?.liveGrant?.grantId);
+      assertLiveGrantMatchesExecution(currentGrant, requestRow.request, currentAuthorization);
+      if (requestRow.request.content.sha256 !== createHash("sha256").update(currentPost.content).digest("hex") || requestRow.request.content.contentId !== currentPost.contentId ||
+          currentGrant.content.canonicalSha256 !== campaignContentHash(currentPost.content) || requestRow.request.audience !== currentPost.audience ||
+          requestRow.request.platform !== currentTarget.channel || requestRow.request.target.targetId !== currentPost.targetId ||
+          requestRow.request.accountId !== currentTarget.accountId || requestRow.request.profileId !== currentTarget.profileId ||
+          currentAccount?.profileId !== currentTarget.profileId || currentAccount?.status !== "enabled" ||
+          requestRow.request.media.length !== (currentPost.artifactId ? 1 : 0)) throw new Error("Job identity changed before live submit intent");
+      if (currentPost.artifactId) {
+        const currentArtifact = requireItem(currentState.artifacts || [], currentPost.artifactId, "Artifact");
+        if (currentArtifact.sha256 !== requestRow.request.media[0].sha256 || currentArtifact.id !== requestRow.request.media[0].artifactId || currentArtifact.path !== requestRow.request.media[0].reference) throw new Error("Media identity changed before live submit intent");
+      }
       const decision = evaluateQueue(currentPost, currentState);
       if (!decision.allowed || currentAuthorization?.allowLiveExecution !== true) throw new Error(`Pre-submit governance blocked: ${decision.reasons.join(", ")}`);
       if ((currentState.executionRequests || []).some((item) => item.executionId !== executionId && item.request?.idempotencyKey === request.idempotencyKey && ["REQUEST_READY", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state))) throw new Error("Another execution already owns this publication identity");
@@ -1464,6 +1561,9 @@ export class SeedingService {
       requestRow.executionPhase = "SUBMIT_SENT_INTENT";
       requestRow.submitIntentAt = at;
       requestRow.idempotencyKey = request.idempotencyKey;
+      currentGrant.status = "CONSUMED";
+      currentGrant.consumedAt = at;
+      currentGrant.consumedExecutionId = executionId;
       return requestRow;
     });
     return result.result;
