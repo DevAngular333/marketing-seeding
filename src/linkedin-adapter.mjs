@@ -17,6 +17,18 @@ function findRef(snapshot, pattern) {
   return matches.length === 1 ? refOf(matches[0]) : null;
 }
 
+async function withinDeadline(operation, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw Object.assign(new Error("LinkedIn verification deadline elapsed"), { code: "VERIFICATION_DEADLINE" });
+  let timer;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("LinkedIn verification deadline elapsed"), { code: "VERIFICATION_DEADLINE" })), remaining); })
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 function profileId(tab) {
   return typeof tab?.profile === "string" ? tab.profile : tab?.profile?.id || tab?.profile?.profileId || tab?.profileId || "";
 }
@@ -104,16 +116,36 @@ const AUDIENCE_EXPRESSION = (audience) => `(() => {
   return { dialogCount: dialogs.length, audienceMatch };
 })()`;
 
-const FEED_VERIFICATION_EXPRESSION = (content, mediaExpected, expectedIdentityUrl) => `(() => {
+export const LINKEDIN_VERIFICATION_EXPRESSION = (content, expectedIdentityUrl) => `(() => {
   const expected = ${JSON.stringify(content)}.trim();
   const expectedIdentityPath = new URL(${JSON.stringify(expectedIdentityUrl)}).pathname.replace(/\\/$/, '').toLowerCase();
-  const articles = Array.from(document.querySelectorAll('article,[data-urn]'));
-  const article = articles.find((node) => (node.innerText || '').includes(expected));
-  const links = article ? Array.from(article.querySelectorAll('a[href]')).map((node) => node.href).filter((url) => /linkedin\\.com\\/(?:feed\\/update|posts\\/)/i.test(url)) : [];
-  const authorMatched = article ? Array.from(article.querySelectorAll('a[href]')).some((node) => { try { const url = new URL(node.href, location.href); return url.hostname.toLowerCase().replace(/^www\\./, '') === 'linkedin.com' && url.pathname.replace(/\\/$/, '').toLowerCase() === expectedIdentityPath; } catch { return false; } }) : false;
-  const hasMedia = article ? Boolean(article.querySelector('video, img[src]')) : false;
-  const url = links.find((value) => value) || null;
-  return { found: Boolean(article), contentMatched: Boolean(article), authorMatched, mediaMatched: ${mediaExpected} ? hasMedia : true, publicationUrl: url };
+  const articles = Array.from(new Set(document.querySelectorAll('article,[data-urn]')));
+  return articles.map((article) => {
+    const text = article.innerText || article.textContent || '';
+    if (!text.includes(expected)) return null;
+    const links = Array.from(article.querySelectorAll('a[href]')).map((node) => { try { return new URL(node.href, location.href); } catch { return null; } }).filter(Boolean);
+    const author = links.find((url) => url.hostname.toLowerCase().replace(/^www\\./, '') === 'linkedin.com' && url.pathname.replace(/\\/$/, '').toLowerCase() === expectedIdentityPath);
+    const permalinkUrl = links.find((url) => url.hostname.toLowerCase().replace(/^www\\./, '') === 'linkedin.com' && /\\/(?:feed\\/update|posts)\\//i.test(url.pathname));
+    const urnNode = article.matches('[data-urn]') ? article : article.querySelector('[data-urn]');
+    const activityUrn = urnNode?.getAttribute('data-urn') || text.match(/urn:li:(?:activity|share):[\\w-]+/)?.[0] || null;
+    const activityId = activityUrn?.match(/urn:li:(?:activity|share):([\\w-]+)/)?.[1] || permalinkUrl?.pathname.match(/\\/(?:feed\\/update|posts)\\/([^/]+)/i)?.[1] || null;
+    const publicationUrl = permalinkUrl?.toString() || (activityUrn ? 'https://www.linkedin.com/feed/update/' + activityUrn + '/' : null);
+    const timeNode = article.querySelector('time[datetime],[data-timestamp]');
+    const rawTimestamp = timeNode?.getAttribute('datetime') || timeNode?.getAttribute('data-timestamp') || null;
+    const candidateTimestamp = rawTimestamp && Number.isFinite(Date.parse(rawTimestamp)) ? new Date(rawTimestamp).toISOString() : null;
+    const video = article.querySelector('video');
+    const image = article.querySelector('img[src]');
+    return { found: true, contentMatched: true, authorMatched: Boolean(author), authorPath: author?.pathname.replace(/\\/$/, '').toLowerCase() || null,
+      activityUrn, activityId, publicationUrl, candidateTimestamp, mediaPresent: Boolean(video || image), mediaType: video ? 'video' : image ? 'image' : null };
+  }).filter(Boolean);
+})()`;
+
+const LINKEDIN_POST_CONFIRMATION_EXPRESSION = `(() => {
+  const visible = (node) => Boolean(node && node.getClientRects().length);
+  return Array.from(document.querySelectorAll('[role="alert"],[role="status"],.share-creation-state__success-container'))
+    .filter(visible).map((node) => (node.innerText || node.textContent || '').trim())
+    .filter((text) => /post(?:ed| is live)|shared|published|đã đăng|đã chia sẻ/i.test(text))
+    .slice(0, 5).map((text) => text.slice(0, 200));
 })()`;
 
 function validateMediaDescriptor(request) {
@@ -126,23 +158,88 @@ function validateMediaDescriptor(request) {
 }
 
 export class LinkedInPublicationVerifier {
-  constructor(browser) { this.browser = browser; }
+  constructor(browser, { timeoutMs = 9_000, maxCandidateAgeMs = 30 * 60_000 } = {}) {
+    this.browser = browser;
+    this.timeoutMs = timeoutMs;
+    this.maxCandidateAgeMs = maxCandidateAgeMs;
+  }
 
-  async verify(request, pageId, { expectedIdentityUrl } = {}) {
+  async verify(request, pageId, { expectedIdentityUrl, submittedAt } = {}) {
     if (!expectedIdentityUrl) return { state: "UNKNOWN", reasonCode: "expected_identity_missing" };
-    const expression = FEED_VERIFICATION_EXPRESSION(request.content.payload, request.media.length > 0, expectedIdentityUrl);
-    const result = await this.browser.evaluate(pageId, expression);
-    if (!result?.found || !result.contentMatched || !result.authorMatched || !result.mediaMatched || !result.publicationUrl) return { state: "UNKNOWN", reasonCode: "publication_evidence_incomplete" };
-    const url = new URL(result.publicationUrl);
-    if (!/(^|\.)linkedin\.com$/i.test(url.hostname) || url.pathname === "/") return { state: "UNKNOWN", reasonCode: "publication_permalink_invalid" };
+    const observedAt = new Date().toISOString();
+    const submittedMs = Date.parse(submittedAt || "");
+    if (!Number.isFinite(submittedMs)) return { state: "UNKNOWN", reasonCode: "submit_timestamp_missing" };
+    const expression = LINKEDIN_VERIFICATION_EXPRESSION(request.content.payload, expectedIdentityUrl);
+    const identity = new URL(expectedIdentityUrl);
+    const profileRoot = `${identity.origin}${identity.pathname.replace(/\/$/, "")}`;
+    const surfaces = [
+      { name: "post_submit_confirmation", url: null },
+      { name: "feed", url: LINKEDIN_FEED_URL_FOR_READINESS },
+      { name: "recent_activity", url: `${profileRoot}/recent-activity/all/` },
+      { name: "videos", url: `${profileRoot}/recent-activity/videos/` }
+    ];
+    const deadline = Date.now() + this.timeoutMs;
+    const observations = [];
+    let confirmationSignals = [];
+    for (const [index, surface] of surfaces.entries()) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      try {
+        if (surface.url && index > 0) {
+          await withinDeadline(this.browser.navigate(pageId, surface.url), deadline);
+          const navigationBudget = deadline - Date.now();
+          if (navigationBudget <= 0) break;
+          const urlWaitMs = Math.min(1_000, Math.max(1, Math.floor(navigationBudget / (surfaces.length - index + 1))));
+          await withinDeadline(this.browser.waitForUrl(pageId, surface.url, urlWaitMs), deadline);
+        } else if (index === 0) {
+          const signals = await withinDeadline(this.browser.evaluate(pageId, LINKEDIN_POST_CONFIRMATION_EXPRESSION), deadline);
+          if (Array.isArray(signals)) confirmationSignals = signals;
+          const found = await withinDeadline(this.browser.evaluate(pageId, expression), deadline);
+          if (Array.isArray(found)) observations.push(...found.map((candidate) => ({ ...candidate, surface: surface.name })));
+          continue;
+        }
+        const waitBudget = deadline - Date.now();
+        if (waitBudget <= 0) break;
+        const waitMs = Math.max(1, Math.floor(waitBudget / (surfaces.length - index)));
+        if (typeof this.browser.waitForExpression === "function") await withinDeadline(this.browser.waitForExpression(pageId, `(${expression}).some((candidate) => candidate.contentMatched)`, waitMs), deadline).catch(() => undefined);
+        const found = await withinDeadline(this.browser.evaluate(pageId, expression), deadline);
+        if (Array.isArray(found)) observations.push(...found.map((candidate) => ({ ...candidate, surface: surface.name })));
+      } catch {
+        // A secondary surface may be unavailable; preserve any evidence collected elsewhere.
+      }
+    }
+    const candidates = observations.map((candidate) => {
+      const url = candidate.publicationUrl ? new URL(candidate.publicationUrl) : null;
+      const stableId = candidate.activityId || null;
+      const timestamp = Date.parse(candidate.candidateTimestamp || "");
+      const timestampMatched = Number.isFinite(timestamp) && timestamp >= submittedMs && timestamp <= submittedMs + this.maxCandidateAgeMs;
+      const permalinkMatched = Boolean(url && /(^|\.)linkedin\.com$/i.test(url.hostname) && url.pathname !== "/" && stableId);
+      const expectedMediaType = request.media?.[0]?.type?.startsWith("video/") ? "video" : request.media?.[0]?.type?.startsWith("image/") ? "image" : null;
+      const mediaVerification = !expectedMediaType ? candidate.mediaPresent ? "MISMATCHED" : "MATCHED" : !candidate.mediaPresent ? "NOT_VERIFIABLE" : candidate.mediaType !== expectedMediaType ? "MISMATCHED" : "NOT_VERIFIABLE";
+      return { ...candidate, permalinkMatched, stableId, timestampMatched, mediaVerification, permalink: url?.toString() || null };
+    }).sort((left, right) => (Number(right.authorMatched) + Number(right.contentMatched) + Number(right.timestampMatched) + Number(right.permalinkMatched)) - (Number(left.authorMatched) + Number(left.contentMatched) + Number(left.timestampMatched) + Number(left.permalinkMatched)));
+    const candidate = candidates[0] || null;
+    const candidateConfirmed = Boolean(candidate?.authorMatched && candidate.contentMatched && candidate.timestampMatched && candidate.permalinkMatched);
+    const mediaHashMatched = candidateConfirmed && candidate?.mediaVerification === "MATCHED";
+    const evidenceReference = candidate?.permalink || candidate?.activityUrn || `linkedin-search:${request.executionId}`;
     const verificationEvidence = {
-        verifiedAt: new Date().toISOString(), accountMatched: result.authorMatched === true, targetMatched: true,
-        contentHashMatched: true, mediaHashMatched: true,
-        accountId: request.accountId, profileId: request.profileId, targetId: request.target.targetId,
-        contentHash: request.content.sha256, mediaHash: request.media[0]?.sha256 || null,
-        verificationMethod: "linkedin_feed_dom", evidenceReference: `linkedin-publication:${createHash("sha256").update(url.toString()).digest("hex").slice(0, 20)}`
-      };
-    return { state: "CONFIRMED", publicationUrl: url.toString(), publicationReference: verificationEvidence.evidenceReference, verifiedAt: verificationEvidence.verifiedAt, verificationEvidence, publicationEvidence: verificationEvidence };
+      verifiedAt: observedAt, accountMatched: candidate?.authorMatched === true, targetMatched: Boolean(candidate?.permalinkMatched),
+      contentHashMatched: candidate?.contentMatched === true, mediaHashMatched,
+      accountId: request.accountId, profileId: request.profileId, targetId: request.target.targetId,
+      contentHash: request.content.sha256, mediaHash: mediaHashMatched ? request.media?.[0]?.sha256 || null : null,
+      verificationMethod: "linkedin_read_only_activity_dom", evidenceReference,
+      verificationDetails: {
+        executionId: request.executionId, submittedAt: new Date(submittedMs).toISOString(), observedAt,
+        authorIdentity: { expectedPath: identity.pathname.replace(/\/$/, "").toLowerCase(), observedPath: candidate?.authorPath || null, matched: candidate?.authorMatched === true },
+        contentMatch: { expectedSha256: request.content.sha256, matched: candidate?.contentMatched === true },
+        candidate: { surface: candidate?.surface || null, activityUrn: candidate?.activityUrn || null, postId: candidate?.stableId || null, permalink: candidate?.permalink || null, timestamp: candidate?.candidateTimestamp || null, timestampMatched: candidate?.timestampMatched === true },
+        media: { present: candidate?.mediaPresent === true, type: candidate?.mediaType || null, hashStatus: candidate?.mediaVerification || "NOT_VERIFIABLE" },
+        confirmationSignals
+      }
+    };
+    if (!candidateConfirmed) return { state: "UNKNOWN", reasonCode: candidate ? "publication_candidate_evidence_incomplete" : "publication_not_observed", publicationUrl: candidate?.permalink || undefined, publicationReference: evidenceReference, verificationEvidence, publicationEvidence: verificationEvidence };
+    if (!mediaHashMatched) return { state: "UNKNOWN", reasonCode: candidate.mediaVerification === "MISMATCHED" ? "publication_media_type_mismatch" : "publication_media_identity_not_verifiable", publicationUrl: candidate.permalink, publicationReference: evidenceReference, verificationEvidence, publicationEvidence: verificationEvidence };
+    return { state: "CONFIRMED", publicationUrl: candidate.permalink, publicationReference: evidenceReference, verifiedAt: observedAt, verificationEvidence, publicationEvidence: verificationEvidence };
   }
 }
 
@@ -254,12 +351,16 @@ export class LinkedInAdapter {
     await this.browser.click(context.pageId, context.submitRef);
     context.submitted = true;
     await onSubmitSent();
-    await this.browser.waitForFeed(context.pageId);
+    context.submittedAt = new Date().toISOString();
     return context;
   }
 
   async verifyPublished(context) {
-    return this.verifier.verify(context.request, context.pageId, { expectedIdentityUrl: context.expectedIdentityUrl });
+    return this.verifier.verify(context.request, context.pageId, {
+      expectedIdentityUrl: context.expectedIdentityUrl,
+      executionId: context.request.executionId,
+      submittedAt: context.submittedAt
+    });
   }
 
   async cleanup(context) {
@@ -272,7 +373,7 @@ export class LinkedInAdapter {
     return context;
   }
 
-  async reconcile(request, { account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl } = {}) {
+  async reconcile(request, { account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl, submittedAt } = {}) {
     const startedAt = new Date().toISOString();
     const began = Date.now();
     const commandStart = this.browser.browserCommandCount?.() ?? 0;
@@ -289,7 +390,7 @@ export class LinkedInAdapter {
       }
       const target = await this.browser.evaluate(page.pageId, TARGET_EXPRESSION(LINKEDIN_FEED_URL_FOR_READINESS));
       if (!target.domain || !target.targetMatched) throw Object.assign(new Error("LinkedIn feed target is not verified"), { code: "TARGET_MISMATCH" });
-      const verification = await this.verifier.verify(request, page.pageId, { expectedIdentityUrl });
+      const verification = await this.verifier.verify(request, page.pageId, { expectedIdentityUrl, executionId: request.executionId, submittedAt });
       return {
         ...verification,
         submitState: verification.state === "CONFIRMED" ? "CONFIRMED" : "UNKNOWN",
@@ -398,7 +499,7 @@ export class LinkedInAdapter {
       intentPersisted = lifecycleContext.intentPersisted === true;
       submitted = lifecycleContext.submitted === true;
       const verification = await this.verifyPublished(lifecycleContext);
-      if (verification.state !== "CONFIRMED") return { submitState: "UNKNOWN", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN" };
+      if (verification.state !== "CONFIRMED") return { ...verification, submitState: "UNKNOWN", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN" };
       return { ...verification, submitState: "CONFIRMED", startedAt, finishedAt: verification.publicationEvidence.verifiedAt, gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings, errorClassification: "NONE", recoveryClassification: "NONE" };
     } catch (error) {
       if (pageId && !submitted && !intentPersisted) {

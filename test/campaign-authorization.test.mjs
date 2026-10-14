@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { JsonStore } from "../src/store.mjs";
 import { SeedingService } from "../src/service.mjs";
-import { campaignAuthorizationFingerprint, campaignContentHash, evaluateCampaignAuthorization } from "../src/campaign-authorization.mjs";
+import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, evaluateCampaignAuthorization } from "../src/campaign-authorization.mjs";
 import { approvalFingerprint, evaluateQueue } from "../src/guards.mjs";
 
 async function campaignFixture({ channels = ["threads"], rateLimits = {}, allowRepeatSameContent = false } = {}) {
@@ -370,4 +370,87 @@ test("campaign daily and cadence limits remain enforced across authorized child 
     assert.equal(second.status, "blocked");
     assert.ok(second.authorizationDecision.reasons.includes("campaign_minimum_interval_not_met"));
   }
+});
+
+async function crossCampaignQuotaFixture({ accountLimit = 5, campaignLimit = 5, minIntervalMinutes = 0, timezone = "Asia/Ho_Chi_Minh", priorStatus = "submit_result_unknown", priorAt = "2026-10-14T14:15:57.197Z" } = {}) {
+  const { service, campaign, targets, authorization } = await campaignFixture({ rateLimits: { maxJobsPerAccountPerDay: accountLimit, maxJobsPerCampaignPerDay: campaignLimit, minIntervalMinutes } });
+  const oldCopy = "Earlier campaign activity for account quota tests.";
+  const nextCopy = "New campaign content for account quota tests.";
+  const prior = await service.createPost({ campaignId: campaign.id, targetId: targets[0].id, content: oldCopy, audience: "public" }, "producer");
+  await authorization([oldCopy]);
+  const state = await service.snapshot();
+  const priorPost = state.posts.find((item) => item.id === prior.id);
+  priorPost.status = priorStatus;
+  priorPost.publishedAt = priorStatus === "published" ? priorAt : undefined;
+  const campaignB = { ...state.campaigns.find((item) => item.id === campaign.id), id: "campaign-quota-b", name: "Campaign B" };
+  state.campaigns.push(campaignB);
+  const authorizationB = structuredClone(state.campaignAuthorizations.find((item) => item.campaignId === campaign.id));
+  authorizationB.id = "authorization-quota-b";
+  authorizationB.campaignId = campaignB.id;
+  authorizationB.campaignBinding = campaignScopeFingerprint(campaignB);
+  authorizationB.schedule.timezone = timezone;
+  authorizationB.schedule.weekdays = [0, 1, 2, 3, 4, 5, 6];
+  authorizationB.schedule.startLocal = "00:00";
+  authorizationB.schedule.endLocal = "23:59";
+  authorizationB.validFrom = "2026-10-13T00:00:00.000Z";
+  authorizationB.validUntil = "2026-10-16T00:00:00.000Z";
+  authorizationB.contentBoundary.contentHashes = [campaignContentHash(nextCopy)];
+  authorizationB.destinations = [{ ...authorizationB.destinations[0], targetId: targets[0].id }];
+  authorizationB.binding = campaignAuthorizationFingerprint(authorizationB);
+  state.campaignAuthorizations.push(authorizationB);
+  const nextPost = {
+    id: "job-quota-b", campaignId: campaignB.id, targetId: targets[0].id,
+    campaignAuthorizationId: authorizationB.id, campaignAuthorizationBinding: authorizationB.binding,
+    content: nextCopy, audience: "public", status: "draft", scheduledAt: "2026-10-14T14:30:00.000Z",
+    idempotencyKey: "new-campaign-distinct-idempotency"
+  };
+  state.posts.push(nextPost);
+  state.executionRequests = [{ jobId: priorPost.id, state: "SUBMIT_RESULT_UNKNOWN", submitIntentAt: priorAt, dispatchedAt: priorAt, attempt: 1 }];
+  return { state, priorPost, nextPost, authorizationB, targets };
+}
+
+test("account daily quota and cadence carry across campaigns, while campaign quota stays scoped", async () => {
+  const { state, nextPost } = await crossCampaignQuotaFixture({ accountLimit: 1, minIntervalMinutes: 60 });
+  const decision = evaluateCampaignAuthorization(nextPost, state, new Date("2026-10-14T14:30:00.000Z"));
+  assert.ok(decision.reasons.includes("account_daily_limit_reached"));
+  assert.ok(decision.reasons.includes("campaign_minimum_interval_not_met"));
+  assert.equal(decision.reasons.includes("campaign_daily_limit_reached"), false);
+});
+
+test("a different account is independent and a dry-run does not consume live account quota", async () => {
+  const { state, nextPost, authorizationB, targets } = await crossCampaignQuotaFixture({ accountLimit: 1, minIntervalMinutes: 60 });
+  const otherTarget = { ...targets[0], id: "target-other-account", accountId: "other-account", profileId: "other-profile" };
+  state.targets.push(otherTarget);
+  state.executionAccounts.push({ id: `${otherTarget.channel}:${otherTarget.accountId}`, platform: otherTarget.channel, accountId: otherTarget.accountId, profileId: otherTarget.profileId, status: "enabled" });
+  authorizationB.destinations = [{ ...authorizationB.destinations[0], accountId: otherTarget.accountId, profileId: otherTarget.profileId, targetId: otherTarget.id }];
+  authorizationB.binding = campaignAuthorizationFingerprint(authorizationB);
+  nextPost.targetId = otherTarget.id;
+  nextPost.campaignAuthorizationBinding = authorizationB.binding;
+  const otherAccount = evaluateCampaignAuthorization(nextPost, state, new Date("2026-10-14T14:30:00.000Z"));
+  assert.equal(otherAccount.reasons.includes("account_daily_limit_reached"), false);
+  assert.equal(otherAccount.reasons.includes("campaign_minimum_interval_not_met"), false);
+  const dryRun = evaluateCampaignAuthorization({ ...nextPost, targetId: targets[0].id, campaignAuthorizationBinding: authorizationB.binding }, state, new Date("2026-10-14T14:30:00.000Z"), { mode: "dry_run" });
+  assert.equal(dryRun.reasons.includes("account_daily_limit_reached"), false);
+  assert.equal(dryRun.reasons.includes("campaign_minimum_interval_not_met"), false);
+});
+
+test("unknown submit-boundary activity uses its actual local submit day across campaign boundaries", async () => {
+  const { state, nextPost } = await crossCampaignQuotaFixture({ accountLimit: 1, minIntervalMinutes: 0, priorAt: "2026-10-14T16:55:57.197Z" });
+  nextPost.scheduledAt = "2026-10-14T17:05:00.000Z";
+  const nextDay = evaluateCampaignAuthorization(nextPost, state, new Date("2026-10-14T17:05:00.000Z"));
+  assert.equal(nextDay.reasons.includes("account_daily_limit_reached"), false, "00:05 Asia/Ho_Chi_Minh is a new policy day");
+  state.executionRequests[0].dispatchedAt = "2026-10-14T17:05:57.197Z";
+  state.executionRequests[0].submitIntentAt = state.executionRequests[0].dispatchedAt;
+  nextPost.scheduledAt = "2026-10-14T17:20:00.000Z";
+  const sameDay = evaluateCampaignAuthorization(nextPost, state, new Date("2026-10-14T17:20:00.000Z"));
+  assert.ok(sameDay.reasons.includes("account_daily_limit_reached"));
+});
+
+test("dry-run NOT_STARTED history does not consume account quota or cadence", async () => {
+  const { state, nextPost } = await crossCampaignQuotaFixture({ accountLimit: 1, minIntervalMinutes: 60, priorStatus: "queued" });
+  state.executionRequests[0].state = "DRY_RUN_COMPLETE";
+  state.executionRequests[0].dryRun = true;
+  const decision = evaluateCampaignAuthorization(nextPost, state, new Date("2026-10-14T14:30:00.000Z"));
+  assert.equal(decision.reasons.includes("account_daily_limit_reached"), false);
+  assert.equal(decision.reasons.includes("campaign_minimum_interval_not_met"), false);
 });

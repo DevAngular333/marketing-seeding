@@ -119,7 +119,37 @@ export function validateExecutionReceiptV1(input) {
       contentHash: required(input.publicationEvidence.contentHash, "publicationEvidence.contentHash"),
       mediaHash: input.publicationEvidence.mediaHash ? String(input.publicationEvidence.mediaHash).toLowerCase() : null,
       verificationMethod: required(input.publicationEvidence.verificationMethod, "publicationEvidence.verificationMethod"),
-      evidenceReference: input.publicationEvidence.evidenceReference ? String(input.publicationEvidence.evidenceReference) : null
+      evidenceReference: input.publicationEvidence.evidenceReference ? String(input.publicationEvidence.evidenceReference) : null,
+      verificationDetails: input.publicationEvidence.verificationDetails && typeof input.publicationEvidence.verificationDetails === "object" ? {
+        executionId: input.publicationEvidence.verificationDetails.executionId ? String(input.publicationEvidence.verificationDetails.executionId) : null,
+        submittedAt: input.publicationEvidence.verificationDetails.submittedAt ? String(input.publicationEvidence.verificationDetails.submittedAt) : null,
+        observedAt: input.publicationEvidence.verificationDetails.observedAt ? String(input.publicationEvidence.verificationDetails.observedAt) : null,
+        authorIdentity: input.publicationEvidence.verificationDetails.authorIdentity ? {
+          expectedPath: String(input.publicationEvidence.verificationDetails.authorIdentity.expectedPath || ""),
+          observedPath: input.publicationEvidence.verificationDetails.authorIdentity.observedPath ? String(input.publicationEvidence.verificationDetails.authorIdentity.observedPath) : null,
+          matched: input.publicationEvidence.verificationDetails.authorIdentity.matched === true
+        } : null,
+        contentMatch: input.publicationEvidence.verificationDetails.contentMatch ? {
+          expectedSha256: String(input.publicationEvidence.verificationDetails.contentMatch.expectedSha256 || ""),
+          matched: input.publicationEvidence.verificationDetails.contentMatch.matched === true
+        } : null,
+        candidate: input.publicationEvidence.verificationDetails.candidate ? {
+          surface: input.publicationEvidence.verificationDetails.candidate.surface ? String(input.publicationEvidence.verificationDetails.candidate.surface) : null,
+          activityUrn: input.publicationEvidence.verificationDetails.candidate.activityUrn ? String(input.publicationEvidence.verificationDetails.candidate.activityUrn) : null,
+          postId: input.publicationEvidence.verificationDetails.candidate.postId ? String(input.publicationEvidence.verificationDetails.candidate.postId) : null,
+          permalink: input.publicationEvidence.verificationDetails.candidate.permalink ? String(input.publicationEvidence.verificationDetails.candidate.permalink) : null,
+          timestamp: input.publicationEvidence.verificationDetails.candidate.timestamp ? String(input.publicationEvidence.verificationDetails.candidate.timestamp) : null,
+          timestampMatched: input.publicationEvidence.verificationDetails.candidate.timestampMatched === true
+        } : null,
+        media: input.publicationEvidence.verificationDetails.media ? {
+          present: input.publicationEvidence.verificationDetails.media.present === true,
+          type: input.publicationEvidence.verificationDetails.media.type ? String(input.publicationEvidence.verificationDetails.media.type) : null,
+          hashStatus: String(input.publicationEvidence.verificationDetails.media.hashStatus || "NOT_VERIFIABLE")
+        } : null,
+        confirmationSignals: Array.isArray(input.publicationEvidence.verificationDetails.confirmationSignals)
+          ? input.publicationEvidence.verificationDetails.confirmationSignals.slice(0, 5).map((item) => String(item).slice(0, 200))
+          : []
+      } : null
     } : null,
     reconciliation: input.reconciliation === true,
     errorClassification: String(input.errorClassification || "NONE").toUpperCase(),
@@ -197,6 +227,18 @@ export function validateExecutionReceiptV1(input) {
   if (receipt.publicationEvidence && !Number.isFinite(Date.parse(receipt.publicationEvidence.verifiedAt))) throw new Error("publicationEvidence.verifiedAt must be an ISO timestamp");
   if (receipt.publicationEvidence && !/^[a-f0-9]{64}$/i.test(receipt.publicationEvidence.contentHash)) throw new Error("publicationEvidence.contentHash must be a SHA-256 digest");
   if (receipt.publicationEvidence?.mediaHash && !/^[a-f0-9]{64}$/i.test(receipt.publicationEvidence.mediaHash)) throw new Error("publicationEvidence.mediaHash must be a SHA-256 digest");
+  if (receipt.publicationEvidence?.verificationDetails) {
+    const details = receipt.publicationEvidence.verificationDetails;
+    for (const field of ["submittedAt", "observedAt"]) {
+      if (details[field] && !Number.isFinite(Date.parse(details[field]))) throw new Error(`publicationEvidence.verificationDetails.${field} must be an ISO timestamp`);
+    }
+    if (details.contentMatch?.expectedSha256 && !/^[a-f0-9]{64}$/i.test(details.contentMatch.expectedSha256)) throw new Error("publicationEvidence.verificationDetails.contentMatch.expectedSha256 must be a SHA-256 digest");
+    if (details.media && !["MATCHED", "NOT_VERIFIABLE", "MISMATCHED"].includes(details.media.hashStatus)) throw new Error("publicationEvidence.verificationDetails.media.hashStatus is invalid");
+    if (details.executionId && details.executionId !== receipt.executionId) throw new Error("publicationEvidence.verificationDetails.executionId must match the receipt");
+    if (details.contentMatch?.expectedSha256 && details.contentMatch.expectedSha256 !== receipt.publicationEvidence.contentHash) throw new Error("publicationEvidence content identity does not match verification details");
+    if (details.submittedAt && details.observedAt && Date.parse(details.observedAt) < Date.parse(details.submittedAt)) throw new Error("publicationEvidence observation cannot precede submission");
+    if (details.media && details.media.hashStatus !== "MATCHED" && receipt.publicationEvidence.mediaHashMatched) throw new Error("Unverified media identity cannot be recorded as mediaHashMatched");
+  }
   if (["SUBMIT_SENT", "UNKNOWN"].includes(receipt.submitState) && receipt.recoveryClassification === "RECOVERABLE") {
     throw new Error("A possibly submitted execution cannot be classified as safely recoverable");
   }

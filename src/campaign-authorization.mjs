@@ -283,41 +283,53 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
     local = { date: "", weekday: -1, time: "" };
   }
 
-  // Keep campaign-wide limits continuous across authorization renewals. A
-  // superseded authorization must not reset daily quotas, spacing, concurrency,
-  // or idempotency for work already created under the same campaign.
-  const active = (state.posts || []).filter((item) => item.id !== post.id && item.campaignId === authorization.campaignId);
+  // Campaign daily volume, concurrency, and idempotency stay campaign-scoped.
+  // Account frequency uses every campaign targeting the same platform/account.
+  const campaignPosts = (state.posts || []).filter((item) => item.id !== post.id && item.campaignId === authorization.campaignId);
+  const accountPosts = (state.posts || []).filter((item) => {
+    if (item.id === post.id) return false;
+    const itemTarget = state.targets?.find((targetItem) => targetItem.id === item.targetId);
+    return itemTarget?.channel === target?.channel && itemTarget?.accountId === target?.accountId;
+  });
   const dayKey = local;
   const countedStatuses = new Set(["queued", "publishing", "processing", "submit_result_unknown", "published"]);
-  const sameDay = active.filter((item) => {
+  const activityTime = (item) => {
+    const submittedRequest = (state.executionRequests || [])
+      .filter((request) => request.jobId === item.id && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(request.state))
+      .sort((left, right) => (right.attempt || 0) - (left.attempt || 0))[0];
+    return item.publishedAt || submittedRequest?.dispatchedAt || submittedRequest?.submitIntentAt ||
+      item.queuedAt || item.scheduledAt || item.createdAt || item.processingAt || item.publishingAt || null;
+  };
+  const isDryRunOnly = (item) => {
+    const requests = (state.executionRequests || []).filter((request) => request.jobId === item.id).sort((left, right) => (right.attempt || 0) - (left.attempt || 0));
+    return requests[0]?.dryRun === true && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(requests[0].state);
+  };
+  const sameLocalDay = (item) => {
     if (!countedStatuses.has(item.status)) return false;
-    const time = item.publishedAt || item.queuedAt || item.scheduledAt || item.createdAt;
+    const time = activityTime(item);
     if (!time) return false;
     let at;
     try { at = localClock(new Date(time), authorization.schedule.timezone); } catch { return false; }
     return at.date === dayKey.date;
-  });
-  if (!dryRun && sameDay.length >= authorization.rateLimits.maxJobsPerCampaignPerDay) reasons.push("campaign_daily_limit_reached");
-  const sameAccountToday = sameDay.filter((item) => state.targets?.find((targetItem) => targetItem.id === item.targetId)?.accountId === target?.accountId);
+  };
+  const sameCampaignToday = campaignPosts.filter(sameLocalDay);
+  if (!dryRun && sameCampaignToday.length >= authorization.rateLimits.maxJobsPerCampaignPerDay) reasons.push("campaign_daily_limit_reached");
+  const sameAccountToday = accountPosts.filter((item) => !isDryRunOnly(item) && sameLocalDay(item));
   if (!dryRun && sameAccountToday.length >= authorization.rateLimits.maxJobsPerAccountPerDay) reasons.push("account_daily_limit_reached");
-  const lastAccountPublication = active
-    .filter((item) => ["queued", "publishing", "processing", "submit_result_unknown", "published"].includes(item.status))
-    .filter((item) => {
-      const itemTarget = state.targets?.find((targetItem) => targetItem.id === item.targetId);
-      return itemTarget?.channel === target?.channel && itemTarget?.accountId === target?.accountId;
-    })
-    .map((item) => item.publishedAt || item.processingAt || item.publishingAt || item.queuedAt)
+  const lastAccountPublication = accountPosts
+    .filter((item) => !isDryRunOnly(item) && countedStatuses.has(item.status))
+    .map(activityTime)
     .filter(Boolean)
     .map((value) => new Date(value))
     .filter((value) => Number.isFinite(value.getTime()))
     .sort((left, right) => right - left)[0];
   if (!dryRun && lastAccountPublication && (scheduledAt - lastAccountPublication) / 60_000 < authorization.rateLimits.minIntervalMinutes) reasons.push("campaign_minimum_interval_not_met");
-  const inFlight = active.filter((item) => ["publishing", "processing"].includes(item.status) ||
+  const inFlight = campaignPosts.filter((item) => ["publishing", "processing"].includes(item.status) ||
     (item.status === "submit_result_unknown" && ((state.executionLeases || []).some((lease) => lease.jobId === item.id && Date.parse(lease.expiresAt) > now.getTime()) ||
       (state.executionRequests || []).some((request) => request.jobId === item.id && request.state === "EXECUTING"))));
   if (!dryRun && inFlight.length >= authorization.rateLimits.maxConcurrency) reasons.push("campaign_concurrency_limit_reached");
 
-  const duplicateIdentity = post.idempotencyKey && active.some((item) => !["failed", "rejected", "removed"].includes(item.status) && (
+  const duplicateIdentity = post.idempotencyKey && campaignPosts.some((item) => !["failed", "rejected", "removed"].includes(item.status) && (
     item.idempotencyKey === post.idempotencyKey || publicationIdentityKeysForPost(item, state).includes(post.idempotencyKey)
   ));
   if (duplicateIdentity) reasons.push("publication_identity_exists");
