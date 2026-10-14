@@ -9,6 +9,8 @@ import { evaluateQueue } from "../src/guards.mjs";
 import { assertWindowExecutionBinding, normalizeOneTimeExecutionWindow, oneTimeExecutionWindowFingerprint, oneTimeExecutionWindowInBounds } from "../src/one-time-execution-window.mjs";
 import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { validateExecutionRequestV1 } from "../src/execution-contracts.mjs";
+import { JevExecutionWorker } from "../src/jev-execution-worker.mjs";
+import { PLATFORM_CAPABILITIES, PlatformAdapterRegistry } from "../src/platform-registries.mjs";
 
 async function fixture({ allowLiveExecution = true, channels = ["threads"] } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "one-time-window-"));
@@ -227,6 +229,133 @@ test("one-time window reserves one execution, consumes at worker start, and neve
   assert.equal(state.executionRequests.find((item) => item.executionId === request.executionId).state, "REQUEST_READY");
   assert.equal(state.executionRequests.find((item) => item.executionId === request.executionId).state === "SUBMIT_SENT_INTENT", false);
   await service.releaseExecutionLease(workerLease.lease.id, workerLease.lease.token);
+});
+
+test("worker readiness carries the owning executionId through a RESERVED one-time window", async () => {
+  const { service, posts, auth } = await fixture();
+  const post = (await service.snapshot()).posts.find((item) => item.id === posts[0].id);
+  const window = await addWindow(service, post, auth);
+  const decisions = await service.queueAuthorizedCampaignJobs(post.campaignId, "scheduler");
+  assert.ok(decisions.some((item) => item.postId === post.id && item.status === "queued"));
+  let state = await service.snapshot();
+  const requestRow = state.executionRequests.find((item) => item.jobId === post.id);
+  assert.ok(requestRow);
+  assert.equal(state.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId).status, "RESERVED");
+
+  await service.createLiveExecutionGrant({
+    jobId: post.id, validFrom: new Date(Date.now() - 1_000).toISOString(),
+    validUntil: new Date(Date.now() + 60_000).toISOString(), operatorAuthorizationReference: "fixture-only"
+  }, "operator");
+
+  const originalRefresh = service.refreshCampaignJobReadiness.bind(service);
+  let readinessOptions;
+  service.refreshCampaignJobReadiness = async (...args) => {
+    readinessOptions = args[2];
+    return originalRefresh(...args);
+  };
+  let adapterCalls = 0;
+  const registry = new PlatformAdapterRegistry();
+  registry.register("threads", {
+    contractVersion: 1,
+    capabilities: Object.fromEntries(PLATFORM_CAPABILITIES.map((capability) => [capability, false])),
+    async execute() { adapterCalls += 1; throw Object.assign(new Error("fixture stop before submit"), { code: "FIXTURE_STOP" }); },
+    async reconcile() { throw new Error("not used"); }
+  });
+  const worker = new JevExecutionWorker({
+    service, adapterRegistry: registry, workerId: "fixture-worker",
+    env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_LIVE_EXECUTION_ID: requestRow.executionId }
+  });
+  await assert.rejects(worker.run(requestRow.executionId, { dryRun: false }), /fixture stop before submit/);
+
+  assert.equal(readinessOptions.executionId, requestRow.executionId);
+  assert.equal(readinessOptions.force, undefined);
+  assert.equal(adapterCalls, 1);
+  state = await service.snapshot();
+  assert.equal(state.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId).status, "CONSUMED");
+  assert.equal(state.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId).consumedExecutionId, requestRow.executionId);
+  assert.equal(state.executionRequests.find((item) => item.executionId === requestRow.executionId).state, "REQUEST_READY");
+  assert.equal(state.executionLeases.filter((item) => Date.parse(item.expiresAt) > Date.now()).length, 0);
+  assert.equal(state.executionRequests.some((item) => item.state === "SUBMIT_SENT_INTENT"), false);
+});
+
+test("RESERVED windows require the exact execution, job, authorization, and current fingerprint", async () => {
+  const { service, posts, auth } = await fixture({ channels: ["threads", "reddit"] });
+  const state = await service.snapshot();
+  const post = state.posts.find((item) => item.id === posts[0].id);
+  const sibling = state.posts.find((item) => item.id === posts[1].id);
+  const window = await addWindow(service, post, auth);
+  const request = await service.queueAuthorizedCampaignJobs(post.campaignId, "scheduler");
+  assert.ok(request.some((item) => item.postId === post.id && item.status === "queued"));
+  const execution = (await service.snapshot()).executionRequests.find((item) => item.jobId === post.id);
+  const reservedState = await service.snapshot();
+  const reservedPost = reservedState.posts.find((item) => item.id === post.id);
+
+  assert.equal(evaluateQueue(reservedPost, reservedState, new Date(), { executionId: execution.executionId }).allowed, true);
+  assert.ok(evaluateQueue(reservedPost, reservedState).reasons.includes("schedule_outside_allowed_window"));
+  assert.ok(evaluateQueue(reservedPost, reservedState, new Date(), { executionId: "different-execution" }).reasons.includes("schedule_outside_allowed_window"));
+  assert.ok(evaluateQueue(sibling, reservedState, new Date(), { executionId: execution.executionId }).reasons.includes("schedule_outside_allowed_window"));
+
+  const wrongAuthorizationState = structuredClone(reservedState);
+  const wrongAuthorizationWindow = wrongAuthorizationState.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId);
+  wrongAuthorizationWindow.campaignAuthorizationId = "different-authorization";
+  wrongAuthorizationWindow.binding = oneTimeExecutionWindowFingerprint(wrongAuthorizationWindow);
+  assert.ok(evaluateQueue(wrongAuthorizationState.posts.find((item) => item.id === post.id), wrongAuthorizationState, new Date(), { executionId: execution.executionId }).reasons.includes("schedule_outside_allowed_window"));
+
+  const wrongCampaignState = structuredClone(reservedState);
+  const wrongCampaignWindow = wrongCampaignState.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId);
+  wrongCampaignWindow.campaignId = "different-campaign";
+  wrongCampaignWindow.binding = oneTimeExecutionWindowFingerprint(wrongCampaignWindow);
+  assert.ok(evaluateQueue(wrongCampaignState.posts.find((item) => item.id === post.id), wrongCampaignState, new Date(), { executionId: execution.executionId }).reasons.includes("schedule_outside_allowed_window"));
+
+  const changedFingerprintState = structuredClone(reservedState);
+  const changedAuthorization = changedFingerprintState.campaignAuthorizations.find((item) => item.id === auth.id);
+  changedAuthorization.schedule.startLocal = "01:00";
+  assert.ok(evaluateQueue(changedFingerprintState.posts.find((item) => item.id === post.id), changedFingerprintState, new Date(), { executionId: execution.executionId }).reasons.includes("schedule_outside_allowed_window"));
+
+  const revokedState = structuredClone(reservedState);
+  revokedState.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId).status = "REVOKED";
+  assert.ok(evaluateQueue(revokedState.posts.find((item) => item.id === post.id), revokedState, new Date(), { executionId: execution.executionId }).reasons.includes("schedule_outside_allowed_window"));
+
+  const expiredState = structuredClone(reservedState);
+  const expiredWindow = expiredState.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId);
+  expiredWindow.validUntil = new Date(Date.now() - 1).toISOString();
+  expiredWindow.binding = oneTimeExecutionWindowFingerprint(expiredWindow);
+  assert.ok(evaluateQueue(expiredState.posts.find((item) => item.id === post.id), expiredState, new Date(), { executionId: execution.executionId }).reasons.includes("schedule_outside_allowed_window"));
+});
+
+test("abandoned REQUEST_READY execution with a revoked window cannot resume", async () => {
+  const { service, posts, auth } = await fixture();
+  const post = (await service.snapshot()).posts.find((item) => item.id === posts[0].id);
+  const window = await addWindow(service, post, auth);
+  await service.queueAuthorizedCampaignJobs(post.campaignId, "scheduler");
+  const abandonedExecutionId = "4818e202-1554-4854-a2ba-9904ac79ee2a";
+  await service.store.mutate("fixture", "bind_abandoned_execution", (state) => {
+    const row = state.executionRequests.find((item) => item.jobId === post.id);
+    row.executionId = abandonedExecutionId;
+    row.request.executionId = abandonedExecutionId;
+    const reserved = state.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId);
+    reserved.reservedExecutionId = abandonedExecutionId;
+  });
+  await service.revokeOneTimeExecutionWindow(window.windowId, "operator");
+  await service.store.mutate("fixture", "pause_abandoned_authorization", (state) => {
+    const authorization = state.campaignAuthorizations.find((item) => item.id === auth.id);
+    authorization.status = "paused";
+  });
+  let adapterCalls = 0;
+  const registry = new PlatformAdapterRegistry();
+  registry.register("threads", {
+    contractVersion: 1,
+    capabilities: Object.fromEntries(PLATFORM_CAPABILITIES.map((capability) => [capability, false])),
+    async execute() { adapterCalls += 1; return {}; }, async reconcile() { return {}; }
+  });
+  const worker = new JevExecutionWorker({ service, adapterRegistry: registry, workerId: "fixture-worker", env: {} });
+  const result = await worker.run(abandonedExecutionId, { dryRun: false });
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(adapterCalls, 0);
+  const finalState = await service.snapshot();
+  assert.equal(finalState.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId).status, "REVOKED");
+  assert.equal(finalState.executionRequests.find((item) => item.executionId === abandonedExecutionId).state, "REQUEST_READY");
+  assert.equal(finalState.executionRequests.some((item) => item.state === "SUBMIT_SENT_INTENT"), false);
 });
 
 test("dry-run eligibility does not require or consume a one-time live window", async () => {

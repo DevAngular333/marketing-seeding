@@ -111,7 +111,9 @@ export class JevExecutionWorker {
       const readinessStarted = Date.now();
       // The request already carries bound READY readiness. Reuse it while fresh;
       // the service refreshes automatically when it is stale or missing.
-      const readiness = await this.service.refreshCampaignJobReadiness(initial.post.id, this.workerId);
+      const readiness = await this.service.refreshCampaignJobReadiness(initial.post.id, this.workerId, {
+        executionId: initial.request.executionId
+      });
       const readinessRefreshMs = Date.now() - readinessStarted;
       const dryRunRequest = initial.request?.dryRun === true;
       if ((dryRunRequest ? readiness.readinessState !== "READY" : readiness.status !== "queued" || readiness.readinessState !== "READY")) {

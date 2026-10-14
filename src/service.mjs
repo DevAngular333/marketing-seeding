@@ -1195,7 +1195,7 @@ export class SeedingService {
     return results;
   }
 
-  async refreshCampaignJobReadiness(postId, actor = "scheduler", { force = false } = {}) {
+  async refreshCampaignJobReadiness(postId, actor = "scheduler", { force = false, executionId = null } = {}) {
     if (this.readinessInFlight.has(postId)) return { postId, status: "blocked", readinessState: "READINESS_CHECKING", reasons: ["readiness_check_in_progress"] };
     this.readinessInFlight.add(postId);
     try {
@@ -1222,14 +1222,14 @@ export class SeedingService {
       if (!account || account.status !== "enabled" || target.profileId !== account.profileId) {
         return this.#persistReadinessOutcome(postId, {
           state: "HUMAN_REQUIRED", checkedAt: nowIso(), reasonCode: "account_profile_binding_missing", retryable: false, recoveryClassification: "HUMAN_REQUIRED"
-        }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true });
+        }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true, executionId });
       }
-      const authorizationCheck = evaluateCampaignAuthorization(post, snapshot);
+      const authorizationCheck = evaluateCampaignAuthorization(post, snapshot, new Date(), { executionId });
       const readinessBlockingReasons = authorizationCheck.reasons.filter((reason) => !READINESS_IGNORED_EXECUTION_REASONS.has(reason));
       if (readinessBlockingReasons.length) {
         return this.#persistReadinessOutcome(postId, {
           state: "BLOCKED", checkedAt: nowIso(), reasonCode: readinessBlockingReasons[0], retryable: false, recoveryClassification: "NONE"
-        }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true });
+        }, actor, { attempt: post.readinessAttempts || 0, skipProvider: true, executionId });
       }
       if (!force && post.readinessRetryAt && Date.parse(post.readinessRetryAt) > Date.now()) {
         return { postId, status: post.status, readinessState: post.readinessState, reasons: ["readiness_retry_wait"], retryAt: post.readinessRetryAt };
@@ -1248,7 +1248,7 @@ export class SeedingService {
           reasonCode: target.readiness.reasonCode, capabilities: target.readiness.capabilities,
           evidenceReference: target.readiness.evidence, retryable: false, recoveryClassification: "NONE"
         }, context, { ttlMs: this.readinessTtlMs });
-        return this.#persistReadinessOutcome(postId, readiness, actor, { attempt: post.readinessAttempts || 0, alreadyFresh: true });
+        return this.#persistReadinessOutcome(postId, readiness, actor, { attempt: post.readinessAttempts || 0, alreadyFresh: true, executionId });
       }
       if (!force && post.readinessState === "HUMAN_REQUIRED" && !profileBindingRecovery) return { postId, status: post.status, readinessState: "HUMAN_REQUIRED", reasons: [post.readinessReasonCode || "human_required"] };
       if (!force && post.readinessState === "UNKNOWN" && !post.readinessRetryAt) return { postId, status: post.status, readinessState: "UNKNOWN", reasons: [post.readinessReasonCode || "readiness_unknown"] };
@@ -1256,7 +1256,7 @@ export class SeedingService {
       if (!force && priorAttempts >= this.maxReadinessAttempts) {
         return this.#persistReadinessOutcome(postId, {
           state: "UNKNOWN", checkedAt: nowIso(), reasonCode: "readiness_attempts_exhausted", retryable: false, recoveryClassification: "UNKNOWN"
-        }, actor, { attempt: priorAttempts, skipProvider: true });
+        }, actor, { attempt: priorAttempts, skipProvider: true, executionId });
       }
 
       const attempt = priorAttempts + 1;
@@ -1292,13 +1292,13 @@ export class SeedingService {
       } catch {
         readiness = normalizeReadinessResult({ state: "UNKNOWN", reasonCode: "invalid_provider_result", retryable: false, recoveryClassification: "UNKNOWN" }, context, { ttlMs: this.readinessTtlMs });
       }
-      return this.#persistReadinessOutcome(postId, readiness, actor, { attempt });
+      return this.#persistReadinessOutcome(postId, readiness, actor, { attempt, executionId });
     } finally {
       this.readinessInFlight.delete(postId);
     }
   }
 
-  async #persistReadinessOutcome(postId, readiness, actor, { attempt = 0, skipProvider = false, alreadyFresh = false } = {}) {
+  async #persistReadinessOutcome(postId, readiness, actor, { attempt = 0, skipProvider = false, alreadyFresh = false, executionId = null } = {}) {
     const result = await this.store.mutate(actor, "job_readiness_result_recorded", (state) => {
       const post = requireItem(state.posts, postId, "Post");
       const target = requireItem(state.targets, post.targetId, "Target");
@@ -1349,7 +1349,7 @@ export class SeedingService {
         if (post.jobLifecycle?.at(-1)?.state !== stateName) post.jobLifecycle?.push({ state: stateName, at: nowIso(), reasonCode: readiness.reasonCode });
         return { postId, status: post.status, readinessState: stateName, reasons: post.authorizationDecision.reasons, retryAt: post.readinessRetryAt, skipProvider, alreadyFresh };
       }
-      const decision = evaluateQueue(post, state);
+      const decision = evaluateQueue(post, state, new Date(), { executionId });
       post.authorizationDecision = { evaluatedAt: nowIso(), allowed: decision.allowed, reasons: decision.reasons };
       if (decision.allowed) {
         const at = nowIso();
