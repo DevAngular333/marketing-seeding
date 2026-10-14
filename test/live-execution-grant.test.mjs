@@ -168,6 +168,24 @@ test("durable submit intent consumes the exact grant in one state write and cann
   await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
 });
 
+test("exact operator dispatch uses the same durable submit boundary without background-worker execution-id opt-in", async () => {
+  const f = await fixture();
+  const grant = await f.createGrant();
+  const row = await f.service.prepareExecutionRequest(f.posts[0].id, "operator");
+  const acquired = await f.service.acquireExecutionLease(row.executionId, "exact-operator-worker");
+  assert.equal(acquired.acquired, true);
+  await f.service.beginExecutionSubmitIntent(row.executionId, acquired.lease, {
+    liveEnabled: true,
+    exactLiveDispatchEnabled: true,
+    verifiedGates: gates
+  });
+  const state = await f.service.snapshot();
+  assert.equal(state.liveExecutionGrants.find((item) => item.grantId === grant.grantId).status, "CONSUMED");
+  assert.equal(state.liveExecutionGrants.find((item) => item.grantId === grant.grantId).consumedExecutionId, row.executionId);
+  assert.equal(state.executionRequests.find((item) => item.executionId === row.executionId).state, "SUBMIT_SENT_INTENT");
+  await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
+});
+
 test("failed durable submit-intent write leaves grant ACTIVE and no submit state", async () => {
   const f = await fixture();
   const grant = await f.createGrant();

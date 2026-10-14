@@ -72,7 +72,7 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   const automationToken = randomBytes(32).toString("hex");
   const child = spawn(process.execPath, ["src/server.mjs"], {
     cwd: appRoot,
-    env: { ...process.env, OPENSSL_CONF: "", SEEDING_DATA_DIR: dataDir, SEEDING_AUTO_GTM_FEED_FILE: autoGtmFeed, SEEDING_PORT: "0", SEEDING_OPERATOR_TOKEN: token, SEEDING_AUTOMATION_TOKEN: automationToken, SEEDING_TRAFFIC_POLL_MINUTES: "240" },
+    env: { ...process.env, OPENSSL_CONF: "", SEEDING_DATA_DIR: dataDir, SEEDING_AUTO_GTM_FEED_FILE: autoGtmFeed, SEEDING_PORT: "0", SEEDING_OPERATOR_TOKEN: token, SEEDING_AUTOMATION_TOKEN: automationToken, SEEDING_TRAFFIC_POLL_MINUTES: "240", SEEDING_JEV_WORKER_ENABLED: "false", SEEDING_JEV_LIVE_ENABLED: "false", SEEDING_JEV_EXACT_LIVE_ENABLED: "false" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   context.after(() => child.kill());
@@ -113,6 +113,13 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal((await fetch(`${baseUrl}/api/submission-uncertainties/unknown-fixture`, { headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/submission-uncertainties/unknown-fixture/reconcile`, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify({ outcome: "PROVEN_FAILED" }) })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/run-dry-run`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/dispatch`, { method: "POST" })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/dispatch`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/dispatch`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ platform: "linkedin" }) })).status, 400);
+  assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/dispatch`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "null" })).status, 400);
+  const exactDispatchResponse = await fetch(`${baseUrl}/api/execution-requests/missing-execution/dispatch`, { method: "POST", headers: { authorization: `Bearer ${token}` } });
+  assert.equal(exactDispatchResponse.status, 200);
+  assert.equal((await exactDispatchResponse.json()).status, "NOT_DISPATCHABLE");
   const cancellationPayload = JSON.stringify({ reason: "operator-only API authorization regression", operatorAuthorizationReference: "fixture-operator-review" });
   assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/cancel`, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: cancellationPayload })).status, 401);
   const operatorCancelResponse = await fetch(`${baseUrl}/api/execution-requests/fixture-execution/cancel`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: cancellationPayload });

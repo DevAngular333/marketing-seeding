@@ -1703,12 +1703,12 @@ export class SeedingService {
     return result.result;
   }
 
-  async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, verifiedGates = {} } = {}) {
+  async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, exactLiveDispatchEnabled = false, verifiedGates = {} } = {}) {
     const snapshot = await this.executionContext(executionId);
     const { request, post, target, account, authorization, artifact, liveGrant } = snapshot;
     const expectedGates = ["authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"];
     if (expectedGates.some((key) => verifiedGates[key] !== true)) throw new Error("Pre-submit validation did not pass every required gate");
-    if (!liveEnabled || (liveExecutionId !== executionId && autonomousLiveEnabled !== true) || authorization?.allowLiveExecution !== true) {
+    if (!liveEnabled || (liveExecutionId !== executionId && autonomousLiveEnabled !== true && exactLiveDispatchEnabled !== true) || authorization?.allowLiveExecution !== true) {
       throw new Error("Live submit requires explicit worker mode and campaign authorization");
     }
     assertLiveGrantMatchesExecution(liveGrant, request, authorization);

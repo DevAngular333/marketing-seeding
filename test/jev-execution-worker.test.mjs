@@ -281,6 +281,206 @@ test("worker executes a non-LinkedIn adapter without reading LinkedIn identity f
   assert.equal(fixture.calls.filter(([name]) => name === "sent").length, 1);
 });
 
+function exactLiveEnv(overrides = {}) {
+  return {
+    SEEDING_JEV_WORKER_ENABLED: "false",
+    SEEDING_JEV_LIVE_ENABLED: "true",
+    SEEDING_JEV_EXACT_LIVE_ENABLED: "true",
+    ...overrides
+  };
+}
+
+test("exact dispatch uses only its execution through the registry and never scans ready work or reconciles", async () => {
+  const fixture = executionFixture();
+  fixture.request.testJob = false;
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  const protectedUnknown = {
+    executionId: "0f6b588b-20fd-42e1-9f6d-9b3bf5f04628",
+    state: "SUBMIT_RESULT_UNKNOWN", submitState: "UNKNOWN", liveGrantId: "old-consumed-grant",
+    request: { oneTimeWindow: { windowId: "old-consumed-window" } }
+  };
+  fixture.context.state.executionRequests = [protectedUnknown];
+  fixture.context.state.liveExecutionGrants = [{ grantId: "old-consumed-grant", status: "CONSUMED", consumedExecutionId: protectedUnknown.executionId }];
+  fixture.context.state.oneTimeExecutionWindows = [{ windowId: "old-consumed-window", status: "CONSUMED", consumedExecutionId: protectedUnknown.executionId }];
+  const protectedBefore = structuredClone({ request: protectedUnknown, grant: fixture.context.state.liveExecutionGrants[0], window: fixture.context.state.oneTimeExecutionWindows[0] });
+  const dispatchedIds = [];
+  let clickCount = 0;
+  const gates = Object.fromEntries([
+    "authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch",
+    "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt",
+    "noExistingConfirmedPublication"
+  ].map((key) => [key, true]));
+  const adapter = {
+    async execute(request, options) {
+      dispatchedIds.push(request.executionId);
+      assert.equal(options.liveEnabled, true);
+      await options.beforeSubmitIntent(gates);
+      clickCount += 1;
+      await options.onSubmitSent();
+      return { submitState: "UNKNOWN", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), durationMs: 2 };
+    }
+  };
+  let readyQueueCalls = 0;
+  let reconciliationCalls = 0;
+  fixture.service.readyExecutionRequests = async () => { readyQueueCalls += 1; throw new Error("must not scan ready queue"); };
+  fixture.service.pendingExecutionReconciliations = async () => { reconciliationCalls += 1; throw new Error("must not enumerate reconciliations"); };
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), env: exactLiveEnv() });
+
+  const result = await worker.dispatchExactExecution("exec-1");
+
+  assert.equal(result.status, "SUBMIT_RESULT_UNKNOWN");
+  assert.deepEqual(dispatchedIds, ["exec-1"]);
+  assert.equal(clickCount, 1);
+  assert.equal(readyQueueCalls, 0);
+  assert.equal(reconciliationCalls, 0);
+  assert.deepEqual({ request: protectedUnknown, grant: fixture.context.state.liveExecutionGrants[0], window: fixture.context.state.oneTimeExecutionWindows[0] }, protectedBefore);
+  assert.equal(fixture.calls.find(([name]) => name === "intent")[1].exactLiveDispatchEnabled, true);
+  assert.ok(fixture.calls.some(([name]) => name === "lease"));
+  assert.ok(fixture.calls.some(([name]) => name === "release"));
+});
+
+test("exact dispatch refuses UNKNOWN, successful terminal, cancelled and failed executions before leasing", async () => {
+  for (const [state, expected] of [
+    ["SUBMIT_RESULT_UNKNOWN", "SUBMIT_RESULT_UNKNOWN"], ["SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"],
+    ["SUBMIT_SENT_INTENT", "SUBMIT_RESULT_UNKNOWN"], ["CONFIRMED", "TERMINAL_ALREADY_COMPLETE"], ["VERIFIED", "TERMINAL_ALREADY_COMPLETE"],
+    ["CANCELLED_PRE_SUBMIT", "NOT_DISPATCHABLE"], ["FAILED", "NOT_DISPATCHABLE"]
+  ]) {
+    const fixture = executionFixture();
+    fixture.requestRow.state = state;
+    fixture.requestRow.executionPhase = state;
+    let adapterCalls = 0;
+    const worker = new JevExecutionWorker({
+      service: fixture.service,
+      adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }),
+      env: exactLiveEnv()
+    });
+    assert.equal((await worker.dispatchExactExecution("exec-1")).status, expected, state);
+    assert.equal(adapterCalls, 0);
+    assert.equal(fixture.calls.some(([name]) => name === "lease"), false);
+    assert.equal(fixture.calls.some(([name]) => name === "reconcile-attempt"), false);
+  }
+});
+
+test("exact dispatch requires live and exact-live flags plus a bound active grant", async () => {
+  for (const env of [
+    { ...exactLiveEnv(), SEEDING_JEV_EXACT_LIVE_ENABLED: "false" },
+    { ...exactLiveEnv(), SEEDING_JEV_LIVE_ENABLED: "false" }
+  ]) {
+    const fixture = executionFixture();
+    let adapterCalls = 0;
+    const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }), env });
+    assert.equal((await worker.dispatchExactExecution("exec-1")).status, "PRE_SUBMIT_STOPPED");
+    assert.equal(adapterCalls, 0);
+    assert.equal(fixture.calls.some(([name]) => name === "lease"), false);
+  }
+
+  const fixture = executionFixture();
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  fixture.context.liveGrant.status = "CONSUMED";
+  let adapterCalls = 0;
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }), env: exactLiveEnv() });
+  assert.equal((await worker.dispatchExactExecution("exec-1")).status, "PRE_SUBMIT_STOPPED");
+  assert.equal(adapterCalls, 0);
+  assert.equal(fixture.calls.some(([name]) => name === "lease"), false);
+
+  const unauthorized = executionFixture();
+  unauthorized.context.authorization.allowLiveExecution = false;
+  attachFixtureGrant(unauthorized);
+  const unauthorizedWorker = new JevExecutionWorker({ service: unauthorized.service, adapterRegistry: adapterRegistry({ linkedin: {} }), env: exactLiveEnv() });
+  assert.equal((await unauthorizedWorker.dispatchExactExecution("exec-1")).status, "PRE_SUBMIT_STOPPED");
+  assert.equal(unauthorized.calls.some(([name]) => name === "lease"), false);
+});
+
+test("exact dispatch stops safely for expired readiness and an invalid one-time window", async () => {
+  const stale = executionFixture({ service: { async refreshCampaignJobReadiness() { return { status: "blocked", readinessState: "STALE", reasons: ["readiness_expired"] }; } } });
+  stale.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(stale);
+  let adapterCalls = 0;
+  const staleWorker = new JevExecutionWorker({ service: stale.service, adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }), env: exactLiveEnv() });
+  assert.equal((await staleWorker.dispatchExactExecution("exec-1")).status, "PRE_SUBMIT_STOPPED");
+
+  const badWindow = executionFixture({ service: { async markExecutionStarted() { throw new Error("one-time window expired"); } } });
+  badWindow.request.oneTimeWindow = { windowId: "expired-window" };
+  badWindow.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(badWindow);
+  const windowWorker = new JevExecutionWorker({ service: badWindow.service, adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }), env: exactLiveEnv() });
+  assert.equal((await windowWorker.dispatchExactExecution("exec-1")).status, "PRE_SUBMIT_STOPPED");
+  assert.equal(adapterCalls, 0);
+  assert.ok(badWindow.calls.some(([name]) => name === "release"));
+});
+
+test("exact dispatch maps lease conflicts to ALREADY_IN_PROGRESS", async () => {
+  const fixture = executionFixture({ service: { async acquireExecutionLease() { return { acquired: false, reason: "execution_lease_held" }; } } });
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  let adapterCalls = 0;
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }), env: exactLiveEnv() });
+  assert.equal((await worker.dispatchExactExecution("exec-1")).status, "ALREADY_IN_PROGRESS");
+  assert.equal(adapterCalls, 0);
+  assert.equal(fixture.calls.some(([name]) => name === "readiness"), false);
+});
+
+test("exact dispatch never reports a safe pre-submit stop when persisted execution state cannot be reread", async () => {
+  const fixture = executionFixture();
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  let contextReads = 0;
+  fixture.service.executionContext = async () => {
+    contextReads += 1;
+    if (contextReads === 1) return fixture.context;
+    throw new Error("state store temporarily unavailable");
+  };
+  let adapterCalls = 0;
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }), env: exactLiveEnv() });
+  const result = await worker.dispatchExactExecution("exec-1");
+  assert.equal(result.status, "SUBMIT_RESULT_UNKNOWN");
+  assert.equal(result.reasonCode, "execution_state_unavailable_after_dispatch_error");
+  assert.equal(adapterCalls, 0);
+  assert.ok(fixture.calls.some(([name]) => name === "release"));
+});
+
+test("concurrent exact dispatches cannot run the adapter twice because lease acquisition is atomic", async () => {
+  const fixture = executionFixture();
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  let leaseHeld = false;
+  fixture.service.acquireExecutionLease = async () => {
+    if (leaseHeld) return { acquired: false, reason: "execution_lease_held" };
+    leaseHeld = true;
+    fixture.calls.push(["lease"]);
+    return { acquired: true, lease: { id: "lease-exact", token: "lease-token" } };
+  };
+  fixture.service.releaseExecutionLease = async () => { leaseHeld = false; fixture.calls.push(["release"]); };
+  let enteredAdapter;
+  const adapterEntered = new Promise((resolve) => { enteredAdapter = resolve; });
+  let finishAdapter;
+  const adapterGate = new Promise((resolve) => { finishAdapter = resolve; });
+  let adapterCalls = 0;
+  const adapter = { async execute(_request, options) {
+    adapterCalls += 1;
+    enteredAdapter();
+    await adapterGate;
+    await options.beforeSubmitIntent(Object.fromEntries([
+      "authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch",
+      "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt",
+      "noExistingConfirmedPublication"
+    ].map((key) => [key, true])));
+    await options.onSubmitSent();
+    return { submitState: "UNKNOWN", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+  } };
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), env: exactLiveEnv() });
+  const first = worker.dispatchExactExecution("exec-1");
+  await adapterEntered;
+  const second = await worker.dispatchExactExecution("exec-1");
+  assert.equal(second.status, "ALREADY_IN_PROGRESS");
+  finishAdapter();
+  assert.equal((await first).status, "SUBMIT_RESULT_UNKNOWN");
+  assert.equal(adapterCalls, 1);
+  assert.equal(fixture.calls.filter(([name]) => name === "lease").length, 1);
+});
+
 test("worker returns an explicit unsupported-platform result without acquiring a lease", async () => {
   const fixture = executionFixture();
   fixture.request.platform = "test_social";

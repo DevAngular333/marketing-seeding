@@ -34,11 +34,42 @@ export class JevExecutionWorker {
     this.now = now;
   }
 
-  #liveEnabled(executionId, context) {
+  #liveEnabled(executionId, context, { exactOperatorDispatch = false } = {}) {
     if (this.env.SEEDING_JEV_LIVE_ENABLED !== "true" || context.authorization?.allowLiveExecution !== true) return false;
-    if (this.env.SEEDING_JEV_LIVE_EXECUTION_ID !== executionId && this.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED !== "true") return false;
+    if (exactOperatorDispatch) {
+      if (this.env.SEEDING_JEV_EXACT_LIVE_ENABLED !== "true") return false;
+    } else if (this.env.SEEDING_JEV_LIVE_EXECUTION_ID !== executionId && this.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED !== "true") return false;
     try { return assertLiveGrantMatchesExecution(context.liveGrant, context.request, context.authorization); }
     catch { return false; }
+  }
+
+  #exactStateResult(requestRow, executionId) {
+    const state = String(requestRow?.state || "").toUpperCase();
+    const phase = String(requestRow?.executionPhase || "").toUpperCase();
+    if (state === "SUBMIT_RESULT_UNKNOWN" || requestRow?.submitState === "UNKNOWN") {
+      return { status: "SUBMIT_RESULT_UNKNOWN", executionId, state };
+    }
+    if (["SUBMIT_SENT_INTENT", "SUBMIT_SENT"].includes(state) || requestRow?.submitState === "SUBMIT_SENT") {
+      return { status: "SUBMIT_RESULT_UNKNOWN", executionId, state, reasonCode: "submit_already_crossed_boundary" };
+    }
+    if (["CONFIRMED", "VERIFIED"].includes(state) || phase === "VERIFIED") {
+      return { status: "TERMINAL_ALREADY_COMPLETE", executionId, state };
+    }
+    if (state === "EXECUTING" || phase === "EXECUTING") {
+      return { status: "ALREADY_IN_PROGRESS", executionId, state };
+    }
+    if (["CANCELLED_PRE_SUBMIT", "FAILED", "REJECTED", "REMOVED", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(state)) {
+      return { status: "NOT_DISPATCHABLE", executionId, state };
+    }
+    return null;
+  }
+
+  #normalizeExactResult(result, executionId) {
+    if (["VERIFIED", "SUBMIT_RESULT_UNKNOWN", "PRE_SUBMIT_STOPPED", "NOT_DISPATCHABLE", "ALREADY_IN_PROGRESS", "TERMINAL_ALREADY_COMPLETE"].includes(result?.status)) return result;
+    if (result?.status === "CONFIRMED") return { ...result, status: "VERIFIED", executionId };
+    if (["UNKNOWN", "SUBMIT_SENT", "SUBMIT_SENT_INTENT"].includes(result?.status)) return { ...result, status: "SUBMIT_RESULT_UNKNOWN", executionId };
+    if (["LEASE_BUSY", "LEASE_LOST", "EXECUTING"].includes(result?.status)) return { ...result, status: "ALREADY_IN_PROGRESS", executionId };
+    return { ...result, status: "PRE_SUBMIT_STOPPED", executionId, reasonCode: result?.reasonCode || String(result?.status || "pre_submit_gate_failed").toLowerCase() };
   }
 
   #receipt(requestRow, request, result, { dryRun = false, reconciliation = false } = {}) {
@@ -78,9 +109,48 @@ export class JevExecutionWorker {
     });
   }
 
+  async dispatchExactExecution(executionId) {
+    const id = String(executionId || "").trim();
+    if (!id) return { status: "NOT_DISPATCHABLE", executionId: null, reasonCode: "execution_id_required" };
+    try {
+      const result = await this.#run(id, { dryRun: false, exactOperatorDispatch: true });
+      return this.#normalizeExactResult(result, id);
+    } catch (error) {
+      // A thrown error after the durable boundary is never a safe retry signal.
+      // Re-read only this execution and report its persisted phase.
+      let context = null;
+      let stateReadFailed = false;
+      try { context = await this.service.executionContext(id); }
+      catch { stateReadFailed = true; }
+      const persisted = this.#exactStateResult(context?.requestRow, id);
+      if (persisted) return persisted;
+      if (!context && /execution request not found/i.test(String(error?.message || ""))) {
+        return { status: "NOT_DISPATCHABLE", executionId: id, reasonCode: "execution_not_found" };
+      }
+      if (stateReadFailed) {
+        return { status: "SUBMIT_RESULT_UNKNOWN", executionId: id, reasonCode: "execution_state_unavailable_after_dispatch_error" };
+      }
+      return { status: "PRE_SUBMIT_STOPPED", executionId: id, reasonCode: String(error?.code || "pre_submit_gate_failed").toLowerCase() };
+    }
+  }
+
   async run(executionId, { dryRun = true } = {}) {
+    return this.#run(executionId, { dryRun, exactOperatorDispatch: false });
+  }
+
+  async #run(executionId, { dryRun = true, exactOperatorDispatch = false } = {}) {
     const workerStartedAt = Date.now();
     const initial = await this.service.executionContext(executionId);
+    if (exactOperatorDispatch) {
+      const priorResult = this.#exactStateResult(initial.requestRow, executionId);
+      if (priorResult) return priorResult;
+      if (initial.requestRow.state !== "REQUEST_READY" || initial.requestRow.submitState !== "NOT_STARTED") {
+        return { status: "NOT_DISPATCHABLE", executionId, state: initial.requestRow.state };
+      }
+      if (!this.#liveEnabled(executionId, initial, { exactOperatorDispatch })) {
+        return { status: "PRE_SUBMIT_STOPPED", executionId, reasonCode: "exact_live_dispatch_not_authorized" };
+      }
+    }
     if (initial.requestRow.state !== "REQUEST_READY" || initial.requestRow.submitState !== "NOT_STARTED") {
       return { status: "NOT_DISPATCHABLE", executionId, state: initial.requestRow.state };
     }
@@ -125,7 +195,7 @@ export class JevExecutionWorker {
       }
       if (leaseLost) return { status: "LEASE_LOST", executionId };
       const context = await this.service.executionContext(executionId);
-      const liveEnabled = !dryRun && this.#liveEnabled(executionId, context);
+      const liveEnabled = !dryRun && this.#liveEnabled(executionId, context, { exactOperatorDispatch });
       if (!dryRun && !liveEnabled) return { status: "LIVE_NOT_AUTHORIZED", executionId };
       await this.service.markExecutionStarted(executionId, lease, { dryRun });
 
@@ -140,6 +210,7 @@ export class JevExecutionWorker {
             liveEnabled,
             liveExecutionId: this.env.SEEDING_JEV_LIVE_EXECUTION_ID,
             autonomousLiveEnabled: this.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED === "true",
+            exactLiveDispatchEnabled: exactOperatorDispatch && this.env.SEEDING_JEV_EXACT_LIVE_ENABLED === "true",
             verifiedGates
           });
         },
@@ -156,6 +227,11 @@ export class JevExecutionWorker {
       await this.service.recordExecutionReceipt(executionId, receipt, `jev-worker:${this.workerId}`);
       const gateValues = Object.values(receipt.verificationGates || {});
       const dryRunPassed = receipt.submitState === "NOT_STARTED" && receipt.errorClassification === "NONE" && gateValues.length > 0 && gateValues.every((value) => value === true);
+      if (exactOperatorDispatch) {
+        if (receipt.submitState === "CONFIRMED") return { status: "VERIFIED", executionId, receipt };
+        if (["UNKNOWN", "SUBMIT_SENT"].includes(receipt.submitState)) return { status: "SUBMIT_RESULT_UNKNOWN", executionId, receipt };
+        if (["FAILED", "NOT_STARTED"].includes(receipt.submitState)) return { status: "PRE_SUBMIT_STOPPED", executionId, receipt };
+      }
       return { status: dryRun ? (dryRunPassed ? "DRY_RUN_COMPLETE" : "DRY_RUN_FAILED") : receipt.submitState, executionId, receipt };
     } finally {
       clearInterval(heartbeat);
