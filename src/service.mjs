@@ -12,6 +12,7 @@ import { createExecutionRequestV1, validateExecutionReceiptV1 } from "./executio
 import { assertLiveGrantMatchesExecution, createLiveExecutionGrantV1, liveGrantEffectiveStatus } from "./live-execution-grant.mjs";
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
+import { activeExecutionForPost, recordSubmissionUnknown, unresolvedSubmission, UNKNOWN_POST_STATUS } from "./submission-uncertainty.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
   "schedule_timestamp_invalid",
@@ -528,9 +529,10 @@ export class SeedingService {
       const authorization = requireItem(state.campaignAuthorizations || [], post.campaignAuthorizationId, "Campaign authorization");
       if (campaign.status !== "active" || authorization.campaignBinding !== campaignScopeFingerprint(campaign)) throw new Error("Campaign scope is not active and unchanged");
       const artifact = post.artifactId ? requireItem(state.artifacts || [], post.artifactId, "Artifact") : null;
-      if (["publishing", "processing", "published", "removed", "rejected"].includes(post.status)) throw new Error("Job cannot receive a live grant in its current state");
+      if (unresolvedSubmission(state, post)) throw new Error("Job or publication identity has an unresolved submission uncertainty");
+      if (["publishing", "processing", UNKNOWN_POST_STATUS, "published", "removed", "rejected"].includes(post.status)) throw new Error("Job cannot receive a live grant in its current state");
       if ((state.executionRequests || []).some((item) => item.jobId === post.id && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state)) ||
-          (state.executionReceipts || []).some((item) => item.jobId === post.id && ["SUBMIT_SENT", "UNKNOWN", "CONFIRMED"].includes(item.receipt?.submitState))) {
+          (state.executionReceipts || []).some((item) => item.jobId === post.id && (["SUBMIT_SENT", "CONFIRMED"].includes(item.receipt?.submitState) || (item.receipt?.submitState === "UNKNOWN" && !(state.submissionUncertainties || []).some((uncertainty) => uncertainty.jobId === post.id && uncertainty.executionId === item.executionId && uncertainty.status === "PROVEN_FAILED"))))) {
         throw new Error("Job has an existing or uncertain submission");
       }
       if ((state.liveExecutionGrants || []).some((item) => item.jobId === post.id && liveGrantEffectiveStatus(item) === "ACTIVE")) throw new Error("An active live grant already exists for this job");
@@ -1290,6 +1292,7 @@ export class SeedingService {
   async prepareExecutionRequest(postId, actor = "execution-router", { dryRun = false } = {}) {
     const snapshot = await this.store.read();
     const post = requireItem(snapshot.posts, postId, "Post");
+    if (unresolvedSubmission(snapshot, post)) throw new Error("SUBMISSION_UNCERTAIN: job or publication identity is quarantined");
     const previous = (snapshot.executionRequests || []).filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
     const operator = ["operator", "local-human-operator"].includes(actor);
     const resumingOwnedDryRun = String(actor).startsWith("jev-worker:") && previous?.request?.dryRun === true && previous.state === "REQUEST_READY";
@@ -1301,7 +1304,7 @@ export class SeedingService {
     post.idempotencyKey ||= publicationIdentityKey({ campaignId: post.campaignId, contentId: post.contentId, platform: target.channel, accountId: target.accountId, targetId: target.id });
     const readinessContext = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
     if (dryRun) {
-      if (["published", "publishing", "processing", "removed", "rejected"].includes(post.status)) throw new Error("Dry-run cannot use a published or actively executing job");
+      if (["published", "publishing", "processing", UNKNOWN_POST_STATUS, "removed", "rejected"].includes(post.status)) throw new Error("Dry-run cannot use a published or actively executing job");
     } else if (post.status !== "queued") {
       throw new Error("Execution request requires a queued job");
     }
@@ -1322,13 +1325,15 @@ export class SeedingService {
     }
     const artifact = post.artifactId ? requireItem(snapshot.artifacts || [], post.artifactId, "Artifact") : null;
     const result = await this.store.mutate(actor, "execution_request_prepared", (state) => {
+      if (unresolvedSubmission(state, requireItem(state.posts, postId, "Post"))) throw new Error("SUBMISSION_UNCERTAIN: job or publication identity is quarantined");
       state.executionRequests ||= [];
       const previous = state.executionRequests.filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
+      const provenFailedPrevious = previous?.state === "PROVEN_FAILED" && (state.submissionUncertainties || []).some((item) => item.jobId === postId && item.executionId === previous.executionId && item.status === "PROVEN_FAILED");
       if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
       if (previous && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state) && (!dryRun || previous.submitState !== "NOT_STARTED")) {
         // A completed no-submit record may be followed by a separately requested
         // live attempt only through normal live eligibility; it is never reused.
-      } else if (previous && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
+      } else if (previous && !provenFailedPrevious && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
         if (previous.state !== "REQUEST_READY" && !(dryRun && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state))) throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
         if (Boolean(previous.request?.dryRun) !== dryRun) throw new Error("Execution request mode cannot be changed after creation");
       }
@@ -1379,6 +1384,7 @@ export class SeedingService {
       const post = state.posts.find((candidate) => candidate.id === item.jobId);
       const target = state.targets.find((candidate) => candidate.id === post?.targetId);
       if (!post || post.status !== "queued" || !target) return false;
+      if (unresolvedSubmission(state, post, item.request?.idempotencyKey)) return false;
       const account = (state.executionAccounts || []).find((candidate) => candidate.id === executionAccountKey(target.channel, target.accountId));
       if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId) return false;
       const grant = (state.liveExecutionGrants || []).find((candidate) => candidate.grantId === item.request?.liveGrant?.grantId);
@@ -1514,6 +1520,7 @@ export class SeedingService {
       const requestRow = currentState.executionRequests.find((item) => item.executionId === executionId);
       const persistedLease = currentState.executionLeases.find((item) => item.id === lease.id && item.token === lease.token && Date.parse(item.expiresAt) > Date.now());
       const currentPost = requireItem(currentState.posts, post.id, "Post");
+      if (unresolvedSubmission(currentState, currentPost, request.idempotencyKey)) throw new Error("SUBMISSION_UNCERTAIN: live grant cannot bypass an unresolved submission");
       if (!requestRow || requestRow.state !== "REQUEST_READY" || requestRow.submitState !== "NOT_STARTED") throw new Error("Execution is no longer dispatchable");
       if (!persistedLease || persistedLease.profileKey !== `${target.channel}:${target.profileId}`) throw new Error("A valid execution lease is required");
       const currentAuthorization = (currentState.campaignAuthorizations || []).find((item) => item.id === currentPost.campaignAuthorizationId);
@@ -1637,6 +1644,9 @@ export class SeedingService {
         request.executionPhase = "SUBMIT_RESULT_UNKNOWN";
         request.dispatchedAt ||= receipt.startedAt;
         post.executionState = "SUBMIT_RESULT_UNKNOWN";
+        const attempt = (state.publicationAttempts || []).find((item) => item.id === post.publicationAttemptId && item.executionId === executionId);
+        if (!attempt) throw new Error("Unknown execution requires its durable publication attempt");
+        recordSubmissionUnknown(state, post, attempt, { executionId, reasonCode: receipt.errorClassification === "NONE" ? "SUBMIT_OUTCOME_UNKNOWN" : receipt.errorClassification, evidenceReferences: receipt.publicationReference ? [receipt.publicationReference] : [], detectedAt: row.receivedAt });
         if (!post.jobLifecycle?.some((item) => item.state === "SUBMIT_RESULT_UNKNOWN" && item.executionId === executionId)) post.jobLifecycle?.push({ state: "SUBMIT_RESULT_UNKNOWN", at: row.receivedAt, executionId });
       } else if (receipt.submitState === "CONFIRMED") {
         if (!["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(request.state)) throw new Error("CONFIRMED receipt requires a durable submit intent");
@@ -1653,10 +1663,12 @@ export class SeedingService {
         const targetHost = new URL(target.url).hostname.toLowerCase().replace(/^www\./, "");
         const publicationHost = new URL(receipt.publicationUrl).hostname.toLowerCase().replace(/^www\./, "");
         if (publicationHost !== targetHost && !publicationHost.endsWith(`.${targetHost}`)) throw new Error("Publication URL host does not match the approved target platform");
-        if (post.status !== "publishing") throw new Error("Confirmed publication requires a previously persisted submit intent");
+        if (!["publishing", UNKNOWN_POST_STATUS].includes(post.status)) throw new Error("Confirmed publication requires a previously persisted submit intent");
         assertTransition(post.status, "published");
         const attempt = (state.publicationAttempts || []).find((item) => item.id === post.publicationAttemptId && item.executionId === executionId);
-        if (!attempt || attempt.status !== "prepared" || attempt.contentSha256 !== postContentHash) throw new Error("Publication attempt is missing or stale");
+        if (!attempt || !["prepared", "unknown"].includes(attempt.status) || attempt.contentSha256 !== postContentHash) throw new Error("Publication attempt is missing or stale");
+        const uncertainty = (state.submissionUncertainties || []).find((item) => item.jobId === post.id && item.executionId === executionId && item.status === "UNKNOWN");
+        if (uncertainty) { uncertainty.status = "CONFIRMED"; uncertainty.lastReconciliationAt = evidence.verifiedAt; uncertainty.resolvedAt = evidence.verifiedAt; uncertainty.evidenceReferences.push(evidence.evidenceReference || receipt.publicationUrl); uncertainty.publicationUrl = receipt.publicationUrl; }
         attempt.status = "verified";
         attempt.verifiedAt = evidence.verifiedAt;
         attempt.publicationUrl = receipt.publicationUrl;
@@ -2167,6 +2179,7 @@ export class SeedingService {
   async transitionPost(postId, input, actor = "operator") {
     const result = await this.store.mutate(actor, `post_transition_${input.status}`, async (state) => {
       const post = requireItem(state.posts, postId, "Post");
+      if (post.status === UNKNOWN_POST_STATUS || input.status === UNKNOWN_POST_STATUS || unresolvedSubmission(state, post)) throw new Error("SUBMISSION_UNCERTAIN: use evidence-based reconciliation");
       assertTransition(post.status, input.status);
       if (["queued", "publishing"].includes(input.status)) {
         await assertPostArtifactCurrent(post, state);
@@ -2231,6 +2244,107 @@ export class SeedingService {
       if (input.error) post.error = input.error;
       else if (input.status === "published") delete post.error;
       return post;
+    });
+    return result.result;
+  }
+
+  async quarantineLegacySubmission(postId, input, actor = "operator") {
+    if (!["operator", "local-human-operator"].includes(actor)) throw new Error("Only an operator may quarantine a legacy submission");
+    if (input?.operatorConfirmedNoWorker !== true) throw new Error("Operator must confirm that no worker is running");
+    const refs = Array.isArray(input.evidenceReferences) ? input.evidenceReferences.map((value) => String(value || "").trim()).filter(Boolean) : [];
+    if (refs.some((value) => value.length > 300 || /[\r\n]/.test(value))) throw new Error("Evidence references must be short single-line identifiers");
+    if (!refs.length) throw new Error("Quarantine requires evidence references for the UNKNOWN investigation");
+    const result = await this.store.mutate(actor, "legacy_submission_quarantined_unknown", (state) => {
+      const post = requireItem(state.posts, postId, "Post");
+      if (post.status === UNKNOWN_POST_STATUS) return (state.submissionUncertainties || []).find((item) => item.id === post.submissionUncertaintyId);
+      if (post.status !== "publishing") throw new Error("Legacy quarantine requires a stale publishing job");
+      const attempt = (state.publicationAttempts || []).find((item) => item.id === post.publicationAttemptId && item.postId === post.id);
+      if (!attempt || attempt.status !== "prepared" || !Number.isFinite(Date.parse(attempt.expiresAt)) || Date.parse(attempt.expiresAt) > Date.now()) throw new Error("Legacy quarantine requires an expired prepared publication attempt");
+      if (attempt.executionId) throw new Error("Legacy quarantine cannot be used for an execution with an executionId");
+      if (activeExecutionForPost(state, post.id)) throw new Error("Active execution lease or worker prevents quarantine");
+      if ((state.executionRequests || []).some((item) => item.jobId === post.id && ["REQUEST_READY", "EXECUTING", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state))) throw new Error("Related execution request prevents legacy quarantine");
+      if (unresolvedSubmission(state, post)) throw new Error("Submission identity is already quarantined");
+      const at = nowIso();
+      const uncertainty = recordSubmissionUnknown(state, post, attempt, { reasonCode: "LEGACY_SUBMIT_OUTCOME_UNKNOWN", evidenceReferences: refs, detectedAt: at });
+      post.jobLifecycle ||= [];
+      post.jobLifecycle.push({ state: "SUBMIT_RESULT_UNKNOWN", at, publicationAttemptId: attempt.id, reasonCode: uncertainty.reasonCode });
+      return uncertainty;
+    });
+    return result.result;
+  }
+
+  async getSubmissionUncertainty(uncertaintyId) {
+    const state = await this.store.read();
+    const row = (state.submissionUncertainties || []).find((item) => item.id === uncertaintyId);
+    if (!row) throw new Error(`Submission uncertainty not found: ${uncertaintyId}`);
+    return row;
+  }
+
+  async reconcileSubmissionUncertainty(uncertaintyId, input, actor = "operator") {
+    if (!["operator", "local-human-operator"].includes(actor)) throw new Error("Only an operator may reconcile a submission uncertainty");
+    if (!["CONFIRMED", "PROVEN_FAILED"].includes(input?.outcome)) throw new Error("Reconciliation outcome must be CONFIRMED or PROVEN_FAILED");
+    const evidence = input.evidence;
+    if (!evidence || typeof evidence !== "object" || !String(evidence.evidenceReference || "").trim() || !String(evidence.verificationMethod || "").trim()) throw new Error("Reconciliation requires structured evidence and a reference");
+    if (String(evidence.evidenceReference).length > 300 || String(evidence.verificationMethod).length > 100 || /[\r\n]/.test(String(evidence.evidenceReference))) throw new Error("Reconciliation evidence reference and method must be short identifiers");
+    const result = await this.store.mutate(actor, `submission_uncertainty_${input.outcome.toLowerCase()}`, (state) => {
+      const uncertainty = (state.submissionUncertainties || []).find((item) => item.id === uncertaintyId);
+      if (!uncertainty) throw new Error(`Submission uncertainty not found: ${uncertaintyId}`);
+      if (uncertainty.status !== "UNKNOWN") throw new Error("Submission uncertainty is already resolved");
+      const post = requireItem(state.posts, uncertainty.jobId, "Post");
+      const attempt = requireItem(state.publicationAttempts || [], uncertainty.publicationAttemptId, "Publication attempt");
+      const target = requireItem(state.targets, uncertainty.targetId, "Target");
+      if (input.outcome === "CONFIRMED") {
+        if (uncertainty.executionId) throw new Error("Modern execution confirmation must use the verified execution receipt path");
+        const contentHash = createHash("sha256").update(String(post.content || "")).digest("hex");
+        const artifact = (state.artifacts || []).find((item) => item.id === post.artifactId);
+        if (evidence.accountId !== target.accountId || evidence.profileId !== target.profileId || evidence.targetId !== target.id || evidence.contentSha256 !== contentHash || (attempt.contentSha256 && attempt.contentSha256 !== contentHash) || evidence.mediaSha256 !== (artifact?.sha256 || null) || !evidence.publicationUrl || !Number.isFinite(Date.parse(evidence.verifiedAt || ""))) throw new Error("Confirmation evidence does not match the quarantined publication identity");
+        const expectedHost = new URL(target.url).hostname.toLowerCase().replace(/^www\./, "");
+        const publicationHost = new URL(evidence.publicationUrl).hostname.toLowerCase().replace(/^www\./, "");
+        if (publicationHost !== expectedHost && !publicationHost.endsWith(`.${expectedHost}`)) throw new Error("Publication URL host does not match the original target");
+        uncertainty.status = "CONFIRMED";
+        uncertainty.publicationUrl = evidence.publicationUrl;
+        uncertainty.publicationReference = evidence.publicationReference || null;
+        uncertainty.lastReconciliationAt = evidence.verifiedAt;
+        uncertainty.resolvedAt = evidence.verifiedAt;
+        uncertainty.evidenceReferences.push(evidence.evidenceReference);
+        post.status = "published";
+        post.executionState = "CONFIRMED";
+        post.publishedAt = evidence.verifiedAt;
+        post.publicationUrl = evidence.publicationUrl;
+        post.evidence = evidence.evidenceReference;
+        attempt.status = "verified";
+        attempt.verifiedAt = evidence.verifiedAt;
+        attempt.publicationUrl = evidence.publicationUrl;
+        post.jobLifecycle ||= [];
+        post.jobLifecycle.push({ state: "PUBLISHED", at: evidence.verifiedAt, publicationAttemptId: attempt.id, publicationUrl: evidence.publicationUrl }, { state: "VERIFIED", at: evidence.verifiedAt, evidenceReference: evidence.evidenceReference });
+      } else {
+        if (evidence.provesSubmitNeverOccurred !== true || !["PRE_SUBMIT_ABORT_TRACE", "PLATFORM_REJECTION_BEFORE_ACCEPTANCE"].includes(evidence.proofType)) throw new Error("PROVEN_FAILED requires an allowlisted proof that submit never occurred");
+        if ((state.executionReceipts || []).some((row) => row.jobId === post.id && ["SUBMIT_SENT", "CONFIRMED"].includes(row.receipt?.submitState))) throw new Error("Existing sent or confirmed receipt conflicts with proven-never-submitted evidence");
+        const modernRequest = uncertainty.executionId && (state.executionRequests || []).find((row) => row.executionId === uncertainty.executionId);
+        if (uncertainty.executionId && (!modernRequest || !["SUBMIT_SENT_INTENT", "SUBMIT_RESULT_UNKNOWN"].includes(modernRequest.state))) throw new Error("Modern execution is not in a reconcilable submit state");
+        uncertainty.status = "PROVEN_FAILED";
+        uncertainty.lastReconciliationAt = nowIso();
+        uncertainty.resolvedAt = uncertainty.lastReconciliationAt;
+        uncertainty.evidenceReferences.push(evidence.evidenceReference);
+        uncertainty.proofType = evidence.proofType;
+        if (modernRequest) {
+          modernRequest.state = "PROVEN_FAILED";
+          modernRequest.executionPhase = "PROVEN_FAILED";
+          modernRequest.submitState = "FAILED";
+          modernRequest.reconciledAt = uncertainty.resolvedAt;
+          modernRequest.reconciliationEvidenceReference = evidence.evidenceReference;
+        }
+        post.status = "failed";
+        post.executionState = "PROVEN_FAILED";
+        post.failedAt = uncertainty.resolvedAt;
+        post.error = "Submission proven not sent by reconciliation evidence";
+        attempt.status = "failed";
+        attempt.finishedAt = uncertainty.resolvedAt;
+        attempt.provenNeverSubmitted = true;
+        post.jobLifecycle ||= [];
+        post.jobLifecycle.push({ state: "PROVEN_FAILED", at: uncertainty.resolvedAt, publicationAttemptId: attempt.id, evidenceReference: evidence.evidenceReference });
+      }
+      return uncertainty;
     });
     return result.result;
   }

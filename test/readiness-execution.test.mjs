@@ -34,7 +34,7 @@ async function fixture({ platform = "threads", provider, readinessAgeMs = 10_000
   }, "operator");
   const checkedAt = new Date(Date.now() - readinessAgeMs).toISOString();
   const target = await service.createTarget({
-    channel: platform, name: "Test target", url: platform === "linkedin" ? "https://www.linkedin.com/feed/" : "https://www.threads.net/@owner", accountId, profileId,
+    channel: platform, name: "Test target", url: platform === "linkedin" ? "https://www.linkedin.com/feed/" : platform === "reddit" ? "https://www.reddit.com/r/owner" : "https://www.threads.net/@owner", accountId, profileId,
     status: "active",
     readiness: { state: "ready", checkedAt, checks: { sessionValid: true, composerCapable: true, platformAvailable: true } }
   }, "operator");
@@ -521,6 +521,116 @@ test("uncertain LinkedIn submissions enter rate-limited reconciliation without b
   });
   assert.equal((await service.pendingExecutionReconciliations({ now: Date.now() + 60_001 })).length, 0);
   assert.equal((await service.readyExecutionRequests()).length, 0);
+});
+
+test("legacy unknown submission quarantine supports Reddit attempts without executionId and requires evidence to resolve", async () => {
+  const { service, post, target } = await fixture({ platform: "reddit", provider: { async checkReadiness() { return ready(); } } });
+  const attemptId = "legacy-reddit-attempt";
+  await service.store.mutate("test", "prepare_legacy_unknown_fixture", (state) => {
+    state.executionRequests = state.executionRequests.filter((item) => item.jobId !== post.id);
+    const current = state.posts.find((item) => item.id === post.id);
+    current.status = "publishing";
+    current.publishingAt = new Date(Date.now() - 5 * 60 * 60_000).toISOString();
+    current.publicationAttemptId = attemptId;
+    state.publicationAttempts.push({ id: attemptId, postId: post.id, targetId: target.id, contentSha256: contentSha256(current.content), status: "prepared", preparedAt: current.publishingAt, expiresAt: new Date(Date.now() - 60_000).toISOString() });
+  });
+  const refs = ["legacy-investigation:reddit-attempt-log"];
+  const uncertainty = await service.quarantineLegacySubmission(post.id, { operatorConfirmedNoWorker: true, evidenceReferences: refs }, "operator");
+  assert.equal(uncertainty.executionId, null);
+  assert.equal(uncertainty.publicationAttemptId, attemptId);
+  assert.equal(uncertainty.platform, "reddit");
+  assert.equal(uncertainty.status, "UNKNOWN");
+  assert.deepEqual(uncertainty.evidenceReferences, refs);
+  assert.equal((await service.snapshot()).posts.find((item) => item.id === post.id).status, "submit_result_unknown");
+  await assert.rejects(service.prepareExecutionRequest(post.id, "operator"), /SUBMISSION_UNCERTAIN/);
+  await assert.rejects(service.createLiveExecutionGrant({ jobId: post.id, validFrom: new Date().toISOString(), validUntil: new Date(Date.now() + 60_000).toISOString(), operatorAuthorizationReference: "test" }, "operator"), /unresolved submission/);
+  await service.store.mutate("test", "create_same_identity_sibling", (state) => {
+    const source = state.posts.find((item) => item.id === post.id);
+    state.posts.push({ ...source, id: "same-identity-sibling", status: "blocked", jobLifecycle: [...(source.jobLifecycle || [])] });
+  });
+  await assert.rejects(service.createLiveExecutionGrant({ jobId: "same-identity-sibling", validFrom: new Date().toISOString(), validUntil: new Date(Date.now() + 60_000).toISOString(), operatorAuthorizationReference: "test" }, "operator"), /unresolved submission/);
+  await assert.rejects(service.reconcileSubmissionUncertainty(uncertainty.id, { outcome: "PROVEN_FAILED", evidence: { evidenceReference: "weak", verificationMethod: "manual" } }, "operator"), /proof that submit never occurred/);
+  const verifiedAt = new Date().toISOString();
+  const reconciled = await service.reconcileSubmissionUncertainty(uncertainty.id, {
+    outcome: "CONFIRMED",
+    evidence: {
+      evidenceReference: "reddit-readonly-verification:post-123", verificationMethod: "account-history-and-target-post-match",
+      accountId: target.accountId, profileId: target.profileId, targetId: target.id, contentSha256: contentSha256(post.content), mediaSha256: null,
+      publicationUrl: "https://www.reddit.com/r/owner/comments/post123", publicationReference: "post123", verifiedAt
+    }
+  }, "operator");
+  assert.equal(reconciled.status, "CONFIRMED");
+  const after = await service.snapshot();
+  assert.equal(after.posts.find((item) => item.id === post.id).status, "published");
+  assert.equal(after.publicationAttempts.find((item) => item.id === attemptId).status, "verified");
+});
+
+test("legacy quarantine refuses a live lease or active worker and proven failure requires explicit proof", async () => {
+  for (const activeKind of ["lease", "worker"]) {
+    const { service, post, target } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
+    const attemptId = `legacy-${activeKind}-attempt`;
+    await service.store.mutate("test", "prepare_active_legacy_fixture", (state) => {
+      const current = state.posts.find((item) => item.id === post.id);
+      current.status = "publishing";
+      current.publicationAttemptId = attemptId;
+      state.executionRequests = state.executionRequests.filter((item) => item.jobId !== post.id);
+      if (activeKind === "worker") state.executionRequests.push({ executionId: "worker-execution", jobId: post.id, state: "EXECUTING" });
+      else state.executionLeases.push({ id: "active-lease", jobId: post.id, executionId: "lease-execution", expiresAt: new Date(Date.now() + 60_000).toISOString() });
+      state.publicationAttempts.push({ id: attemptId, postId: post.id, targetId: target.id, status: "prepared", expiresAt: new Date(Date.now() - 1).toISOString() });
+    });
+    await assert.rejects(service.quarantineLegacySubmission(post.id, { operatorConfirmedNoWorker: true, evidenceReferences: ["case-ref"] }, "operator"), /Active execution|Related execution/);
+  }
+  const { service, post, target } = await fixture({ platform: "threads", provider: { async checkReadiness() { return ready(); } } });
+  const attemptId = "legacy-proven-failure";
+  await service.store.mutate("test", "prepare_proven_failure_fixture", (state) => {
+    state.executionRequests = state.executionRequests.filter((item) => item.jobId !== post.id);
+    const current = state.posts.find((item) => item.id === post.id);
+    current.status = "publishing"; current.publicationAttemptId = attemptId;
+    state.publicationAttempts.push({ id: attemptId, postId: post.id, targetId: target.id, status: "prepared", expiresAt: new Date(Date.now() - 1).toISOString() });
+  });
+  const unknown = await service.quarantineLegacySubmission(post.id, { operatorConfirmedNoWorker: true, evidenceReferences: ["pre-submit-trace"] }, "operator");
+  const failed = await service.reconcileSubmissionUncertainty(unknown.id, { outcome: "PROVEN_FAILED", evidence: { evidenceReference: "pre-submit-trace", verificationMethod: "durable-browser-trace", proofType: "PRE_SUBMIT_ABORT_TRACE", provesSubmitNeverOccurred: true } }, "operator");
+  assert.equal(failed.status, "PROVEN_FAILED");
+  assert.equal((await service.snapshot()).posts.find((item) => item.id === post.id).status, "failed");
+});
+
+test("modern UNKNOWN receipt creates the same durable quarantine and remains non-dispatchable", async () => {
+  const { service, post } = await fixture({ platform: "threads", provider: { async checkReadiness() { return ready(); } } });
+  const request = (await service.snapshot()).executionRequests[0];
+  const at = new Date().toISOString();
+  await service.store.mutate("test", "prepare_modern_unknown_fixture", (state) => {
+    const row = state.executionRequests.find((item) => item.executionId === request.executionId);
+    row.state = "SUBMIT_SENT"; row.submitState = "SUBMIT_SENT";
+    const current = state.posts.find((item) => item.id === post.id);
+    current.status = "publishing"; current.publicationAttemptId = "modern-attempt";
+    state.publicationAttempts.push({ id: "modern-attempt", postId: post.id, targetId: current.targetId, executionId: request.executionId, contentSha256: contentSha256(current.content), status: "prepared", expiresAt: new Date(Date.now() + 60_000).toISOString() });
+  });
+  await service.recordExecutionReceipt(request.executionId, {
+    schemaVersion: 1, executionId: request.executionId, jobId: post.id, attempt: request.attempt,
+    startedAt: at, finishedAt: at, readinessResult: { state: "READY", checkedAt: at }, submitState: "UNKNOWN",
+    errorClassification: "TIMEOUT", recoveryClassification: "UNKNOWN", verificationEvidence: "reconciliation-pending",
+    telemetry: { durationMs: 100, browserCommands: 1, computerUseCalls: 0, retries: 0 }
+  });
+  const after = await service.snapshot();
+  assert.equal(after.posts.find((item) => item.id === post.id).status, "submit_result_unknown");
+  assert.equal(after.executionRequests[0].state, "SUBMIT_RESULT_UNKNOWN");
+  assert.equal(after.submissionUncertainties[0].executionId, request.executionId);
+  assert.equal((await service.readyExecutionRequests()).length, 0);
+  await assert.rejects(service.prepareExecutionRequest(post.id, "operator"), /SUBMISSION_UNCERTAIN/);
+  const proven = await service.reconcileSubmissionUncertainty(after.submissionUncertainties[0].id, {
+    outcome: "PROVEN_FAILED", evidence: { evidenceReference: "worker-trace-no-click", verificationMethod: "durable-browser-action-trace", proofType: "PRE_SUBMIT_ABORT_TRACE", provesSubmitNeverOccurred: true }
+  }, "operator");
+  assert.equal(proven.status, "PROVEN_FAILED");
+  const resolved = await service.snapshot();
+  assert.equal(resolved.executionRequests[0].state, "PROVEN_FAILED");
+  assert.equal(resolved.posts.find((item) => item.id === post.id).status, "failed");
+  await service.transitionPost(post.id, { status: "needs_review" }, "operator");
+  await service.approvePost(post.id, "operator");
+  await service.transitionPost(post.id, { status: "queued" }, "operator");
+  await service.createLiveExecutionGrant({ jobId: post.id, validFrom: new Date(Date.now() - 1_000).toISOString(), validUntil: new Date(Date.now() + 60_000).toISOString(), operatorAuthorizationReference: "fresh-retry-authorization" }, "operator");
+  const retry = await service.prepareExecutionRequest(post.id, "operator");
+  assert.equal(retry.attempt, 2);
+  assert.notEqual(retry.executionId, request.executionId);
 });
 
 test("recoverable pre-submit adapter failures get bounded automatic retries under a new execution identity", async () => {

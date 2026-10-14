@@ -366,6 +366,21 @@ const server = http.createServer(async (request, response) => {
       if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
       return sendJson(response, 201, await service.createLiveExecutionGrant(await readJson(request), actor));
     }
+    let uncertaintyMatch = url.pathname.match(/^\/api\/posts\/([^/]+)\/quarantine-unknown$/);
+    if (request.method === "POST" && uncertaintyMatch) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 201, await service.quarantineLegacySubmission(uncertaintyMatch[1], await readJson(request), actor));
+    }
+    uncertaintyMatch = url.pathname.match(/^\/api\/submission-uncertainties\/([^/]+)$/);
+    if (request.method === "GET" && uncertaintyMatch) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.getSubmissionUncertainty(uncertaintyMatch[1]));
+    }
+    uncertaintyMatch = url.pathname.match(/^\/api\/submission-uncertainties\/([^/]+)\/reconcile$/);
+    if (request.method === "POST" && uncertaintyMatch) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.reconcileSubmissionUncertainty(uncertaintyMatch[1], await readJson(request), actor));
+    }
     let liveGrantMatch = url.pathname.match(/^\/api\/live-execution-grants\/([^/]+)$/);
     if (request.method === "GET" && liveGrantMatch) {
       if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });

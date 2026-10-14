@@ -109,6 +109,9 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal((await fetch(`${baseUrl}/api/operator/session`, { headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/posts/fixture-job/execution-request/dry-run`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/posts/fixture-job/quarantine-unknown`, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify({}) })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/submission-uncertainties/unknown-fixture`, { headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/submission-uncertainties/unknown-fixture/reconcile`, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify({ outcome: "PROVEN_FAILED" }) })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/execution-requests/fixture-execution/run-dry-run`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { authorization: `Bearer ${token}` } })).status, 200);
   const grantPayload = JSON.stringify({ jobId: fixturePost.id,

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { evaluateCampaignAuthorization } from "./campaign-authorization.mjs";
 import { DEFAULT_READINESS_TTL_MS, isReadinessFresh, readinessBinding } from "./readiness.mjs";
 
-const ACTIVE_PUBLICATION_STATUSES = new Set(["queued", "publishing", "processing", "published"]);
+const ACTIVE_PUBLICATION_STATUSES = new Set(["queued", "publishing", "processing", "submit_result_unknown", "published"]);
 export const CAMPAIGN_READINESS_MAX_AGE_MS = DEFAULT_READINESS_TTL_MS;
 
 export function normalizeContent(value = "") {
@@ -70,6 +70,7 @@ export function evaluateQueue(post, state, now = new Date(), { mode = "live" } =
   if (!campaignAuthorization && !hasCampaignAuthorization && !post.approvedAt) reasons.push("human_approval_required");
   if (!campaignAuthorization && !hasCampaignAuthorization && post.approvedAt && post.approvalBinding !== approvalFingerprint(post, target)) reasons.push("approval_binding_stale");
   if (!post.content?.trim()) reasons.push("content_missing");
+  if ((state.submissionUncertainties || []).some((item) => item.status === "UNKNOWN" && (item.jobId === post.id || (post.idempotencyKey && item.idempotencyKeys?.includes(post.idempotencyKey))))) reasons.push("submission_uncertain");
   if (policy.maxContentChars && post.content?.length > policy.maxContentChars) reasons.push("content_too_long");
   if (policy.requiresRulesReview && target.rulesStatus !== "reviewed") {
     reasons.push("target_rules_not_reviewed");

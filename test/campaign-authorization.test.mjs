@@ -273,6 +273,58 @@ test("concurrency limit carries across campaign authorization renewal", async ()
   assert.ok(second.authorizationDecision.reasons.includes("campaign_concurrency_limit_reached"));
 });
 
+test("unknown quarantine releases inactive concurrency, preserves a same-identity hold, and still counts a live lease or worker", async () => {
+  const { service, campaign, targets, authorization } = await campaignFixture({ channels: ["threads", "linkedin"], rateLimits: { maxConcurrency: 1, minIntervalMinutes: 0 } });
+  const copy = "Same authorized cross-platform campaign copy.";
+  const posts = [];
+  for (const target of targets) posts.push(await service.createPost({ campaignId: campaign.id, targetId: target.id, content: copy, audience: "public" }, "producer"));
+  await authorization([copy], { rateLimits: { maxJobsPerAccountPerDay: 5, maxJobsPerCampaignPerDay: 10, maxConcurrency: 1, minIntervalMinutes: 0 } });
+  await service.store.mutate("test", "legacy_publishing_with_active_worker", (state) => {
+    const post = state.posts.find((item) => item.id === posts[0].id);
+    post.status = "publishing";
+    state.executionRequests = state.executionRequests.filter((item) => item.jobId !== post.id);
+    state.executionRequests.push({ executionId: "legacy-worker", jobId: post.id, state: "EXECUTING" });
+  });
+  let state = await service.snapshot();
+  let decision = evaluateCampaignAuthorization(state.posts.find((item) => item.id === posts[1].id), state);
+  assert.ok(decision.reasons.includes("campaign_concurrency_limit_reached"));
+
+  await service.store.mutate("test", "legacy_publishing_with_active_lease", (current) => {
+    current.executionRequests = current.executionRequests.filter((item) => item.jobId !== posts[0].id);
+    current.executionLeases.push({ id: "legacy-active-lease", jobId: posts[0].id, expiresAt: new Date(Date.now() + 60_000).toISOString() });
+  });
+  state = await service.snapshot();
+  decision = evaluateCampaignAuthorization(state.posts.find((item) => item.id === posts[1].id), state);
+  assert.ok(decision.reasons.includes("campaign_concurrency_limit_reached"));
+
+  await service.store.mutate("test", "quarantine_old_execution", (current) => {
+    const post = current.posts.find((item) => item.id === posts[0].id);
+    post.status = "submit_result_unknown";
+    post.submissionUncertaintyId = "unknown-1";
+    current.submissionUncertainties.push({ id: "unknown-1", status: "UNKNOWN", jobId: post.id, idempotencyKeys: [post.idempotencyKey], platform: targets[0].channel });
+    current.executionLeases = current.executionLeases.filter((item) => item.jobId !== post.id);
+  });
+  state = await service.snapshot();
+  decision = evaluateCampaignAuthorization(state.posts.find((item) => item.id === posts[1].id), state);
+  assert.equal(decision.reasons.includes("campaign_concurrency_limit_reached"), false);
+  const duplicate = { ...state.posts.find((item) => item.id === posts[1].id), id: "same-identity-copy", idempotencyKey: posts[0].idempotencyKey };
+  assert.ok(evaluateQueue(duplicate, state).reasons.includes("submission_uncertain"));
+
+  await service.store.mutate("test", "mark_quarantine_worker_active", (current) => {
+    current.executionRequests.push({ executionId: "unknown-worker", jobId: posts[0].id, state: "EXECUTING" });
+  });
+  state = await service.snapshot();
+  decision = evaluateCampaignAuthorization(state.posts.find((item) => item.id === posts[1].id), state);
+  assert.ok(decision.reasons.includes("campaign_concurrency_limit_reached"));
+  await service.store.mutate("test", "expire_worker_mark_active_lease", (current) => {
+    current.executionRequests = current.executionRequests.filter((item) => item.executionId !== "unknown-worker");
+    current.executionLeases.push({ id: "unknown-lease", jobId: posts[0].id, expiresAt: new Date(Date.now() + 60_000).toISOString() });
+  });
+  state = await service.snapshot();
+  decision = evaluateCampaignAuthorization(state.posts.find((item) => item.id === posts[1].id), state);
+  assert.ok(decision.reasons.includes("campaign_concurrency_limit_reached"));
+});
+
 test("legacy approvedAt cannot substitute for missing campaign authorization once campaign scope exists", async () => {
   const { service, campaign, targets, authorization } = await campaignFixture();
   const copy = "Bound campaign authorization copy.";

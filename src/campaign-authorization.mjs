@@ -286,7 +286,7 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
   // or idempotency for work already created under the same campaign.
   const active = (state.posts || []).filter((item) => item.id !== post.id && item.campaignId === authorization.campaignId);
   const dayKey = local;
-  const countedStatuses = new Set(["queued", "publishing", "processing", "published"]);
+  const countedStatuses = new Set(["queued", "publishing", "processing", "submit_result_unknown", "published"]);
   const sameDay = active.filter((item) => {
     if (!countedStatuses.has(item.status)) return false;
     const time = item.publishedAt || item.queuedAt || item.scheduledAt || item.createdAt;
@@ -299,7 +299,7 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
   const sameAccountToday = sameDay.filter((item) => state.targets?.find((targetItem) => targetItem.id === item.targetId)?.accountId === target?.accountId);
   if (!dryRun && sameAccountToday.length >= authorization.rateLimits.maxJobsPerAccountPerDay) reasons.push("account_daily_limit_reached");
   const lastAccountPublication = active
-    .filter((item) => ["queued", "publishing", "processing", "published"].includes(item.status))
+    .filter((item) => ["queued", "publishing", "processing", "submit_result_unknown", "published"].includes(item.status))
     .filter((item) => {
       const itemTarget = state.targets?.find((targetItem) => targetItem.id === item.targetId);
       return itemTarget?.channel === target?.channel && itemTarget?.accountId === target?.accountId;
@@ -310,13 +310,16 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
     .filter((value) => Number.isFinite(value.getTime()))
     .sort((left, right) => right - left)[0];
   if (!dryRun && lastAccountPublication && (scheduledAt - lastAccountPublication) / 60_000 < authorization.rateLimits.minIntervalMinutes) reasons.push("campaign_minimum_interval_not_met");
-  const inFlight = active.filter((item) => ["publishing", "processing"].includes(item.status));
+  const inFlight = active.filter((item) => ["publishing", "processing"].includes(item.status) ||
+    (item.status === "submit_result_unknown" && ((state.executionLeases || []).some((lease) => lease.jobId === item.id && Date.parse(lease.expiresAt) > now.getTime()) ||
+      (state.executionRequests || []).some((request) => request.jobId === item.id && request.state === "EXECUTING"))));
   if (!dryRun && inFlight.length >= authorization.rateLimits.maxConcurrency) reasons.push("campaign_concurrency_limit_reached");
 
   const duplicateIdentity = post.idempotencyKey && active.some((item) => !["failed", "rejected", "removed"].includes(item.status) && (
     item.idempotencyKey === post.idempotencyKey || publicationIdentityKeysForPost(item, state).includes(post.idempotencyKey)
   ));
   if (duplicateIdentity) reasons.push("publication_identity_exists");
+  if ((state.submissionUncertainties || []).some((item) => item.status === "UNKNOWN" && (item.jobId === post.id || item.idempotencyKeys?.includes(post.idempotencyKey)))) reasons.push("submission_uncertain");
   const normalizedContent = normalizeDuplicateContent(post.content);
   const repeatedContent = normalizedContent && authorization.contentBoundary?.allowRepeatSameContent !== true && (state.posts || []).some((item) => {
     if (item.id === post.id || ["failed", "rejected", "removed"].includes(item.status) || normalizeDuplicateContent(item.content) !== normalizedContent) return false;
