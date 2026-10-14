@@ -128,6 +128,22 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal((await fetch(`${baseUrl}/api/live-execution-grants/${liveGrant.grantId}/revoke`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/live-execution-grants/${liveGrant.grantId}/revoke`, { method: "POST", headers: { authorization: `Bearer ${token}` } })).status, 200);
   assert.equal((await (await fetch(`${baseUrl}/api/live-execution-grants/${liveGrant.grantId}`, { headers: { authorization: `Bearer ${token}` } })).json()).status, "REVOKED");
+  const executionWindowPayload = JSON.stringify({
+    windowId: "fixture-one-time-window", campaignId: fixtureCampaign.id, campaignAuthorizationId: fixtureAuthorization.id, jobId: fixturePost.id,
+    validFrom: new Date(Date.now() - 1_000).toISOString(), validUntil: new Date(Date.now() + 60_000).toISOString(),
+    timezone: "UTC", reason: "operator API auth regression"
+  });
+  const executionWindowHeaders = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+  assert.equal((await fetch(`${baseUrl}/api/one-time-execution-windows`, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: executionWindowPayload })).status, 401);
+  const windowResponse = await fetch(`${baseUrl}/api/one-time-execution-windows`, { method: "POST", headers: executionWindowHeaders, body: executionWindowPayload });
+  assert.equal(windowResponse.status, 201);
+  const executionWindow = await windowResponse.json();
+  assert.equal(executionWindow.jobId, fixturePost.id);
+  assert.equal(executionWindow.status, "ACTIVE");
+  assert.equal((await fetch(`${baseUrl}/api/one-time-execution-windows/${executionWindow.windowId}`, { headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await (await fetch(`${baseUrl}/api/one-time-execution-windows/${executionWindow.windowId}`, { headers: executionWindowHeaders })).json()).effectiveStatus, "ACTIVE");
+  assert.equal((await fetch(`${baseUrl}/api/one-time-execution-windows/${executionWindow.windowId}/revoke`, { method: "POST", headers: { authorization: `Bearer ${automationToken}` } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/one-time-execution-windows/${executionWindow.windowId}/revoke`, { method: "POST", headers: executionWindowHeaders })).status, 200);
   const body = JSON.stringify({ name: "Fixture", objective: "Auth test", productRepo: appRoot });
   assert.equal((await fetch(`${baseUrl}/api/campaigns`, {
     method: "POST", headers: { "content-type": "application/json" }, body

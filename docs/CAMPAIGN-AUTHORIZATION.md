@@ -6,7 +6,7 @@ Campaign authorization is the canonical pre-authorization for future child distr
 
 ## Canonical state
 
-`state.json` is schema version 5. `campaignAuthorizations[]` is the source of truth; the campaign record and dashboard are projections. Earlier state migrations add authorization, execution, and lease collections while preserving existing records. Migration does not infer or grant campaign permission.
+`state.json` is schema version 8. `campaignAuthorizations[]` is the source of truth; the campaign record and dashboard are projections. Earlier state migrations add authorization, execution, grant, uncertainty, and one-time-window collections while preserving existing records. Migration does not infer or grant campaign permission.
 
 An authorization records:
 
@@ -38,6 +38,8 @@ The publication key is SHA-256 over the tuple `campaignId + contentId + platform
 Platform and account cadence limits still apply. Campaign daily quotas, minimum interval, concurrency, and idempotency are counted across every job in the campaign, including jobs created under superseded authorization versions, so renewal cannot reset limits or make in-flight work invisible. Campaign concurrency counts only in-flight `publishing`/`processing` jobs. Per-target community membership/rules remain hard gates. A failure on one target does not stop unrelated targets.
 
 Jobs blocked because their scheduled instant falls outside an authorized local weekday/time window remain blocked; this version does not calculate or move them to the next allowed slot automatically.
+
+An operator may create a `OneTimeExecutionWindowV1` for one existing job when an exceptional one-time schedule is required. It can satisfy only that job's recurring weekday/time gate; it does not edit recurring schedule rows or bypass any other authorization, readiness, target, quota, cadence, concurrency, duplicate, uncertainty, or submit gate. The window reserves one `executionId` with its live `ExecutionRequestV1` and is consumed when that worker begins. It does not grant submit authority; a matching `LiveExecutionGrantV1` remains mandatory. See [One-Time Execution Windows](./ONE-TIME-EXECUTION-WINDOWS.md).
 
 ## Human-only blockers
 

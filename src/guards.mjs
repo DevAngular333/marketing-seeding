@@ -32,7 +32,7 @@ export function approvalFingerprint(post, target) {
   })).digest("hex");
 }
 
-export function evaluateQueue(post, state, now = new Date(), { mode = "live" } = {}) {
+export function evaluateQueue(post, state, now = new Date(), { mode = "live", executionId = null } = {}) {
   const dryRun = mode === "dry_run";
   const target = state.targets.find((item) => item.id === post.targetId);
   if (!target) return { allowed: false, reasons: ["target_missing"] };
@@ -46,7 +46,7 @@ export function evaluateQueue(post, state, now = new Date(), { mode = "live" } =
   }
   const hasCampaignAuthorization = (state.campaignAuthorizations || []).some((item) => item.campaignId === post.campaignId);
   const campaignAuthorization = post.campaignAuthorizationId
-    ? evaluateCampaignAuthorization(post, state, now, { mode })
+    ? evaluateCampaignAuthorization(post, state, now, { mode, executionId })
     : null;
   if (campaignAuthorization) reasons.push(...campaignAuthorization.reasons);
   if (!dryRun && campaignAuthorization && campaignAuthorization.authorization?.allowLiveExecution !== true) reasons.push("live_execution_not_authorized");
@@ -116,7 +116,7 @@ export function evaluateQueue(post, state, now = new Date(), { mode = "live" } =
   const repeatContentAllowed = campaignAuthorization?.authorization?.contentBoundary?.allowRepeatSameContent === true;
   if (duplicate && !repeatContentAllowed) reasons.push("duplicate_content_within_7_days");
 
-  return { allowed: reasons.length === 0, reasons, policy, target };
+  return { allowed: reasons.length === 0, reasons, policy, target, oneTimeWindow: campaignAuthorization?.oneTimeWindow || null };
 }
 
 export function assertReplyCanSend(reply, state) {

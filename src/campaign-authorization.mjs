@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { executionAccountKey } from "./readiness.mjs";
+import { matchingOneTimeExecutionWindow } from "./one-time-execution-window.mjs";
 
 const SUPPORTED_AUTH_STATUSES = new Set(["active", "paused", "expired", "revoked"]);
 const sha256Pattern = /^[a-f0-9]{64}$/i;
@@ -203,7 +204,7 @@ function localClock(now, timezone) {
   return result;
 }
 
-export function evaluateCampaignAuthorization(post, state, now = new Date(), { mode = "live" } = {}) {
+export function evaluateCampaignAuthorization(post, state, now = new Date(), { mode = "live", executionId = null } = {}) {
   const dryRun = mode === "dry_run";
   const authorization = (state.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
   if (!authorization || authorization.campaignId !== post.campaignId) return { allowed: false, reasons: ["campaign_authorization_missing"] };
@@ -266,16 +267,17 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
   // Dry runs validate the current authorization window and all content/destination
   // scope, but do not consume a publication slot or pretend to publish at the
   // campaign's scheduled time.
-  const requestedScheduledAt = dryRun ? now : post.scheduledAt ? new Date(post.scheduledAt) : now;
+  const oneTimeWindow = !dryRun ? matchingOneTimeExecutionWindow(state, post, authorization, campaignAuthorizationFingerprint(authorization), now, executionId) : null;
+  const requestedScheduledAt = dryRun || oneTimeWindow ? now : post.scheduledAt ? new Date(post.scheduledAt) : now;
   const scheduledAtValid = Number.isFinite(requestedScheduledAt.getTime());
   if (!scheduledAtValid) reasons.push("schedule_timestamp_invalid");
   const scheduledAt = scheduledAtValid ? requestedScheduledAt : now;
   if (scheduledAt < new Date(authorization.validFrom) || scheduledAt > new Date(authorization.validUntil)) reasons.push("schedule_outside_authorization_window");
-  if (!dryRun && scheduledAt > now) reasons.push("schedule_not_due");
+  if (!dryRun && !oneTimeWindow && scheduledAt > now) reasons.push("schedule_not_due");
   let local;
   try {
     local = localClock(scheduledAt, authorization.schedule?.timezone);
-    if (!dryRun && (!authorization.schedule.weekdays.includes(local.weekday) || local.time < authorization.schedule.startLocal || local.time > authorization.schedule.endLocal)) reasons.push("schedule_outside_allowed_window");
+    if (!dryRun && !oneTimeWindow && (!authorization.schedule.weekdays.includes(local.weekday) || local.time < authorization.schedule.startLocal || local.time > authorization.schedule.endLocal)) reasons.push("schedule_outside_allowed_window");
   } catch {
     reasons.push("campaign_schedule_invalid");
     local = { date: "", weekday: -1, time: "" };
@@ -327,5 +329,5 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
     return itemTarget?.channel === target?.channel && itemTarget?.accountId === target?.accountId;
   });
   if (repeatedContent) reasons.push("duplicate_content_for_account");
-  return { allowed: reasons.length === 0, reasons, authorization, target };
+  return { allowed: reasons.length === 0, reasons, authorization, target, oneTimeWindow };
 }

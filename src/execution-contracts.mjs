@@ -64,6 +64,7 @@ export function validateExecutionRequestV1(input) {
       binding: required(input.authorization?.binding, "authorization.binding")
     },
     liveGrant: input.liveGrant ? { grantId: required(input.liveGrant.grantId, "liveGrant.grantId") } : null,
+    oneTimeWindow: input.oneTimeWindow ? { windowId: required(input.oneTimeWindow.windowId, "oneTimeWindow.windowId") } : null,
     idempotencyKey: required(input.idempotencyKey, "idempotencyKey"),
     readiness: {
       state: required(input.readiness?.state, "readiness.state"),
@@ -202,7 +203,7 @@ export function validateExecutionReceiptV1(input) {
   return receipt;
 }
 
-export function createExecutionRequestV1({ executionId, post, target, account, authorization, readiness, artifact, liveGrant = null, dryRun = false, createdAt = new Date().toISOString() }) {
+export function createExecutionRequestV1({ executionId, post, target, account, authorization, readiness, artifact, liveGrant = null, oneTimeWindowId = null, dryRun = false, createdAt = new Date().toISOString() }) {
   return validateExecutionRequestV1({
     schemaVersion: 1,
     executionId,
@@ -219,6 +220,7 @@ export function createExecutionRequestV1({ executionId, post, target, account, a
     content: { contentId: post.contentId, sha256: contentSha256(post.content), payload: post.content },
     media: artifact ? [{ artifactId: artifact.id, reference: artifact.path, sha256: artifact.sha256, type: artifact.mimeType || artifact.mediaType || "application/octet-stream" }] : [],
     authorization: { authorizationId: authorization.id, binding: authorization.binding },
+    oneTimeWindow: oneTimeWindowId ? { windowId: oneTimeWindowId } : null,
     idempotencyKey: post.idempotencyKey,
     readiness: { state: "READY", checkedAt: readiness.checkedAt, expiresAt: readiness.expiresAt, binding: readiness.binding },
     createdAt

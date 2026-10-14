@@ -9,6 +9,7 @@ import { buildMarketingFlowGraph } from "./flow-graph.mjs";
 import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
 import { classifyReadinessError, configuredReadinessTtlMs, executionAccountIdentityReference, executionAccountKey, isCanonicalOrcaProfileId, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
 import { createExecutionRequestV1, validateExecutionReceiptV1 } from "./execution-contracts.mjs";
+import { assertWindowExecutionBinding, normalizeOneTimeExecutionWindow, oneTimeExecutionWindowFingerprint, oneTimeExecutionWindowInBounds, oneTimeExecutionWindowStatus } from "./one-time-execution-window.mjs";
 import { assertLiveGrantMatchesExecution, createLiveExecutionGrantV1, liveGrantEffectiveStatus } from "./live-execution-grant.mjs";
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
@@ -589,6 +590,83 @@ export class SeedingService {
     return result.result;
   }
 
+  async createOneTimeExecutionWindow(input, actor = "operator") {
+    if (!["operator", "local-human-operator"].includes(actor)) throw new Error("Only an operator may create one-time execution windows");
+    const result = await this.store.mutate(actor, "one_time_execution_window_created", (state) => {
+      const post = requireItem(state.posts, String(input.jobId || ""), "Post");
+      const campaign = requireItem(state.campaigns, post.campaignId, "Campaign");
+      const authorization = requireItem(state.campaignAuthorizations || [], String(input.campaignAuthorizationId || ""), "Campaign authorization");
+      const now = new Date();
+      if (campaign.status !== "active" || authorization.status !== "active" || authorization.campaignId !== post.campaignId ||
+          post.campaignAuthorizationId !== authorization.id || post.campaignAuthorizationBinding !== authorization.binding ||
+          authorization.binding !== campaignAuthorizationFingerprint(authorization) || authorization.campaignBinding !== campaignScopeFingerprint(campaign) ||
+          !Number.isFinite(Date.parse(authorization.validFrom)) || now < new Date(authorization.validFrom) || !Number.isFinite(Date.parse(authorization.validUntil)) || now > new Date(authorization.validUntil)) {
+        throw new Error("One-time window requires the job's current, active campaign authorization");
+      }
+      if (unresolvedSubmission(state, post) || ["publishing", "processing", UNKNOWN_POST_STATUS, "published", "removed", "rejected"].includes(post.status)) {
+        throw new Error("Job has an active, published, or uncertain submission and cannot receive a one-time window");
+      }
+      if ((state.executionRequests || []).some((item) => item.jobId === post.id && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state)) ||
+          (state.executionReceipts || []).some((item) => item.jobId === post.id && (["SUBMIT_SENT", "CONFIRMED"].includes(item.receipt?.submitState) ||
+            (item.receipt?.submitState === "UNKNOWN" && !(state.submissionUncertainties || []).some((uncertainty) => uncertainty.jobId === post.id && uncertainty.executionId === item.executionId && uncertainty.status === "PROVEN_FAILED"))))) {
+        throw new Error("Job has existing or uncertain submit history");
+      }
+      if ((state.oneTimeExecutionWindows || []).some((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, now)))) {
+        throw new Error("An active one-time execution window already exists for this job");
+      }
+      const window = normalizeOneTimeExecutionWindow(input, {
+        post, authorization, authorizationFingerprint: campaignAuthorizationFingerprint(authorization), now, createdBy: actor
+      });
+      state.oneTimeExecutionWindows ||= [];
+      if (state.oneTimeExecutionWindows.some((item) => item.windowId === window.windowId)) throw new Error(`One-time execution window already exists: ${window.windowId}`);
+      state.oneTimeExecutionWindows.push(window);
+      return window;
+    });
+    return result.result;
+  }
+
+  async getOneTimeExecutionWindow(windowId) {
+    const state = await this.store.read();
+    const window = (state.oneTimeExecutionWindows || []).find((item) => item.windowId === windowId);
+    if (!window) throw new Error(`One-time execution window not found: ${windowId}`);
+    return { ...window, effectiveStatus: oneTimeExecutionWindowStatus(window) };
+  }
+
+  async revokeOneTimeExecutionWindow(windowId, actor = "operator") {
+    if (!["operator", "local-human-operator"].includes(actor)) throw new Error("Only an operator may revoke one-time execution windows");
+    const result = await this.store.mutate(actor, "one_time_execution_window_revoked", (state) => {
+      const window = (state.oneTimeExecutionWindows || []).find((item) => item.windowId === windowId);
+      if (!window) throw new Error(`One-time execution window not found: ${windowId}`);
+      if (["CONSUMED", "EXPIRED"].includes(window.status)) throw new Error(`A ${window.status.toLowerCase()} one-time window cannot be revoked or reused`);
+      if (window.status === "REVOKED") return window;
+      window.status = "REVOKED";
+      window.revokedAt = nowIso();
+      window.revokedBy = actor;
+      return window;
+    });
+    return result.result;
+  }
+
+  async expireOneTimeExecutionWindows(actor = "scheduler", now = new Date()) {
+    const snapshot = await this.store.read();
+    const dueIds = new Set((snapshot.oneTimeExecutionWindows || [])
+      .filter((item) => ["ACTIVE", "RESERVED"].includes(item.status) && oneTimeExecutionWindowStatus(item, now) === "EXPIRED")
+      .map((item) => item.windowId));
+    if (!dueIds.size) return [];
+    const result = await this.store.mutate(actor, "one_time_execution_windows_expired", (state) => {
+      const expired = [];
+      for (const window of state.oneTimeExecutionWindows || []) {
+        if (dueIds.has(window.windowId) && ["ACTIVE", "RESERVED"].includes(window.status) && oneTimeExecutionWindowStatus(window, now) === "EXPIRED") {
+          window.status = "EXPIRED";
+          window.expiredAt = now.toISOString();
+          expired.push(window.windowId);
+        }
+      }
+      return expired;
+    });
+    return result.result;
+  }
+
   async flowGraph() {
     return buildMarketingFlowGraph(await this.store.read());
   }
@@ -1079,6 +1157,7 @@ export class SeedingService {
 
   async queueDueCampaignJobs(actor = "scheduler") {
     await this.expireLiveExecutionGrants(actor);
+    await this.expireOneTimeExecutionWindows(actor);
     await this.expireCampaignAuthorizations(actor);
     const state = await this.store.read();
     const now = Date.now();
@@ -1314,8 +1393,11 @@ export class SeedingService {
     if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId) {
       throw new Error("Execution request requires the registered healthy account/profile binding");
     }
-    const eligibility = evaluateQueue(post, snapshot, new Date(), { mode: dryRun ? "dry_run" : "live" });
+    const eligibility = evaluateQueue(post, snapshot, new Date(), { mode: dryRun ? "dry_run" : "live", executionId: previous?.executionId || null });
     if (!eligibility.allowed) throw new Error(`Execution request blocked: ${eligibility.reasons.join(", ")}`);
+    if (!dryRun && previous?.request?.oneTimeWindow?.windowId && eligibility.oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
+      throw new Error("Execution request's reserved one-time window is no longer valid");
+    }
     if (!authorization) throw new Error("Execution request requires a campaign authorization");
     if (dryRun && (snapshot.executionLeases || []).some((item) => Date.parse(item.expiresAt) > Date.now() && item.profileKey === `${target.channel}:${target.profileId}` && !(item.executionId === previous?.executionId && actor === `jev-worker:${item.workerId}`))) {
       throw new Error("Dry-run profile is already leased by another execution");
@@ -1341,17 +1423,35 @@ export class SeedingService {
       const executionId = reusePrevious ? previous.executionId : randomUUID();
       const attempt = reusePrevious ? previous.attempt : (previous?.attempt || 0) + 1;
       const currentAuthorization = requireItem(state.campaignAuthorizations || [], authorization.id, "Campaign authorization");
+      const currentPost = requireItem(state.posts, postId, "Post");
+      const currentEligibility = evaluateQueue(currentPost, state, new Date(), { mode: dryRun ? "dry_run" : "live", executionId });
+      if (!currentEligibility.allowed) throw new Error(`Execution request blocked: ${currentEligibility.reasons.join(", ")}`);
+      const oneTimeWindow = dryRun ? null : currentEligibility.oneTimeWindow;
+      if (!dryRun && previous?.request?.oneTimeWindow?.windowId && oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
+        throw new Error("Execution request's reserved one-time window is no longer valid");
+      }
       const matchingGrants = dryRun ? [] : (state.liveExecutionGrants || []).filter((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE" && (!item.boundExecutionId || item.boundExecutionId === executionId));
       if (matchingGrants.length > 1) throw new Error("Multiple active live grants match this job");
       const liveGrant = matchingGrants[0] || null;
       const request = createExecutionRequestV1({
-        executionId, post, target, account, authorization, readiness: target.readiness, artifact, liveGrant, dryRun, createdAt: nowIso()
+        executionId, post, target, account, authorization, readiness: target.readiness, artifact, liveGrant,
+        oneTimeWindowId: oneTimeWindow?.windowId || null, dryRun, createdAt: nowIso()
       });
       if (liveGrant) {
         liveGrant.boundExecutionId ||= executionId;
         assertLiveGrantMatchesExecution(liveGrant, request, currentAuthorization, new Date(), { checkWindow: false });
       }
       if (reusePrevious && previous.submitState === "NOT_STARTED") {
+        if (oneTimeWindow) {
+          const currentWindow = (state.oneTimeExecutionWindows || []).find((item) => item.windowId === oneTimeWindow.windowId);
+          if (currentWindow?.status === "ACTIVE") {
+            currentWindow.status = "RESERVED";
+            currentWindow.reservedExecutionId = executionId;
+            currentWindow.reservedAt = request.createdAt;
+          } else {
+            assertWindowExecutionBinding(currentWindow, executionId, "RESERVED");
+          }
+        }
         previous.request = request;
         previous.liveGrantId = liveGrant?.grantId || null;
         previous.lastRefreshedAt = request.createdAt;
@@ -1362,6 +1462,16 @@ export class SeedingService {
         state: "REQUEST_READY", submitState: "NOT_STARTED", recoveryClassification: "NONE",
         request, dryRun, liveGrantId: liveGrant?.grantId || null, createdAt: request.createdAt, dispatchedAt: null
       };
+      if (oneTimeWindow) {
+        const currentWindow = (state.oneTimeExecutionWindows || []).find((item) => item.windowId === oneTimeWindow.windowId);
+        if (currentWindow?.status !== "ACTIVE") throw new Error("One-time execution window was reserved by another execution");
+        if (currentWindow.binding !== oneTimeExecutionWindowFingerprint(currentWindow) || currentWindow.authorizationFingerprint !== campaignAuthorizationFingerprint(currentAuthorization)) {
+          throw new Error("One-time execution window authorization binding is stale");
+        }
+        currentWindow.status = "RESERVED";
+        currentWindow.reservedExecutionId = executionId;
+        currentWindow.reservedAt = request.createdAt;
+      }
       state.executionRequests.push(row);
       if (!dryRun) {
         const current = requireItem(state.posts, postId, "Post");
@@ -1390,8 +1500,14 @@ export class SeedingService {
       const grant = (state.liveExecutionGrants || []).find((candidate) => candidate.grantId === item.request?.liveGrant?.grantId);
       const authorization = (state.campaignAuthorizations || []).find((candidate) => candidate.id === post.campaignAuthorizationId);
       try { assertLiveGrantMatchesExecution(grant, item.request, authorization); } catch { return false; }
+      if (item.request?.oneTimeWindow?.windowId) {
+        const window = (state.oneTimeExecutionWindows || []).find((candidate) => candidate.windowId === item.request.oneTimeWindow.windowId);
+        if (!window || window.status !== "RESERVED" || window.reservedExecutionId !== item.executionId ||
+            oneTimeExecutionWindowStatus(window) !== "RESERVED" || !oneTimeExecutionWindowInBounds(window) || window.authorizationFingerprint !== campaignAuthorizationFingerprint(authorization) ||
+            window.binding !== oneTimeExecutionWindowFingerprint(window)) return false;
+      }
       const binding = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
-      return isReadinessFresh(target.readiness, binding, new Date(), this.readinessTtlMs) && evaluateQueue(post, state).allowed;
+      return isReadinessFresh(target.readiness, binding, new Date(), this.readinessTtlMs) && evaluateQueue(post, state, new Date(), { executionId: item.executionId }).allowed;
     });
   }
 
@@ -1487,9 +1603,25 @@ export class SeedingService {
         request.lastDryRunAt = nowIso();
         return request;
       }
+      const post = requireItem(state.posts, request.jobId, "Post");
+      if (request.request?.oneTimeWindow?.windowId) {
+        const eligibility = evaluateQueue(post, state, new Date(), { executionId });
+        if (!eligibility.allowed) throw new Error(`Execution blocked before worker start: ${eligibility.reasons.join(", ")}`);
+        const window = (state.oneTimeExecutionWindows || []).find((item) => item.windowId === request.request.oneTimeWindow.windowId);
+        const authorization = (state.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
+        const grant = (state.liveExecutionGrants || []).find((item) => item.grantId === request.request?.liveGrant?.grantId);
+        if (authorization?.allowLiveExecution !== true) throw new Error("One-time window does not authorize live execution");
+        assertLiveGrantMatchesExecution(grant, request.request, authorization);
+        assertWindowExecutionBinding(window, executionId, "RESERVED");
+        if (oneTimeExecutionWindowStatus(window, new Date()) !== "RESERVED" || !oneTimeExecutionWindowInBounds(window) || window.authorizationFingerprint !== campaignAuthorizationFingerprint(authorization)) {
+          throw new Error("One-time execution window expired or authorization binding changed before worker start");
+        }
+        window.status = "CONSUMED";
+        window.consumedExecutionId = executionId;
+        window.consumedAt = nowIso();
+      }
       request.executionPhase = "EXECUTING";
       request.executionStartedAt ||= nowIso();
-      const post = requireItem(state.posts, request.jobId, "Post");
       post.executionState = "EXECUTING";
       post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt || request.createdAt }];
       if (!post.jobLifecycle.some((item) => item.state === "EXECUTING" && item.executionId === executionId)) {
@@ -1538,8 +1670,15 @@ export class SeedingService {
         const currentArtifact = requireItem(currentState.artifacts || [], currentPost.artifactId, "Artifact");
         if (currentArtifact.sha256 !== requestRow.request.media[0].sha256 || currentArtifact.id !== requestRow.request.media[0].artifactId || currentArtifact.path !== requestRow.request.media[0].reference) throw new Error("Media identity changed before live submit intent");
       }
-      const decision = evaluateQueue(currentPost, currentState);
+      const decision = evaluateQueue(currentPost, currentState, new Date(), { executionId });
       if (!decision.allowed || currentAuthorization?.allowLiveExecution !== true) throw new Error(`Pre-submit governance blocked: ${decision.reasons.join(", ")}`);
+      if (requestRow.request?.oneTimeWindow?.windowId) {
+        const window = (currentState.oneTimeExecutionWindows || []).find((item) => item.windowId === requestRow.request.oneTimeWindow.windowId);
+        assertWindowExecutionBinding(window, executionId, "CONSUMED");
+        if (oneTimeExecutionWindowStatus(window, new Date()) !== "CONSUMED" || !oneTimeExecutionWindowInBounds(window) || window.authorizationFingerprint !== campaignAuthorizationFingerprint(currentAuthorization)) {
+          throw new Error("One-time execution window is no longer valid for this submit");
+        }
+      }
       if ((currentState.executionRequests || []).some((item) => item.executionId !== executionId && item.request?.idempotencyKey === request.idempotencyKey && ["REQUEST_READY", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state))) throw new Error("Another execution already owns this publication identity");
       if ((currentState.executionReceipts || []).some((item) => item.receipt?.submitState === "CONFIRMED" && item.executionId !== executionId && (currentState.executionRequests || []).find((row) => row.executionId === item.executionId)?.request?.idempotencyKey === request.idempotencyKey)) throw new Error("A confirmed publication already exists for this idempotency key");
       if ((currentState.posts || []).some((item) => item.id !== currentPost.id && item.idempotencyKey === request.idempotencyKey && item.status === "published")) throw new Error("A publication already exists for this idempotency key");

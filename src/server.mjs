@@ -366,6 +366,20 @@ const server = http.createServer(async (request, response) => {
       if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
       return sendJson(response, 201, await service.createLiveExecutionGrant(await readJson(request), actor));
     }
+    if (request.method === "POST" && url.pathname === "/api/one-time-execution-windows") {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 201, await service.createOneTimeExecutionWindow(await readJson(request), actor));
+    }
+    let executionWindowMatch = url.pathname.match(/^\/api\/one-time-execution-windows\/([^/]+)$/);
+    if (request.method === "GET" && executionWindowMatch) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.getOneTimeExecutionWindow(executionWindowMatch[1]));
+    }
+    executionWindowMatch = url.pathname.match(/^\/api\/one-time-execution-windows\/([^/]+)\/revoke$/);
+    if (request.method === "POST" && executionWindowMatch) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.revokeOneTimeExecutionWindow(executionWindowMatch[1], actor));
+    }
     let uncertaintyMatch = url.pathname.match(/^\/api\/posts\/([^/]+)\/quarantine-unknown$/);
     if (request.method === "POST" && uncertaintyMatch) {
       if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
