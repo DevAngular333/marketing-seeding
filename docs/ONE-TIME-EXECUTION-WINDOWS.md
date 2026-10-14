@@ -31,6 +31,10 @@ Reservation occurs atomically with creation/binding of the live `ExecutionReques
 
 The authorization fingerprint is rechecked during schedule evaluation, request reservation, worker start, and pre-submit. A revoked, expired, stale, mismatched, or differently reserved window is not eligible. A consumed window applies only to its recorded execution and only before `validUntil`.
 
+## Abandoned pre-submit requests
+
+An operator may terminate an abandoned `REQUEST_READY` execution only through `POST /api/execution-requests/:executionId/cancel`, with a reason and operator authorization reference. The terminal state is `CANCELLED_PRE_SUBMIT`; the request and its immutable execution id remain in history and are never dispatchable or reusable. Cancellation is refused if a submit intent/sent/unknown result, publication attempt or confirmation, unresolved submission uncertainty, active lease/worker, or consumed live grant exists. In the same durable mutation, any still-active unused grant is revoked and the request's `ACTIVE` or same-execution `RESERVED` window is revoked; neither resource is reopened. A later attempt requires a new authorization, window, execution id, and live grant. A cancelled request does not prevent preparation of that new request, while idempotency and uncertainty holds remain in force.
+
 ## Operator API
 
 - `POST /api/one-time-execution-windows`: operator-only creation. Required identity fields are `campaignId`, `campaignAuthorizationId`, and `jobId`; also provide `validFrom`, `validUntil`, `timezone`, and `reason`.

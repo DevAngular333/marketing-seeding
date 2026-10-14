@@ -399,3 +399,142 @@ test("same window contract works for a non-LinkedIn platform", async () => {
   assert.equal(decision.oneTimeWindow.windowId, window.windowId);
   assert.equal(window.binding, oneTimeExecutionWindowFingerprint(window));
 });
+
+async function abandonedRequestFixture({ channels = ["threads"], grant = false } = {}) {
+  const { service, campaign, posts, auth } = await fixture({ channels });
+  const post = (await service.snapshot()).posts[0];
+  const oldWindow = await addWindow(service, post, auth, { windowId: `old-window-${post.id}` });
+  await service.queueAuthorizedCampaignJobs(campaign.id, "scheduler");
+  const request = await service.prepareExecutionRequest(post.id, "operator");
+  if (grant) await service.createLiveExecutionGrant({
+    jobId: post.id, validFrom: new Date(Date.now() - 5_000).toISOString(),
+    validUntil: new Date(Date.now() + 60_000).toISOString(), operatorAuthorizationReference: "fixture-only grant"
+  }, "operator");
+  return { service, campaign, posts, post, auth, oldWindow, request };
+}
+
+const cancelInput = { reason: "Abandoned before dispatch; authorization window was revoked", operatorAuthorizationReference: "fixture-operator-approval" };
+
+test("abandoned request matching the legacy validation fixture cancels safely and permits a new authorization, window, and execution", async () => {
+  const f = await abandonedRequestFixture({ grant: true });
+  const oldExecutionId = "4818e202-1554-4854-a2ba-9904ac79ee2a";
+  const oldGrantId = (await f.service.snapshot()).liveExecutionGrants[0].grantId;
+  await f.service.store.mutate("fixture", "install_abandoned_request_identity", (state) => {
+    const row = state.executionRequests.find((item) => item.executionId === f.request.executionId);
+    row.executionId = oldExecutionId;
+    row.request.executionId = oldExecutionId;
+    const grant = state.liveExecutionGrants.find((item) => item.grantId === oldGrantId);
+    grant.boundExecutionId = oldExecutionId;
+    const window = state.oneTimeExecutionWindows.find((item) => item.windowId === f.oldWindow.windowId);
+    window.status = "REVOKED";
+    window.reservedExecutionId = oldExecutionId;
+    const authorization = state.campaignAuthorizations.find((item) => item.id === f.auth.id);
+    authorization.status = "paused";
+  });
+  const cancelled = await f.service.cancelExecutionRequest(oldExecutionId, cancelInput, "operator");
+  assert.equal(cancelled.executionId, oldExecutionId);
+  assert.equal(cancelled.state, "CANCELLED_PRE_SUBMIT");
+  assert.equal(cancelled.submitState, "NOT_STARTED");
+  assert.equal(cancelled.cancellationReason, cancelInput.reason);
+  assert.equal(cancelled.operatorAuthorizationReference, cancelInput.operatorAuthorizationReference);
+  assert.equal((await f.service.readyExecutionRequests()).some((row) => row.executionId === oldExecutionId), false);
+  assert.deepEqual(await f.service.acquireExecutionLease(oldExecutionId, "cancelled-worker"), { acquired: false, reason: "execution_not_ready" });
+  const oldState = await f.service.snapshot();
+  assert.equal(oldState.oneTimeExecutionWindows.find((item) => item.windowId === f.oldWindow.windowId).status, "REVOKED");
+
+  const now = Date.now();
+  const newAuth = await f.service.authorizeCampaign(f.campaign.id, {
+    ...f.auth, id: "new-auth-after-presubmit-cancel",
+    validFrom: new Date(now - 5_000).toISOString(), validUntil: new Date(now + 60 * 60_000).toISOString()
+  }, "operator");
+  const refreshedPost = (await f.service.snapshot()).posts.find((item) => item.id === f.post.id);
+  const newWindow = await addWindow(f.service, refreshedPost, newAuth, { windowId: "new-window-after-presubmit-cancel" });
+  await f.service.queueAuthorizedCampaignJobs(f.campaign.id, "scheduler");
+  const newRequest = await f.service.prepareExecutionRequest(f.post.id, "operator");
+  const finalState = await f.service.snapshot();
+  assert.notEqual(newRequest.executionId, oldExecutionId);
+  assert.equal(newRequest.attempt, cancelled.attempt + 1);
+  assert.equal(newRequest.request.authorization.authorizationId, newAuth.id);
+  assert.equal(newRequest.request.oneTimeWindow.windowId, newWindow.windowId);
+  assert.equal(newRequest.request.liveGrant, null);
+  assert.equal(finalState.executionRequests.find((item) => item.executionId === oldExecutionId).state, "CANCELLED_PRE_SUBMIT");
+  assert.equal(finalState.oneTimeExecutionWindows.find((item) => item.windowId === f.oldWindow.windowId).status, "REVOKED");
+  assert.equal(finalState.liveExecutionGrants.find((item) => item.grantId === oldGrantId).status, "REVOKED");
+});
+
+test("cancellation is operator-only, requires reason/reference, is terminal, and preserves siblings and dry-run history", async () => {
+  const f = await abandonedRequestFixture();
+  const siblingId = "unrelated-sibling-job";
+  await f.service.store.mutate("fixture", "preserve_existing_dry_run_history", (state) => {
+    state.posts.push({ ...state.posts[0], id: siblingId, status: "blocked", executionState: undefined });
+    state.executionRequests.push({ executionId: "sibling-dry-run-execution", jobId: "historical-dry-run-job", state: "DRY_RUN_COMPLETE", submitState: "NOT_STARTED", request: { dryRun: true } });
+    state.executionReceipts.push({ executionId: "sibling-dry-run-execution", jobId: "historical-dry-run-job", receipt: { dryRun: true, submitState: "NOT_STARTED" } });
+  });
+  await assert.rejects(f.service.cancelExecutionRequest(f.request.executionId, cancelInput, "automation"), /Only an operator/);
+  await assert.rejects(f.service.cancelExecutionRequest(f.request.executionId, { reason: "missing ref" }, "operator"), /operator authorization reference/);
+  const cancelled = await f.service.cancelExecutionRequest(f.request.executionId, cancelInput, "operator");
+  assert.equal(cancelled.state, "CANCELLED_PRE_SUBMIT");
+  assert.equal((await f.service.readyExecutionRequests()).some((row) => row.executionId === cancelled.executionId), false);
+  await assert.rejects(f.service.markExecutionStarted(cancelled.executionId, { id: "missing", token: "missing" }), /dispatchable request and active lease/);
+  const gates = Object.fromEntries(["authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"].map((key) => [key, true]));
+  await assert.rejects(f.service.beginExecutionSubmitIntent(cancelled.executionId, { id: "missing", token: "missing" }, { liveEnabled: true, liveExecutionId: cancelled.executionId, verifiedGates: gates }));
+  const state = await f.service.snapshot();
+  assert.equal(state.executionRequests.find((item) => item.executionId === "sibling-dry-run-execution").state, "DRY_RUN_COMPLETE");
+  assert.equal(state.executionReceipts.some((item) => item.executionId === "sibling-dry-run-execution" && item.receipt.dryRun), true);
+  assert.equal(state.posts.find((item) => item.id === siblingId).status, "blocked");
+  assert.equal(state.posts.find((item) => item.id === siblingId).executionState, undefined);
+});
+
+test("active worker lease prevents pre-submit cancellation", async () => {
+  const f = await abandonedRequestFixture();
+  const lease = await f.service.acquireExecutionLease(f.request.executionId, "active-fixture-worker");
+  assert.equal(lease.acquired, true);
+  await assert.rejects(f.service.cancelExecutionRequest(f.request.executionId, cancelInput, "operator"), /[Ee]xecution worker ownership|active execution lease/);
+  await f.service.releaseExecutionLease(lease.lease.id, lease.lease.token);
+});
+
+test("submit intent, sent, unknown, uncertainty, publication attempt, and confirmed publication all block cancellation", async () => {
+  const blockedCases = [
+    ["intent", (state, row, post) => { row.state = "SUBMIT_SENT_INTENT"; row.submitState = "NOT_STARTED"; }],
+    ["sent", (state, row) => { row.state = "SUBMIT_SENT"; row.submitState = "SUBMIT_SENT"; }],
+    ["inconsistent-submit-state", (state, row) => state.executionRequests.push({ ...structuredClone(row), executionId: "other-execution-with-sent-state", attempt: row.attempt + 1, state: "REQUEST_READY", submitState: "SUBMIT_SENT", request: { ...structuredClone(row.request), executionId: "other-execution-with-sent-state" } })],
+    ["unknown", (state, row) => { row.state = "SUBMIT_RESULT_UNKNOWN"; row.submitState = "UNKNOWN"; }],
+    ["uncertainty", (state, row, post) => state.submissionUncertainties.push({ id: "unknown-hold", status: "UNKNOWN", jobId: post.id, idempotencyKeys: [row.request.idempotencyKey] })],
+    ["attempt", (state, row, post) => { state.publicationAttempts.push({ id: "possible-submit", postId: post.id, executionId: row.executionId, status: "prepared" }); post.publicationAttemptId = "possible-submit"; }],
+    ["publication", (state, row, post) => { post.status = "published"; state.executionReceipts.push({ executionId: row.executionId, jobId: post.id, receipt: { submitState: "CONFIRMED" } }); }]
+  ];
+  for (const [label, mutate] of blockedCases) {
+    const f = await abandonedRequestFixture();
+    await f.service.store.mutate("fixture", `install_${label}_hold`, (state) => {
+      const row = state.executionRequests.find((item) => item.executionId === f.request.executionId);
+      const post = state.posts.find((item) => item.id === row.jobId);
+      mutate(state, row, post);
+    });
+    await assert.rejects(f.service.cancelExecutionRequest(f.request.executionId, cancelInput, "operator"), /Only a REQUEST_READY|submission history|uncertainty/i, label);
+  }
+});
+
+test("cancellation revokes an attached unused grant and reserved window atomically but rejects a consumed grant", async () => {
+  const f = await abandonedRequestFixture({ grant: true });
+  const result = await f.service.cancelExecutionRequest(f.request.executionId, cancelInput, "operator");
+  const state = await f.service.snapshot();
+  assert.equal(result.state, "CANCELLED_PRE_SUBMIT");
+  assert.equal(state.liveExecutionGrants[0].status, "REVOKED");
+  assert.equal(state.oneTimeExecutionWindows[0].status, "REVOKED");
+
+  const consumed = await abandonedRequestFixture({ grant: true });
+  await consumed.service.store.mutate("fixture", "consume_grant_fixture", (current) => {
+    current.liveExecutionGrants[0].status = "CONSUMED";
+    current.liveExecutionGrants[0].consumedAt = new Date().toISOString();
+  });
+  await assert.rejects(consumed.service.cancelExecutionRequest(consumed.request.executionId, cancelInput, "operator"), /consumed LiveExecutionGrant/);
+});
+
+test("terminal pre-submit cancellation never releases or overrides an idempotency uncertainty hold", async () => {
+  const f = await abandonedRequestFixture();
+  await f.service.store.mutate("fixture", "install_unknown_hold", (state) => {
+    state.submissionUncertainties.push({ id: "identity-hold", status: "UNKNOWN", jobId: f.post.id, idempotencyKeys: [f.post.idempotencyKey] });
+  });
+  await assert.rejects(f.service.cancelExecutionRequest(f.request.executionId, cancelInput, "operator"), /submission history/);
+  await assert.rejects(f.service.prepareExecutionRequest(f.post.id, "operator"), /SUBMISSION_UNCERTAIN/);
+});

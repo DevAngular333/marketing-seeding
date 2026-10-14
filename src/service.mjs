@@ -1376,6 +1376,8 @@ export class SeedingService {
     const operator = ["operator", "local-human-operator"].includes(actor);
     const resumingOwnedDryRun = String(actor).startsWith("jev-worker:") && previous?.request?.dryRun === true && previous.state === "REQUEST_READY";
     if (dryRun && !operator && !resumingOwnedDryRun) throw new Error("Dry-run execution requests require an operator");
+    const priorSubmitted = (snapshot.executionRequests || []).filter((item) => item.jobId === postId && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state)).sort((a, b) => b.attempt - a.attempt)[0];
+    if (priorSubmitted) return priorSubmitted;
     if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
     const target = requireItem(snapshot.targets, post.targetId, "Target");
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
@@ -1395,7 +1397,7 @@ export class SeedingService {
     }
     const eligibility = evaluateQueue(post, snapshot, new Date(), { mode: dryRun ? "dry_run" : "live", executionId: previous?.executionId || null });
     if (!eligibility.allowed) throw new Error(`Execution request blocked: ${eligibility.reasons.join(", ")}`);
-    if (!dryRun && previous?.request?.oneTimeWindow?.windowId && eligibility.oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
+    if (!dryRun && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && eligibility.oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
       throw new Error("Execution request's reserved one-time window is no longer valid");
     }
     if (!authorization) throw new Error("Execution request requires a campaign authorization");
@@ -1415,7 +1417,7 @@ export class SeedingService {
       if (previous && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state) && (!dryRun || previous.submitState !== "NOT_STARTED")) {
         // A completed no-submit record may be followed by a separately requested
         // live attempt only through normal live eligibility; it is never reused.
-      } else if (previous && !provenFailedPrevious && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
+      } else if (previous && !["CANCELLED_PRE_SUBMIT", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state) && !provenFailedPrevious && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
         if (previous.state !== "REQUEST_READY" && !(dryRun && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state))) throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
         if (Boolean(previous.request?.dryRun) !== dryRun) throw new Error("Execution request mode cannot be changed after creation");
       }
@@ -1427,7 +1429,7 @@ export class SeedingService {
       const currentEligibility = evaluateQueue(currentPost, state, new Date(), { mode: dryRun ? "dry_run" : "live", executionId });
       if (!currentEligibility.allowed) throw new Error(`Execution request blocked: ${currentEligibility.reasons.join(", ")}`);
       const oneTimeWindow = dryRun ? null : currentEligibility.oneTimeWindow;
-      if (!dryRun && previous?.request?.oneTimeWindow?.windowId && oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
+      if (!dryRun && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
         throw new Error("Execution request's reserved one-time window is no longer valid");
       }
       const matchingGrants = dryRun ? [] : (state.liveExecutionGrants || []).filter((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE" && (!item.boundExecutionId || item.boundExecutionId === executionId));
@@ -1482,6 +1484,73 @@ export class SeedingService {
         current.jobLifecycle.push({ state: "EXECUTION_REQUEST_READY", at: row.createdAt, executionId });
       }
       return row;
+    });
+    return result.result;
+  }
+
+  async cancelExecutionRequest(executionId, input, actor = "operator") {
+    if (!["operator", "local-human-operator"].includes(actor)) throw new Error("Only an operator may cancel an execution request");
+    const reason = String(input?.reason || "").trim();
+    const operatorAuthorizationReference = String(input?.operatorAuthorizationReference || "").trim();
+    if (!reason || reason.length > 500) throw new Error("A cancellation reason of 1 to 500 characters is required");
+    if (!operatorAuthorizationReference || operatorAuthorizationReference.length > 200) throw new Error("An operator authorization reference of 1 to 200 characters is required");
+    const result = await this.store.mutate(actor, "execution_request_cancelled_pre_submit", (state) => {
+      const request = (state.executionRequests || []).find((item) => item.executionId === executionId);
+      if (!request) throw new Error(`Execution request not found: ${executionId}`);
+      if (request.state === "CANCELLED_PRE_SUBMIT") return request;
+      if (request.state !== "REQUEST_READY" || request.submitState !== "NOT_STARTED") throw new Error("Only a REQUEST_READY execution with NOT_STARTED submit state can be cancelled");
+      const post = requireItem(state.posts, request.jobId, "Post");
+      if (request.executionPhase === "EXECUTING" || request.executionStartedAt || activeExecutionForPost(state, request.jobId)) throw new Error("Execution worker ownership has already started");
+      if (["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(request.state) ||
+          (state.executionRequests || []).some((item) => item.executionId !== executionId && item.jobId === request.jobId && item.request?.idempotencyKey === request.request?.idempotencyKey && (["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state) || ["SUBMIT_SENT", "UNKNOWN", "CONFIRMED"].includes(item.submitState))) ||
+          (state.executionReceipts || []).some((item) => (item.executionId === executionId || item.jobId === request.jobId) && ["SUBMIT_SENT", "UNKNOWN", "CONFIRMED"].includes(item.receipt?.submitState)) ||
+          (state.publicationAttempts || []).some((item) => item.executionId === executionId || (item.id === post.publicationAttemptId && item.postId === post.id)) ||
+          ["published", "publishing", "processing", "submit_result_unknown"].includes(String(post.status || "").toLowerCase()) || post.publicationUrl || unresolvedSubmission(state, post, request.request?.idempotencyKey)) {
+        throw new Error("Possible or confirmed submission history prevents pre-submit cancellation");
+      }
+      const now = nowIso();
+      if ((state.executionLeases || []).some((item) => (item.executionId === executionId || item.jobId === request.jobId) && Date.parse(item.expiresAt) > Date.now())) {
+        throw new Error("An active execution lease prevents cancellation");
+      }
+      const grants = (state.liveExecutionGrants || []).filter((item) => item.grantId === request.liveGrantId || item.grantId === request.request?.liveGrant?.grantId || item.jobId === request.jobId);
+      if (grants.some((grant) => liveGrantEffectiveStatus(grant) === "CONSUMED" || grant.status === "CONSUMED")) {
+        throw new Error("A consumed LiveExecutionGrant prevents pre-submit cancellation");
+      }
+      for (const grant of grants) {
+        const effectiveStatus = liveGrantEffectiveStatus(grant);
+        if (effectiveStatus !== "ACTIVE") continue;
+        if (grant.boundExecutionId && grant.boundExecutionId !== executionId) throw new Error("An active LiveExecutionGrant is bound to another execution");
+      }
+      const windowId = request.request?.oneTimeWindow?.windowId;
+      const window = windowId ? (state.oneTimeExecutionWindows || []).find((item) => item.windowId === windowId) : null;
+      if (window && window.status === "RESERVED" && window.reservedExecutionId !== executionId) throw new Error("Reserved one-time window is owned by another execution");
+
+      // Revoke any still-usable grant for this job atomically with terminalizing
+      // the request, so it cannot be rebound by a later request.
+      for (const grant of grants) {
+        if (liveGrantEffectiveStatus(grant) !== "ACTIVE") continue;
+        grant.status = "REVOKED";
+        grant.revokedAt = now;
+        grant.revokedBy = actor;
+        grant.revocationReason = "execution_cancelled_pre_submit";
+      }
+      // A cancelled request never returns its one-time window to the pool.
+      if (window && ["ACTIVE", "RESERVED"].includes(window.status)) {
+        window.status = "REVOKED";
+        window.revokedAt = now;
+        window.revokedBy = actor;
+        window.revocationReason = "execution_cancelled_pre_submit";
+      }
+      request.state = "CANCELLED_PRE_SUBMIT";
+      request.executionPhase = "CANCELLED_PRE_SUBMIT";
+      request.cancelledAt = now;
+      request.cancelledBy = actor;
+      request.cancellationReason = reason;
+      request.operatorAuthorizationReference = operatorAuthorizationReference;
+      post.executionState = "CANCELLED_PRE_SUBMIT";
+      post.jobLifecycle ||= [];
+      post.jobLifecycle.push({ state: "CANCELLED_PRE_SUBMIT", at: now, executionId, reason, operatorAuthorizationReference });
+      return request;
     });
     return result.result;
   }

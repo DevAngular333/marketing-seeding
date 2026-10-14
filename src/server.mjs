@@ -536,6 +536,11 @@ const server = http.createServer(async (request, response) => {
       if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
       return sendJson(response, 200, await service.prepareExecutionRequest(match[1], actor, { dryRun: true }));
     }
+    match = url.pathname.match(/^\/api\/execution-requests\/([^/]+)\/cancel$/);
+    if (request.method === "POST" && match) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.cancelExecutionRequest(match[1], await readJson(request), actor));
+    }
     match = url.pathname.match(/^\/api\/execution-requests\/([^/]+)\/run-dry-run$/);
     if (request.method === "POST" && match) {
       if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
