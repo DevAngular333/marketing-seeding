@@ -35,7 +35,7 @@ function executionFixture(overrides = {}) {
   };
   const requestRow = { executionId: "exec-1", jobId: "job-1", attempt: 1, state: "REQUEST_READY", submitState: "NOT_STARTED", request };
   const context = {
-    requestRow, request, post: { id: "job-1", status: "queued" }, target: { profileId: "profile-1" },
+    requestRow, request, post: { id: "job-1", status: "queued" }, target: { id: "target-1", channel: "linkedin", accountId: "account-1", profileId: "profile-1" },
     account: { status: "enabled", health: "healthy", accountId: "account-1", profileId: "profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/owner" },
     authorization: { allowLiveExecution: false }, state: { executionReceipts: [] }
   };
@@ -138,6 +138,133 @@ test("worker receipt retains a bounded LinkedIn upload subreason and evidence", 
   assert.deepEqual(result.receipt.uploadFailure, uploadFailure);
   assert.equal(fixture.calls.find(([name]) => name === "receipt")[1].uploadFailure.subreason, "FILE_INPUT_NOT_MOUNTED");
   assert.equal(result.receipt.submitState, "NOT_STARTED");
+});
+
+test("worker receipt preserves the adapter reason code", async () => {
+  const fixture = executionFixture();
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  const adapter = { async execute() {
+    return { submitState: "FAILED", reasonCode: "page_load_timeout", errorClassification: "TIMEOUT", recoveryClassification: "RECOVERABLE",
+      gates: { passed: false }, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+  } };
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_LIVE_EXECUTION_ID: "exec-1" } });
+  const result = await worker.run("exec-1", { dryRun: false });
+  assert.equal(result.receipt.reasonCode, "page_load_timeout");
+  assert.equal(fixture.calls.find(([name]) => name === "receipt")[1].reasonCode, "page_load_timeout");
+});
+
+test("submit boundary refreshes near-expiry readiness only for the exact execution and records refreshed evidence", async () => {
+  const fixture = executionFixture();
+  fixture.request.readiness.expiresAt = new Date(Date.now() + 10_000).toISOString();
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  const checkedAt = new Date().toISOString();
+  const refreshedReadiness = { state: "READY", checkedAt, expiresAt: new Date(Date.now() + 60_000).toISOString(), reasonCode: "provider_ready", evidenceReference: "readiness-check-2" };
+  const refreshCalls = [];
+  fixture.service.refreshCampaignJobReadiness = async (...args) => {
+    refreshCalls.push(args);
+    if (args[2]?.force) {
+      fixture.request.readiness = { ...fixture.request.readiness, ...refreshedReadiness };
+      fixture.context.target.readiness = { ...refreshedReadiness, evidence: refreshedReadiness.evidenceReference };
+    }
+    return { status: "queued", readinessState: "READY" };
+  };
+  let clicks = 0;
+  const adapter = { async execute(_request, options) {
+    await options.beforeSubmitIntent({
+      authorizationValid: true, readinessFresh: true, accountMatch: true, profileMatch: true, targetMatch: true,
+      contentHashMatch: true, mediaHashMatch: true, audienceMatch: true, composerConfirmed: true,
+      mediaPreviewConfirmed: true, noDuplicateReceipt: true, noExistingConfirmedPublication: true
+    });
+    clicks += 1;
+    return { submitState: "SUBMIT_SENT", startedAt: checkedAt, finishedAt: checkedAt };
+  } };
+  const worker = new JevExecutionWorker({
+    service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), workerId: "boundary-test", env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_LIVE_EXECUTION_ID: "exec-1" }
+  });
+  const result = await worker.run("exec-1", { dryRun: false });
+  assert.equal(result.status, "SUBMIT_SENT");
+  assert.equal(refreshCalls.length, 2); // startup check plus exact submit-boundary refresh
+  assert.deepEqual(refreshCalls[1], ["job-1", "jev-worker:boundary-test", { force: true, executionId: "exec-1" }]);
+  assert.equal(clicks, 1);
+  assert.equal(result.receipt.readinessResult.reasonCode, "provider_ready");
+  assert.equal(result.receipt.readinessResult.checkedAt, checkedAt);
+  assert.equal(result.receipt.readinessResult.expiresAt, refreshedReadiness.expiresAt);
+  assert.equal(result.receipt.readinessResult.evidenceReference, "readiness-check-2");
+  assert.equal(fixture.calls.filter(([name]) => name === "intent").length, 1);
+});
+
+test("sufficient-life readiness is reused without a submit-boundary refresh", async () => {
+  const fixture = executionFixture();
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  fixture.request.readiness.reasonCode = "canonical_ready";
+  let refreshCalls = 0;
+  fixture.service.refreshCampaignJobReadiness = async () => { refreshCalls += 1; return { status: "queued", readinessState: "READY" }; };
+  const adapter = { async execute(_request, options) {
+    await options.beforeSubmitIntent(Object.fromEntries([
+      "authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"
+    ].map((key) => [key, true])));
+    return { submitState: "SUBMIT_SENT", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+  } };
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_LIVE_EXECUTION_ID: "exec-1" } });
+  const result = await worker.run("exec-1", { dryRun: false });
+  assert.equal(result.status, "SUBMIT_SENT");
+  assert.equal(refreshCalls, 1); // startup readiness only
+  assert.equal(result.receipt.readinessResult.reasonCode, "canonical_ready");
+});
+
+test("failed submit-boundary readiness stops before intent or click and records the exact provider failure", async () => {
+  for (const [state, reasonCode, providerError, readinessLifetimeMs, refreshedLifetimeMs = 60_000] of [
+    ["UNKNOWN", "readiness_network_timeout", false, -1_000],
+    ["BLOCKED", "account_session_expired", false, 1_000],
+    ["UNKNOWN", "provider_connection_reset", true, 1_000],
+    ["READY", "READINESS_EXPIRING", false, 1_000, 1_000]
+  ]) {
+    const fixture = executionFixture();
+    fixture.request.readiness.expiresAt = new Date(Date.now() + readinessLifetimeMs).toISOString();
+    fixture.context.authorization.allowLiveExecution = true;
+    attachFixtureGrant(fixture);
+    fixture.context.target.readiness = { ...fixture.request.readiness, state: "READY" };
+    const forcedRefreshCalls = [];
+    fixture.service.refreshCampaignJobReadiness = async (_jobId, _actor, options) => {
+      if (options?.force) {
+        forcedRefreshCalls.push(options);
+        if (providerError) throw Object.assign(new Error("provider failed"), { code: reasonCode });
+        fixture.context.target.readiness = { ...fixture.context.target.readiness, state, reasonCode, checkedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + refreshedLifetimeMs).toISOString() };
+        fixture.request.readiness = { ...fixture.request.readiness, ...fixture.context.target.readiness };
+        return { status: "blocked", readinessState: state, reasons: [reasonCode] };
+      }
+      return { status: "queued", readinessState: "READY" };
+    };
+    let clicks = 0;
+    const adapter = { async execute(_request, options) {
+      try {
+        await options.beforeSubmitIntent(Object.fromEntries([
+          "authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"
+        ].map((key) => [key, true])));
+      } catch (error) {
+        return { submitState: "FAILED", reasonCode: error.code, errorClassification: "PLATFORM_ERROR", recoveryClassification: "NONE", gates: { passed: false }, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+      }
+      clicks += 1;
+      return { submitState: "SUBMIT_SENT", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+    } };
+    const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), env: { SEEDING_JEV_LIVE_ENABLED: "true", SEEDING_JEV_LIVE_EXECUTION_ID: "exec-1" } });
+    const result = await worker.run("exec-1", { dryRun: false });
+    assert.equal(result.status, "FAILED", state);
+    assert.equal(forcedRefreshCalls.length, 1);
+    assert.deepEqual(forcedRefreshCalls[0], { force: true, executionId: "exec-1" });
+    assert.equal(clicks, 0);
+    assert.equal(fixture.calls.some(([name]) => name === "intent"), false);
+    assert.equal(fixture.context.liveGrant.status, "ACTIVE");
+    assert.equal(result.receipt.reasonCode, reasonCode);
+    assert.deepEqual(result.receipt.preSubmitFailure, { reasonCode, stage: "readiness_refresh", gate: "readinessFresh", gateStatus: false });
+    assert.ok(Number.isFinite(Date.parse(result.receipt.submitBoundaryAttemptedAt)));
+    assert.ok(Number.isFinite(Date.parse(result.receipt.readinessResult.checkedAt)));
+    assert.ok(Number.isFinite(Date.parse(result.receipt.readinessResult.expiresAt)));
+    assert.equal(result.receipt.readinessResult.state, providerError || state === "READY" ? "UNKNOWN" : state);
+  }
 });
 
 test("JEV worker refuses live execution unless exact one-job opt-in is present", async () => {
@@ -245,6 +372,7 @@ test("uncertain submit is reconciled without invoking the publishing method agai
 test("worker executes a non-LinkedIn adapter without reading LinkedIn identity fields and never redispatches after submit", async () => {
   const fixture = executionFixture();
   fixture.request.platform = "test_social";
+  fixture.context.target.channel = "test_social";
   fixture.request.target.url = "https://social.example/feed";
   Object.defineProperty(fixture.context.account, "expectedIdentityUrl", { get() { throw new Error("worker must not inspect platform-specific identity fields"); } });
   fixture.context.authorization.allowLiveExecution = true;

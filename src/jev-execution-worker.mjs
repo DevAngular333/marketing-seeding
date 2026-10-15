@@ -2,11 +2,27 @@ import { validateExecutionReceiptV1 } from "./execution-contracts.mjs";
 import { normalizePublicationVerification, PlatformAdapterRegistry } from "./platform-registries.mjs";
 import { assertLiveGrantMatchesExecution } from "./live-execution-grant.mjs";
 
+export const SUBMIT_READINESS_SAFETY_MARGIN_MS = 30_000;
+
 function readinessResult(request) {
   return {
     state: String(request.readiness.state).toUpperCase(),
     checkedAt: request.readiness.checkedAt,
-    reasonCode: "execution_readiness_fresh"
+    expiresAt: request.readiness.expiresAt,
+    evidenceReference: request.readiness.evidenceReference,
+    reasonCode: request.readiness.reasonCode || "execution_readiness_fresh"
+  };
+}
+
+function readinessEvidence(context) {
+  const readiness = context?.target?.readiness || context?.request?.readiness;
+  if (!readiness) return null;
+  return {
+    state: String(readiness.state || "UNKNOWN").toUpperCase(),
+    checkedAt: readiness.checkedAt || null,
+    expiresAt: readiness.expiresAt || null,
+    reasonCode: readiness.reasonCode || null,
+    evidenceReference: readiness.evidence || readiness.evidenceReference || null
   };
 }
 
@@ -96,6 +112,9 @@ export class JevExecutionWorker {
       reconciliation,
       errorClassification: errorClass(receiptResult, dryRun),
       recoveryClassification: recoveryClass(receiptResult),
+      preSubmitFailure: result.preSubmitFailure || undefined,
+      reasonCode: result.preSubmitFailure?.reasonCode || result.reasonCode || undefined,
+      submitBoundaryAttemptedAt: result.submitBoundaryAttemptedAt || undefined,
       uploadFailure: result.uploadFailure || undefined,
       telemetry: {
         durationMs: Math.max(0, Math.trunc(result.durationMs || Date.parse(finishedAt) - Date.parse(startedAt) || 0)),
@@ -200,22 +219,97 @@ export class JevExecutionWorker {
       await this.service.markExecutionStarted(executionId, lease, { dryRun });
 
       const queueToWorkerMs = Math.max(0, workerStartedAt - Date.parse(context.request.createdAt));
+      let preSubmitFailure = null;
+      let submitReadiness = readinessEvidence(context);
+      let submitBoundaryAttemptedAt = null;
       const result = await adapter.execute(context.request, {
         dryRun,
         liveEnabled,
         account: context.account,
-        beforeSubmitIntent: (verifiedGates) => {
+        beforeSubmitIntent: async (verifiedGates) => {
+          submitBoundaryAttemptedAt = this.now().toISOString();
           if (leaseLost) throw Object.assign(new Error("Execution lease was lost before submit"), { code: "LEASE_LOST" });
-          return this.service.beginExecutionSubmitIntent(executionId, lease, {
-            liveEnabled,
-            liveExecutionId: this.env.SEEDING_JEV_LIVE_EXECUTION_ID,
-            autonomousLiveEnabled: this.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED === "true",
-            exactLiveDispatchEnabled: exactOperatorDispatch && this.env.SEEDING_JEV_EXACT_LIVE_ENABLED === "true",
-            verifiedGates
-          });
+          let current;
+          try {
+            current = await this.service.executionContext(executionId);
+            if (current.request?.executionId !== executionId || current.requestRow?.executionId !== executionId || current.request?.jobId !== context.request.jobId ||
+                current.request?.accountId !== context.request.accountId || current.request?.profileId !== context.request.profileId ||
+                current.request?.target?.targetId !== context.request.target.targetId || current.target?.id !== context.request.target.targetId ||
+                current.target?.accountId !== context.request.accountId || current.target?.profileId !== context.request.profileId ||
+                current.target?.channel !== context.request.platform) {
+              throw Object.assign(new Error("Execution context changed before submit"), { code: "execution_context_mismatch" });
+            }
+            submitReadiness = readinessEvidence(current);
+            const expiresAt = Date.parse(submitReadiness?.expiresAt || "");
+            if (!Number.isFinite(expiresAt) || expiresAt - this.now().getTime() <= SUBMIT_READINESS_SAFETY_MARGIN_MS) {
+              const refreshed = await this.service.refreshCampaignJobReadiness(context.request.jobId, `jev-worker:${this.workerId}`, {
+                force: true,
+                executionId
+              });
+              current = await this.service.executionContext(executionId);
+              submitReadiness = readinessEvidence(current);
+              const refreshedExpiresAt = Date.parse(submitReadiness?.expiresAt || "");
+              const refreshedCheckedAt = Date.parse(submitReadiness?.checkedAt || "");
+              const refreshedReady = submitReadiness?.state === "READY" && refreshed?.readinessState === "READY";
+              const refreshedRemainingMs = Number.isFinite(refreshedExpiresAt) ? refreshedExpiresAt - this.now().getTime() : NaN;
+              if (refreshed?.status !== "queued" || !refreshedReady ||
+                  !Number.isFinite(refreshedCheckedAt) || !Number.isFinite(refreshedRemainingMs) || refreshedRemainingMs <= SUBMIT_READINESS_SAFETY_MARGIN_MS) {
+                const reasonCode = !refreshedReady
+                  ? submitReadiness?.reasonCode || refreshed?.reasons?.[0] || String(submitReadiness?.state || refreshed?.readinessState || "READINESS_NOT_READY")
+                  : refreshed?.status !== "queued" ? refreshed?.reasons?.[0] || "READINESS_BLOCKED"
+                    : !Number.isFinite(refreshedCheckedAt) || !Number.isFinite(refreshedRemainingMs) ? "READINESS_EVIDENCE_INVALID"
+                      : "READINESS_EXPIRING";
+                preSubmitFailure = { reasonCode, stage: "readiness_refresh", gate: "readinessFresh", gateStatus: false };
+                throw Object.assign(new Error("Provider readiness was not READY before submit"), { code: reasonCode, preSubmitFailure });
+              }
+            }
+          } catch (error) {
+            if (!preSubmitFailure) {
+              const reasonCode = String(error?.code || submitReadiness?.reasonCode || "readiness_refresh_failed");
+              preSubmitFailure = { reasonCode, stage: "readiness_refresh", gate: "readinessFresh", gateStatus: false };
+            }
+            if (submitReadiness?.state === "READY") {
+              submitReadiness = { ...submitReadiness, state: "UNKNOWN", reasonCode: preSubmitFailure.reasonCode };
+            }
+            error.preSubmitFailure = preSubmitFailure;
+            error.verificationGates = verifiedGates;
+            error.code ||= preSubmitFailure.reasonCode;
+            throw error;
+          }
+          try {
+            return await this.service.beginExecutionSubmitIntent(executionId, lease, {
+              liveEnabled,
+              liveExecutionId: this.env.SEEDING_JEV_LIVE_EXECUTION_ID,
+              autonomousLiveEnabled: this.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED === "true",
+              exactLiveDispatchEnabled: exactOperatorDispatch && this.env.SEEDING_JEV_EXACT_LIVE_ENABLED === "true",
+              verifiedGates
+            });
+          } catch (error) {
+            const reasonCode = String(error?.code || "other_platform_pre_submit_error");
+            preSubmitFailure = error?.preSubmitFailure || {
+              reasonCode,
+              stage: "submit_boundary",
+              gate: Object.entries(verifiedGates || {}).find(([, passed]) => passed !== true)?.[0] || null
+            };
+            error.preSubmitFailure = preSubmitFailure;
+            error.verificationGates = verifiedGates;
+            error.code ||= reasonCode;
+            throw error;
+          }
         },
         onSubmitSent: () => this.service.markExecutionSubmitSent(executionId, lease)
       });
+      if (preSubmitFailure) {
+        result.preSubmitFailure = preSubmitFailure;
+      }
+      if (submitBoundaryAttemptedAt) result.submitBoundaryAttemptedAt = submitBoundaryAttemptedAt;
+      if (submitReadiness?.checkedAt) result.readinessResult = {
+        state: submitReadiness.state,
+        checkedAt: submitReadiness.checkedAt,
+        expiresAt: submitReadiness.expiresAt,
+        reasonCode: submitReadiness.reasonCode || preSubmitFailure?.reasonCode || "execution_readiness_fresh",
+        evidenceReference: submitReadiness.evidenceReference
+      };
       result.durationMs = Date.now() - workerStartedAt;
       result.telemetry = {
         ...(result.telemetry || {}),

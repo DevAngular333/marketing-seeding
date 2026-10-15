@@ -345,7 +345,22 @@ export class LinkedInAdapter {
       noDuplicateReceipt: true, noExistingConfirmedPublication: true
     };
     const submit = findRef(await this.browser.snapshot(context.pageId), /button\s+["\'](?:post|\u0111\u0103ng b\u00e0i|share)["\']/i);
-    if (!submit || Object.values(gates).some((passed) => passed !== true)) throw Object.assign(new Error("LinkedIn pre-submit checks did not pass"), { code: "PRE_SUBMIT_GATE_FAILED" });
+    const failedGate = Object.entries(gates).find(([, passed]) => passed !== true)?.[0] || (!submit ? "postButtonIdentified" : null);
+    if (failedGate) {
+      const reasonCode = failedGate === "mediaHashMatch" ? "ARTIFACT_INTEGRITY_FAILED"
+        : failedGate === "mediaPreviewConfirmed" ? "MEDIA_PREVIEW_FAILED"
+          : failedGate === "audienceMatch" ? "AUDIENCE_MISMATCH"
+            : ["accountMatch", "profileMatch", "targetMatch"].includes(failedGate) ? "IDENTITY_MISMATCH"
+              : failedGate === "authorizationValid" ? "AUTHORIZATION_INVALID"
+                : failedGate === "readinessFresh" ? "READINESS_NOT_READY"
+                  : "OTHER_PLATFORM_PRE_SUBMIT_ERROR";
+      const error = Object.assign(new Error("LinkedIn pre-submit checks did not pass"), {
+        code: reasonCode,
+        preSubmitFailure: { reasonCode, stage: "adapter_pre_submit", gate: failedGate, gateStatus: false },
+        verificationGates: gates
+      });
+      throw error;
+    }
     return { ...context, gates, submitRef: submit };
   }
 
@@ -530,13 +545,20 @@ export class LinkedInAdapter {
         : ["AUTH_REQUIRED", "SECURITY_CHALLENGE", "ACCOUNT_MISMATCH", "IDENTITY_AMBIGUOUS"].includes(code) ? "HUMAN_REQUIRED"
           : ["PAGE_LOAD_TIMEOUT", "PROVIDER_TIMEOUT", "ORCA_RUNTIME_UNAVAILABLE", "NETWORK_ERROR", "UPLOAD_ERROR", "UNKNOWN_COMPOSER"].includes(code) ? "RECOVERABLE"
             : "NONE";
+      const preSubmitFailure = error.preSubmitFailure || (!uncertain && !dryRun ? {
+        reasonCode: code,
+        stage: lifecycleContext?.gates ? "submit_boundary" : "adapter_execution",
+        gate: null,
+        gateStatus: false
+      } : undefined);
       return {
         submitState: uncertain ? "UNKNOWN" : dryRun ? "NOT_STARTED" : "FAILED",
         startedAt, finishedAt: new Date().toISOString(),
-        gates: { passed: false }, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began,
+        gates: error.verificationGates || error.gates || { passed: false }, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began,
         telemetry: phaseTimings,
         errorClassification,
         recoveryClassification,
+        preSubmitFailure,
         uploadFailure: error.uploadFailure || null,
         reasonCode: code.toLowerCase()
       };

@@ -1704,56 +1704,95 @@ export class SeedingService {
   }
 
   async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, exactLiveDispatchEnabled = false, verifiedGates = {} } = {}) {
+    const reject = (reasonCode, gate, message) => {
+      const error = Object.assign(new Error(message), { code: reasonCode });
+      error.preSubmitFailure = { reasonCode, stage: "submit_boundary", gate, gateStatus: false };
+      throw error;
+    };
     const snapshot = await this.executionContext(executionId);
     const { request, post, target, account, authorization, artifact, liveGrant } = snapshot;
     const expectedGates = ["authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"];
-    if (expectedGates.some((key) => verifiedGates[key] !== true)) throw new Error("Pre-submit validation did not pass every required gate");
-    if (!liveEnabled || (liveExecutionId !== executionId && autonomousLiveEnabled !== true && exactLiveDispatchEnabled !== true) || authorization?.allowLiveExecution !== true) {
-      throw new Error("Live submit requires explicit worker mode and campaign authorization");
+    const failedGate = expectedGates.find((key) => verifiedGates[key] !== true);
+    if (failedGate) {
+      const readinessExpired = Number.isFinite(Date.parse(target?.readiness?.expiresAt || "")) && Date.parse(target.readiness.expiresAt) <= this.now().getTime();
+      const reasonCode = failedGate === "readinessFresh" ? (readinessExpired ? "READINESS_EXPIRED" : "READINESS_NOT_READY")
+        : failedGate === "authorizationValid" ? "AUTHORIZATION_INVALID"
+          : failedGate === "mediaHashMatch" ? "ARTIFACT_INTEGRITY_FAILED"
+            : failedGate === "mediaPreviewConfirmed" ? "MEDIA_PREVIEW_FAILED"
+              : failedGate === "audienceMatch" ? "AUDIENCE_MISMATCH"
+                : ["accountMatch", "profileMatch", "targetMatch"].includes(failedGate) ? "IDENTITY_MISMATCH"
+                  : "OTHER_PLATFORM_PRE_SUBMIT_ERROR";
+      reject(reasonCode, failedGate, "Pre-submit validation did not pass every required gate");
     }
-    assertLiveGrantMatchesExecution(liveGrant, request, authorization);
-    if (request.content.sha256 !== createHash("sha256").update(post.content).digest("hex") || request.content.payload !== post.content) throw new Error("Execution content changed after request creation");
-    if (request.audience !== post.audience || !authorization.audienceRules.allowedAudiences.includes(post.audience)) throw new Error("Execution audience does not match authorized audience");
-    if (artifact && (request.media.length !== 1 || request.media[0].artifactId !== artifact.id || request.media[0].reference !== artifact.path || request.media[0].sha256 !== artifact.sha256 || !authorization.approvedAssets.some((item) => item.artifactId === artifact.id && item.sha256 === artifact.sha256))) throw new Error("Execution media identity is not the approved artifact");
-    if (!artifact && request.media.length !== 0) throw new Error("Execution request contains unregistered media");
-    if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId || request.accountId !== target.accountId || request.profileId !== target.profileId) throw new Error("Execution account/profile binding changed");
-    if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, new Date(), this.readinessTtlMs)) throw new Error("Readiness expired before submit intent");
+    if (!liveEnabled || (liveExecutionId !== executionId && autonomousLiveEnabled !== true && exactLiveDispatchEnabled !== true) || authorization?.allowLiveExecution !== true) {
+      reject("AUTHORIZATION_INVALID", "authorizationValid", "Live submit requires explicit worker mode and campaign authorization");
+    }
+    try { assertLiveGrantMatchesExecution(liveGrant, request, authorization); }
+    catch (error) {
+      error.code ||= "GRANT_INVALID";
+      error.preSubmitFailure = { reasonCode: "GRANT_INVALID", stage: "submit_boundary", gate: "liveGrantValid", gateStatus: false };
+      throw error;
+    }
+    if (request.content.sha256 !== createHash("sha256").update(post.content).digest("hex") || request.content.payload !== post.content) reject("CONTENT_MISMATCH", "contentHashMatch", "Execution content changed after request creation");
+    if (request.audience !== post.audience || !authorization.audienceRules.allowedAudiences.includes(post.audience)) reject("AUDIENCE_MISMATCH", "audienceMatch", "Execution audience does not match authorized audience");
+    if (artifact && (request.media.length !== 1 || request.media[0].artifactId !== artifact.id || request.media[0].reference !== artifact.path || request.media[0].sha256 !== artifact.sha256 || !authorization.approvedAssets.some((item) => item.artifactId === artifact.id && item.sha256 === artifact.sha256))) reject("ARTIFACT_INTEGRITY_FAILED", "mediaHashMatch", "Execution media identity is not the approved artifact");
+    if (!artifact && request.media.length !== 0) reject("ARTIFACT_INTEGRITY_FAILED", "mediaHashMatch", "Execution request contains unregistered media");
+    if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId || request.accountId !== target.accountId || request.profileId !== target.profileId) reject("IDENTITY_MISMATCH", "accountMatch", "Execution account/profile binding changed");
+    if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, new Date(), this.readinessTtlMs)) {
+      const expired = Number.isFinite(Date.parse(target.readiness?.expiresAt || "")) && Date.parse(target.readiness.expiresAt) <= Date.now();
+      reject(expired ? "READINESS_EXPIRED" : "READINESS_NOT_READY", "readinessFresh", "Readiness expired or was not READY before submit intent");
+    }
 
     const result = await this.store.mutate("execution-worker", "execution_submit_intent_persisted", (currentState) => {
       const requestRow = currentState.executionRequests.find((item) => item.executionId === executionId);
       const persistedLease = currentState.executionLeases.find((item) => item.id === lease.id && item.token === lease.token && Date.parse(item.expiresAt) > Date.now());
       const currentPost = requireItem(currentState.posts, post.id, "Post");
-      if (unresolvedSubmission(currentState, currentPost, request.idempotencyKey)) throw new Error("SUBMISSION_UNCERTAIN: live grant cannot bypass an unresolved submission");
-      if (!requestRow || requestRow.state !== "REQUEST_READY" || requestRow.submitState !== "NOT_STARTED") throw new Error("Execution is no longer dispatchable");
-      if (!persistedLease || persistedLease.profileKey !== `${target.channel}:${target.profileId}`) throw new Error("A valid execution lease is required");
+      if (unresolvedSubmission(currentState, currentPost, request.idempotencyKey)) reject("SUBMISSION_UNCERTAIN", "idempotencyClear", "SUBMISSION_UNCERTAIN: live grant cannot bypass an unresolved submission");
+      if (!requestRow || requestRow.state !== "REQUEST_READY" || requestRow.submitState !== "NOT_STARTED") reject("NOT_DISPATCHABLE", "executionDispatchable", "Execution is no longer dispatchable");
+      if (!persistedLease || persistedLease.profileKey !== `${target.channel}:${target.profileId}`) reject("LEASE_INVALID", "executionLeaseValid", "A valid execution lease is required");
       const currentAuthorization = (currentState.campaignAuthorizations || []).find((item) => item.id === currentPost.campaignAuthorizationId);
       const currentTarget = requireItem(currentState.targets, currentPost.targetId, "Target");
       const currentAccount = (currentState.executionAccounts || []).find((item) => item.id === executionAccountKey(currentTarget.channel, currentTarget.accountId));
       const currentGrant = (currentState.liveExecutionGrants || []).find((item) => item.grantId === requestRow.request?.liveGrant?.grantId);
-      assertLiveGrantMatchesExecution(currentGrant, requestRow.request, currentAuthorization);
+      try { assertLiveGrantMatchesExecution(currentGrant, requestRow.request, currentAuthorization); }
+      catch (error) {
+        error.code ||= "GRANT_INVALID";
+        error.preSubmitFailure = { reasonCode: "GRANT_INVALID", stage: "submit_boundary", gate: "liveGrantValid", gateStatus: false };
+        throw error;
+      }
       if (requestRow.request.content.sha256 !== createHash("sha256").update(currentPost.content).digest("hex") || requestRow.request.content.contentId !== currentPost.contentId ||
           currentGrant.content.canonicalSha256 !== campaignContentHash(currentPost.content) || requestRow.request.audience !== currentPost.audience ||
           requestRow.request.platform !== currentTarget.channel || requestRow.request.target.targetId !== currentPost.targetId ||
           requestRow.request.accountId !== currentTarget.accountId || requestRow.request.profileId !== currentTarget.profileId ||
           currentAccount?.profileId !== currentTarget.profileId || currentAccount?.status !== "enabled" ||
-          requestRow.request.media.length !== (currentPost.artifactId ? 1 : 0)) throw new Error("Job identity changed before live submit intent");
+          requestRow.request.media.length !== (currentPost.artifactId ? 1 : 0)) reject("IDENTITY_MISMATCH", "executionBindingsMatch", "Job identity changed before live submit intent");
       if (currentPost.artifactId) {
         const currentArtifact = requireItem(currentState.artifacts || [], currentPost.artifactId, "Artifact");
-        if (currentArtifact.sha256 !== requestRow.request.media[0].sha256 || currentArtifact.id !== requestRow.request.media[0].artifactId || currentArtifact.path !== requestRow.request.media[0].reference) throw new Error("Media identity changed before live submit intent");
+        if (currentArtifact.sha256 !== requestRow.request.media[0].sha256 || currentArtifact.id !== requestRow.request.media[0].artifactId || currentArtifact.path !== requestRow.request.media[0].reference) reject("ARTIFACT_INTEGRITY_FAILED", "mediaHashMatch", "Media identity changed before live submit intent");
       }
       const decision = evaluateQueue(currentPost, currentState, new Date(), { executionId });
-      if (!decision.allowed || currentAuthorization?.allowLiveExecution !== true) throw new Error(`Pre-submit governance blocked: ${decision.reasons.join(", ")}`);
+      if (!decision.allowed || currentAuthorization?.allowLiveExecution !== true) {
+        const reason = decision.reasons[0] || "authorization_invalid";
+        const reasonCode = reason.startsWith("readiness_") ? (reason === "readiness_expired" ? "READINESS_EXPIRED" : "READINESS_NOT_READY")
+          : reason.includes("authorization") ? "AUTHORIZATION_INVALID"
+            : reason.includes("window") ? "WINDOW_INVALID"
+              : reason.includes("audience") ? "AUDIENCE_MISMATCH"
+                : reason.includes("account") || reason.includes("profile") || reason.includes("target") ? "IDENTITY_MISMATCH"
+                  : "OTHER_PLATFORM_PRE_SUBMIT_ERROR";
+        reject(reasonCode, reason, `Pre-submit governance blocked: ${decision.reasons.join(", ")}`);
+      }
       if (requestRow.request?.oneTimeWindow?.windowId) {
         const window = (currentState.oneTimeExecutionWindows || []).find((item) => item.windowId === requestRow.request.oneTimeWindow.windowId);
-        assertWindowExecutionBinding(window, executionId, "CONSUMED");
+        try { assertWindowExecutionBinding(window, executionId, "CONSUMED"); }
+        catch { reject("WINDOW_INVALID", "oneTimeWindowValid", "One-time execution window is not bound to this execution"); }
         if (oneTimeExecutionWindowStatus(window, new Date()) !== "CONSUMED" || !oneTimeExecutionWindowInBounds(window) || window.authorizationFingerprint !== campaignAuthorizationFingerprint(currentAuthorization)) {
-          throw new Error("One-time execution window is no longer valid for this submit");
+          reject("WINDOW_INVALID", "oneTimeWindowValid", "One-time execution window is no longer valid for this submit");
         }
       }
-      if ((currentState.executionRequests || []).some((item) => item.executionId !== executionId && item.request?.idempotencyKey === request.idempotencyKey && ["REQUEST_READY", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state))) throw new Error("Another execution already owns this publication identity");
-      if ((currentState.executionReceipts || []).some((item) => item.receipt?.submitState === "CONFIRMED" && item.executionId !== executionId && (currentState.executionRequests || []).find((row) => row.executionId === item.executionId)?.request?.idempotencyKey === request.idempotencyKey)) throw new Error("A confirmed publication already exists for this idempotency key");
-      if ((currentState.posts || []).some((item) => item.id !== currentPost.id && item.idempotencyKey === request.idempotencyKey && item.status === "published")) throw new Error("A publication already exists for this idempotency key");
-      if (currentPost.status !== "queued") throw new Error("Job is no longer queued");
+      if ((currentState.executionRequests || []).some((item) => item.executionId !== executionId && item.request?.idempotencyKey === request.idempotencyKey && ["REQUEST_READY", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state))) reject("IDEMPOTENCY_BLOCKED", "idempotencyClear", "Another execution already owns this publication identity");
+      if ((currentState.executionReceipts || []).some((item) => item.receipt?.submitState === "CONFIRMED" && item.executionId !== executionId && (currentState.executionRequests || []).find((row) => row.executionId === item.executionId)?.request?.idempotencyKey === request.idempotencyKey)) reject("IDEMPOTENCY_BLOCKED", "idempotencyClear", "A confirmed publication already exists for this idempotency key");
+      if ((currentState.posts || []).some((item) => item.id !== currentPost.id && item.idempotencyKey === request.idempotencyKey && item.status === "published")) reject("IDEMPOTENCY_BLOCKED", "idempotencyClear", "A publication already exists for this idempotency key");
+      if (currentPost.status !== "queued") reject("NOT_DISPATCHABLE", "jobQueued", "Job is no longer queued");
       assertTransition(currentPost.status, "publishing");
       const at = nowIso();
       const attempt = {

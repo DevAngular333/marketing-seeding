@@ -202,6 +202,37 @@ test("immediate UNKNOWN keeps collected evidence in its receipt result and does 
   assert.equal(postClicks, 1);
 });
 
+test("LinkedIn adapter preserves a pre-submit reason and failed gate without clicking Post", async () => {
+  let postClicks = 0;
+  const browser = {
+    async snapshot() { return '- button "Post" [ref=post]'; },
+    async click() { postClicks += 1; },
+    browserCommandCount() { return postClicks; }
+  };
+  const adapter = new LinkedInAdapter(browser, { verifier: {} });
+  adapter.prepareExecution = async (requestValue) => ({ request: requestValue, pageId: "page-1", expectedIdentityUrl });
+  adapter.navigate = async (context) => context;
+  adapter.verifyTarget = async (context) => ({ ...context, targetVerified: true });
+  adapter.openComposer = async (context) => context;
+  adapter.fillContent = async (context) => context;
+  adapter.attachMedia = async (context) => ({ ...context, media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
+  adapter.verifyPreSubmit = async (context) => ({ ...context, gates: { readinessFresh: true, mediaPreviewConfirmed: true } });
+  const failure = Object.assign(new Error("readiness expired"), {
+    code: "READINESS_EXPIRED",
+    preSubmitFailure: { reasonCode: "READINESS_EXPIRED", stage: "submit_boundary", gate: "readinessFresh", gateStatus: false },
+    verificationGates: { readinessFresh: false, mediaPreviewConfirmed: true }
+  });
+  const result = await adapter.execute(request(), {
+    dryRun: false, liveEnabled: true,
+    async beforeSubmitIntent() { throw failure; }, async onSubmitSent() {}
+  });
+  assert.equal(result.submitState, "FAILED");
+  assert.equal(result.reasonCode, "readiness_expired");
+  assert.deepEqual(result.preSubmitFailure, failure.preSubmitFailure);
+  assert.deepEqual(result.gates, failure.verificationGates);
+  assert.equal(postClicks, 0);
+});
+
 test("verification expression extracts activity URN, stable ID, permalink, author, time and media type", () => {
   const expression = LINKEDIN_VERIFICATION_EXPRESSION(content, expectedIdentityUrl);
   for (const signal of ["data-urn", "activityId", "feed\\/update", "authorPath", "datetime", "querySelector('video')", "mediaType"]) assert.ok(expression.includes(signal), signal);

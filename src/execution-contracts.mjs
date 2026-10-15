@@ -120,8 +120,18 @@ export function validateExecutionReceiptV1(input) {
     readinessResult: {
       state: required(input.readinessResult?.state, "readinessResult.state").toUpperCase(),
       checkedAt: required(input.readinessResult?.checkedAt, "readinessResult.checkedAt"),
-      reasonCode: String(input.readinessResult?.reasonCode || "ready").slice(0, 80)
+      reasonCode: String(input.readinessResult?.reasonCode || "ready").slice(0, 80),
+      expiresAt: input.readinessResult?.expiresAt ? String(input.readinessResult.expiresAt) : null,
+      evidenceReference: input.readinessResult?.evidenceReference ? String(input.readinessResult.evidenceReference).slice(0, 240) : null
     },
+    preSubmitFailure: input.preSubmitFailure && typeof input.preSubmitFailure === "object" ? {
+      reasonCode: required(input.preSubmitFailure.reasonCode, "preSubmitFailure.reasonCode").slice(0, 80),
+      stage: required(input.preSubmitFailure.stage, "preSubmitFailure.stage").slice(0, 80),
+      gate: input.preSubmitFailure.gate ? String(input.preSubmitFailure.gate).slice(0, 80) : null,
+      gateStatus: typeof input.preSubmitFailure.gateStatus === "boolean" ? input.preSubmitFailure.gateStatus : null
+    } : null,
+    reasonCode: input.reasonCode ? String(input.reasonCode).slice(0, 80) : null,
+    submitBoundaryAttemptedAt: input.submitBoundaryAttemptedAt ? String(input.submitBoundaryAttemptedAt) : null,
     submitState: required(input.submitState, "submitState").toUpperCase(),
     dryRun: input.dryRun === true,
     publicationUrl: input.publicationUrl ? String(input.publicationUrl) : null,
@@ -219,6 +229,7 @@ export function validateExecutionReceiptV1(input) {
   };
   if (!Number.isSafeInteger(receipt.attempt) || receipt.attempt < 1) throw new Error("ExecutionReceiptV1 attempt must be a positive integer");
   for (const field of ["startedAt", "finishedAt"]) if (!Number.isFinite(Date.parse(receipt[field]))) throw new Error(`ExecutionReceiptV1 ${field} must be an ISO timestamp`);
+  if (receipt.submitBoundaryAttemptedAt && !Number.isFinite(Date.parse(receipt.submitBoundaryAttemptedAt))) throw new Error("ExecutionReceiptV1 submitBoundaryAttemptedAt must be an ISO timestamp");
   if (Date.parse(receipt.finishedAt) < Date.parse(receipt.startedAt)) throw new Error("ExecutionReceiptV1 finishedAt cannot precede startedAt");
   if (!new Set(["READY", "BLOCKED", "HUMAN_REQUIRED", "UNKNOWN"]).has(receipt.readinessResult.state)) throw new Error("ExecutionReceiptV1 readinessResult state is invalid");
   if (!SUBMIT_STATES.includes(receipt.submitState)) throw new Error("ExecutionReceiptV1 submitState is invalid");
