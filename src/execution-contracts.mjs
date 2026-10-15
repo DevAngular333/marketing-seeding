@@ -43,6 +43,72 @@ function assertNoSecrets(value, path = "contract") {
   }
 }
 
+function safeLinkedInPath(value, label) {
+  if (!value) return null;
+  try {
+    const url = new URL(String(value));
+    if (url.protocol !== "https:" || !/(^|\.)linkedin\.com$/i.test(url.hostname)) return null;
+    return `${url.origin}${url.pathname}`.slice(0, 500);
+  } catch {
+    throw new Error(`${label} must be a LinkedIn URL`);
+  }
+}
+
+export function validateSubmitAcceptanceEvidence(input) {
+  if (!input || typeof input !== "object") return null;
+  assertNoSecrets(input, "submitAcceptanceEvidence");
+  const timestamp = (value, field) => {
+    if (!value) return null;
+    const normalized = String(value);
+    if (!Number.isFinite(Date.parse(normalized))) throw new Error(`submitAcceptanceEvidence.${field} must be an ISO timestamp`);
+    return normalized;
+  };
+  const enumValue = (value, allowed, field, fallback) => {
+    const normalized = String(value || fallback).toUpperCase();
+    if (!allowed.includes(normalized)) throw new Error(`submitAcceptanceEvidence.${field} is invalid`);
+    return normalized;
+  };
+  const candidateInput = input.candidate && typeof input.candidate === "object" ? input.candidate : {};
+  const activityUrn = candidateInput.activityUrn ? String(candidateInput.activityUrn).slice(0, 200) : null;
+  if (activityUrn && !/^urn:li:(?:activity|share):[\w-]+$/.test(activityUrn)) throw new Error("submitAcceptanceEvidence.candidate.activityUrn is invalid");
+  const candidate = {
+    activityUrn,
+    postId: (candidateInput.postId || candidateInput.activityId) ? String(candidateInput.postId || candidateInput.activityId).slice(0, 120) : null,
+    permalink: safeLinkedInPath(candidateInput.permalink, "submitAcceptanceEvidence.candidate.permalink"),
+    authorMatched: candidateInput.authorMatched === true,
+    contentMatched: candidateInput.contentMatched === true,
+    timestamp: timestamp(candidateInput.timestamp, "candidate.timestamp"),
+    timestampMatched: candidateInput.timestampMatched === true
+  };
+  const evidence = {
+    clickStatus: enumValue(input.clickStatus, ["CLICK_EMITTED", "UNKNOWN"], "clickStatus", "UNKNOWN"),
+    clickEmittedAt: timestamp(input.clickEmittedAt, "clickEmittedAt"),
+    platformAcceptance: enumValue(input.platformAcceptance, ["ACCEPTED", "REJECTED", "UNKNOWN"], "platformAcceptance", "UNKNOWN"),
+    acceptanceSource: enumValue(input.acceptanceSource, ["SUCCESS_CONFIRMATION", "STABLE_PUBLICATION_IDENTITY", "VISIBLE_PLATFORM_ERROR", "NONE"], "acceptanceSource", "NONE"),
+    observedAt: timestamp(input.observedAt, "observedAt"),
+    composerState: enumValue(input.composerState, ["OPEN", "CLOSED", "UNKNOWN"], "composerState", "UNKNOWN"),
+    postButtonState: enumValue(input.postButtonState, ["ENABLED", "DISABLED", "SUBMITTING", "DISAPPEARED", "UNKNOWN"], "postButtonState", "UNKNOWN"),
+    confirmationState: enumValue(input.confirmationState, ["SUCCESS", "ERROR", "NONE", "UNKNOWN"], "confirmationState", "UNKNOWN"),
+    confirmationText: input.confirmationText ? String(input.confirmationText).replace(/[\r\n\t]+/g, " ").slice(0, 240) : null,
+    errorReasonCode: input.errorReasonCode ? String(input.errorReasonCode).toLowerCase().slice(0, 80) : null,
+    errorText: input.errorText ? String(input.errorText).replace(/[\r\n\t]+/g, " ").slice(0, 240) : null,
+    urlBefore: safeLinkedInPath(input.urlBefore, "submitAcceptanceEvidence.urlBefore"),
+    urlAfter: safeLinkedInPath(input.urlAfter, "submitAcceptanceEvidence.urlAfter"),
+    candidate
+  };
+  if (evidence.errorReasonCode && !/^[a-z0-9_:-]+$/.test(evidence.errorReasonCode)) throw new Error("submitAcceptanceEvidence.errorReasonCode is invalid");
+  if (evidence.platformAcceptance === "ACCEPTED") {
+    const successUi = evidence.acceptanceSource === "SUCCESS_CONFIRMATION" && evidence.confirmationState === "SUCCESS";
+    const stableCandidate = evidence.acceptanceSource === "STABLE_PUBLICATION_IDENTITY" && candidate.authorMatched && candidate.contentMatched && candidate.timestampMatched && Boolean(candidate.postId || candidate.activityUrn) && Boolean(candidate.permalink);
+    if (!successUi && !stableCandidate) throw new Error("Submit acceptance requires an explicit success confirmation or strong publication identity");
+  }
+  if (evidence.platformAcceptance === "REJECTED" && (evidence.acceptanceSource !== "VISIBLE_PLATFORM_ERROR" || evidence.confirmationState !== "ERROR" || !evidence.errorReasonCode)) {
+    throw new Error("Submit rejection requires a visible platform error and normalized reason code");
+  }
+  if (evidence.clickStatus === "CLICK_EMITTED" && !evidence.clickEmittedAt) throw new Error("CLICK_EMITTED requires clickEmittedAt");
+  return evidence;
+}
+
 export function contentSha256(content) {
   return createHash("sha256").update(String(content || "")).digest("hex");
 }
@@ -132,6 +198,7 @@ export function validateExecutionReceiptV1(input) {
     } : null,
     reasonCode: input.reasonCode ? String(input.reasonCode).slice(0, 80) : null,
     submitBoundaryAttemptedAt: input.submitBoundaryAttemptedAt ? String(input.submitBoundaryAttemptedAt) : null,
+    submitAcceptanceEvidence: validateSubmitAcceptanceEvidence(input.submitAcceptanceEvidence),
     submitState: required(input.submitState, "submitState").toUpperCase(),
     dryRun: input.dryRun === true,
     publicationUrl: input.publicationUrl ? String(input.publicationUrl) : null,

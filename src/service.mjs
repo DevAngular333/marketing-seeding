@@ -8,7 +8,7 @@ import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
 import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
 import { classifyReadinessError, configuredReadinessTtlMs, executionAccountIdentityReference, executionAccountKey, isCanonicalOrcaProfileId, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
-import { createExecutionRequestV1, isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateExecutionReceiptV1 } from "./execution-contracts.mjs";
+import { createExecutionRequestV1, isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateExecutionReceiptV1, validateSubmitAcceptanceEvidence } from "./execution-contracts.mjs";
 import { assertWindowExecutionBinding, normalizeOneTimeExecutionWindow, oneTimeExecutionWindowFingerprint, oneTimeExecutionWindowInBounds, oneTimeExecutionWindowStatus } from "./one-time-execution-window.mjs";
 import { assertLiveGrantMatchesExecution, createLiveExecutionGrantV1, liveGrantEffectiveStatus } from "./live-execution-grant.mjs";
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
@@ -1825,7 +1825,9 @@ export class SeedingService {
     return result.result;
   }
 
-  async markExecutionSubmitSent(executionId, lease) {
+  async markExecutionSubmitSent(executionId, lease, submitAcceptanceEvidence = null) {
+    const clickEvidence = validateSubmitAcceptanceEvidence(submitAcceptanceEvidence);
+    if (clickEvidence && clickEvidence.clickStatus !== "CLICK_EMITTED") throw new Error("SUBMIT_SENT requires confirmed click-command emission evidence");
     const result = await this.store.mutate("execution-worker", "execution_submit_sent", (state) => {
       const request = state.executionRequests.find((item) => item.executionId === executionId);
       const persistedLease = state.executionLeases.find((item) => item.id === lease.id && item.token === lease.token && Date.parse(item.expiresAt) > Date.now());
@@ -1833,7 +1835,11 @@ export class SeedingService {
       request.state = "SUBMIT_SENT";
       request.executionPhase = "SUBMIT_SENT";
       request.submitState = "SUBMIT_SENT";
-      request.dispatchedAt = nowIso();
+      request.dispatchedAt = clickEvidence?.clickEmittedAt || nowIso();
+      if (clickEvidence) {
+        request.clickEmittedAt = clickEvidence.clickEmittedAt;
+        request.submitAcceptanceEvidence = clickEvidence;
+      }
       const post = requireItem(state.posts, request.jobId, "Post");
       post.executionState = "SUBMIT_SENT";
       post.jobLifecycle.push({ state: "SUBMIT_SENT", at: request.dispatchedAt, executionId });
@@ -1883,6 +1889,7 @@ export class SeedingService {
       request.submitState = receipt.submitState;
       request.recoveryClassification = receipt.recoveryClassification;
       request.lastReceiptAt = row.receivedAt;
+      if (receipt.submitAcceptanceEvidence) request.submitAcceptanceEvidence = receipt.submitAcceptanceEvidence;
       if (receipt.submitState === "SUBMIT_SENT") {
         request.state = "SUBMIT_SENT";
         request.executionPhase = "SUBMIT_SENT";
@@ -1895,7 +1902,10 @@ export class SeedingService {
         post.executionState = "SUBMIT_RESULT_UNKNOWN";
         const attempt = (state.publicationAttempts || []).find((item) => item.id === post.publicationAttemptId && item.executionId === executionId);
         if (!attempt) throw new Error("Unknown execution requires its durable publication attempt");
-        recordSubmissionUnknown(state, post, attempt, { executionId, reasonCode: receipt.errorClassification === "NONE" ? "SUBMIT_OUTCOME_UNKNOWN" : receipt.errorClassification, evidenceReferences: receipt.publicationReference ? [receipt.publicationReference] : [], detectedAt: row.receivedAt });
+        const uncertaintyReasonCode = receipt.submitAcceptanceEvidence?.platformAcceptance === "REJECTED"
+          ? receipt.submitAcceptanceEvidence.errorReasonCode
+          : receipt.errorClassification === "NONE" ? "SUBMIT_OUTCOME_UNKNOWN" : receipt.errorClassification;
+        recordSubmissionUnknown(state, post, attempt, { executionId, reasonCode: uncertaintyReasonCode, evidenceReferences: receipt.publicationReference ? [receipt.publicationReference] : [], detectedAt: row.receivedAt });
         if (!post.jobLifecycle?.some((item) => item.state === "SUBMIT_RESULT_UNKNOWN" && item.executionId === executionId)) post.jobLifecycle?.push({ state: "SUBMIT_RESULT_UNKNOWN", at: row.receivedAt, executionId });
       } else if (receipt.submitState === "CONFIRMED") {
         if (!["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(request.state)) throw new Error("CONFIRMED receipt requires a durable submit intent");

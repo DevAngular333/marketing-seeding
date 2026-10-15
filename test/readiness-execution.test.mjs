@@ -392,9 +392,23 @@ test("ExecutionRequestV1 and ExecutionReceiptV1 validate hashes, versions, and u
     telemetry: { durationMs: 1000, browserCommands: 1, computerUseCalls: 0, retries: 0 }
   });
   assert.equal(receipt.submitState, "SUBMIT_SENT");
+  assert.equal(receipt.submitAcceptanceEvidence, null, "older receipt v1 rows remain valid without post-click evidence");
   assert.throws(() => validateExecutionReceiptV1({
     ...receipt, recoveryClassification: "RECOVERABLE"
   }), /possibly submitted/);
+  assert.throws(() => validateExecutionReceiptV1({
+    ...receipt,
+    submitAcceptanceEvidence: { clickStatus: "CLICK_EMITTED", clickEmittedAt: "2026-10-13T00:00:00.000Z", platformAcceptance: "ACCEPTED", acceptanceSource: "NONE" }
+  }), /explicit success confirmation or strong publication identity/);
+  const acceptedReceipt = validateExecutionReceiptV1({
+    ...receipt,
+    submitAcceptanceEvidence: {
+      clickStatus: "CLICK_EMITTED", clickEmittedAt: "2026-10-13T00:00:00.000Z", observedAt: "2026-10-13T00:00:01.000Z",
+      platformAcceptance: "ACCEPTED", acceptanceSource: "SUCCESS_CONFIRMATION", confirmationState: "SUCCESS",
+      confirmationText: "Your post was shared", composerState: "CLOSED", postButtonState: "DISAPPEARED"
+    }
+  });
+  assert.equal(acceptedReceipt.submitAcceptanceEvidence.platformAcceptance, "ACCEPTED");
 });
 
 test("SUBMIT_SENT receipt is terminal for dispatch and never creates a replacement request", async () => {
@@ -700,8 +714,8 @@ test("legacy quarantine refuses a live lease or active worker and proven failure
   assert.equal((await service.snapshot()).posts.find((item) => item.id === post.id).status, "failed");
 });
 
-test("modern UNKNOWN receipt creates the same durable quarantine and remains non-dispatchable", async () => {
-  const { service, post } = await fixture({ platform: "threads", provider: { async checkReadiness() { return ready(); } } });
+test("modern UNKNOWN receipt preserves visible LinkedIn rejection reason in its durable quarantine", async () => {
+  const { service, post } = await fixture({ platform: "linkedin", provider: { async checkReadiness() { return ready(); } } });
   const request = (await service.snapshot()).executionRequests[0];
   const at = new Date().toISOString();
   await service.store.mutate("test", "prepare_modern_unknown_fixture", (state) => {
@@ -714,13 +728,19 @@ test("modern UNKNOWN receipt creates the same durable quarantine and remains non
   await service.recordExecutionReceipt(request.executionId, {
     schemaVersion: 1, executionId: request.executionId, jobId: post.id, attempt: request.attempt,
     startedAt: at, finishedAt: at, readinessResult: { state: "READY", checkedAt: at }, submitState: "UNKNOWN",
-    errorClassification: "TIMEOUT", recoveryClassification: "UNKNOWN", verificationEvidence: "reconciliation-pending",
+    reasonCode: "linkedin_media_processing_error", errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN",
+    submitAcceptanceEvidence: {
+      clickStatus: "CLICK_EMITTED", clickEmittedAt: at, observedAt: at,
+      platformAcceptance: "REJECTED", acceptanceSource: "VISIBLE_PLATFORM_ERROR", confirmationState: "ERROR",
+      errorReasonCode: "linkedin_media_processing_error", errorText: "Unable to publish this video"
+    },
     telemetry: { durationMs: 100, browserCommands: 1, computerUseCalls: 0, retries: 0 }
   });
   const after = await service.snapshot();
   assert.equal(after.posts.find((item) => item.id === post.id).status, "submit_result_unknown");
   assert.equal(after.executionRequests[0].state, "SUBMIT_RESULT_UNKNOWN");
   assert.equal(after.submissionUncertainties[0].executionId, request.executionId);
+  assert.equal(after.submissionUncertainties[0].reasonCode, "linkedin_media_processing_error");
   assert.equal((await service.readyExecutionRequests()).length, 0);
   await assert.rejects(service.prepareExecutionRequest(post.id, "operator"), /SUBMISSION_UNCERTAIN/);
   const proven = await service.reconcileSubmissionUncertainty(after.submissionUncertainties[0].id, {

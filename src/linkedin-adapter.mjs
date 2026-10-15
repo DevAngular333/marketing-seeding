@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
 import { linkedInReadinessExpressions, openLinkedInComposer } from "./linkedin-readiness.mjs";
 import { attachLinkedInMedia, cleanupLinkedInComposer } from "./linkedin-media.mjs";
-import { isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS } from "./execution-contracts.mjs";
+import { isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateSubmitAcceptanceEvidence } from "./execution-contracts.mjs";
 
 
 function refOf(line) {
@@ -149,6 +149,57 @@ const LINKEDIN_POST_CONFIRMATION_EXPRESSION = `(() => {
     .slice(0, 5).map((text) => text.slice(0, 200));
 })()`;
 
+const LINKEDIN_POST_CLICK_UI_EXPRESSION = `(() => {
+  const visible = (node) => Boolean(node && node.getClientRects().length);
+  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter(visible);
+  const composerOpen = dialogs.some((dialog) => Array.from(dialog.querySelectorAll('[contenteditable="true"],[role="textbox"]')).some(visible));
+  const postButtons = Array.from(document.querySelectorAll('button,[role="button"]')).filter(visible).filter((node) => /^(post|share|đăng(?: bài)?)$/i.test((node.innerText || node.getAttribute('aria-label') || '').trim()));
+  const buttonText = postButtons.map((node) => (node.innerText || node.getAttribute('aria-label') || '').trim()).join(' ');
+  const postButtonState = !postButtons.length ? 'DISAPPEARED'
+    : postButtons.some((node) => node.getAttribute('aria-busy') === 'true' || /posting|sharing|publishing|đang đăng/i.test(buttonText)) ? 'SUBMITTING'
+      : postButtons.every((node) => node.disabled || node.getAttribute('aria-disabled') === 'true') ? 'DISABLED' : 'ENABLED';
+  const messages = Array.from(document.querySelectorAll('[role="alert"],[role="status"],.artdeco-toast-item,.share-creation-state__error-container,.share-creation-state__success-container')).filter(visible)
+    .map((node) => (node.innerText || node.textContent || '').trim()).filter(Boolean).slice(0, 8).map((text) => text.slice(0, 240));
+  const successMessages = messages.filter((text) => /post(?:ed| is live)|shared|published|đã đăng|đã chia sẻ/i.test(text));
+  const errorMessages = messages.filter((text) => /error|failed|try again|cannot|couldn.?t|unable|too many|restricted|invalid|lỗi|không thể|thử lại/i.test(text));
+  const confirmationState = successMessages.length && errorMessages.length ? 'UNKNOWN'
+    : successMessages.length ? 'SUCCESS' : errorMessages.length ? 'ERROR' : 'NONE';
+  return { url: location.href, composerState: composerOpen ? 'OPEN' : 'CLOSED', postButtonState, confirmationState, successMessages, errorMessages };
+})()`;
+
+const LINKEDIN_POST_CLICK_WAIT_EXPRESSION = (content, expectedIdentityUrl) => `(() => {
+  const ui = (${LINKEDIN_POST_CLICK_UI_EXPRESSION});
+  const candidates = (${LINKEDIN_VERIFICATION_EXPRESSION(content, expectedIdentityUrl)});
+  return ui.confirmationState === 'SUCCESS' || ui.confirmationState === 'ERROR' || candidates.some((candidate) => candidate.activityId && candidate.publicationUrl && candidate.authorMatched && candidate.contentMatched && candidate.candidateTimestamp);
+})()`;
+
+function safePlatformErrorText(value) {
+  const text = String(value || "").replace(/[\r\n\t]+/g, " ").trim().slice(0, 240);
+  if (!text || /(password|passkey|verification code|one[- ]time code|cookie|bearer|token|credential|session|mfa)/i.test(text)) return null;
+  return text.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "[redacted]").replace(/https?:\/\/\S+/gi, "[link]");
+}
+
+function platformErrorReason(text) {
+  if (/rate limit|too many|try again later/i.test(text)) return "linkedin_rate_limited";
+  if (/restricted|account restriction/i.test(text)) return "linkedin_account_restricted";
+  if (/video|media|upload|processing/i.test(text)) return "linkedin_media_processing_error";
+  if (/invalid|required|cannot be empty|fix the errors/i.test(text)) return "linkedin_validation_error";
+  return "linkedin_platform_error";
+}
+
+function candidateEvidence(candidate) {
+  if (!candidate) return {};
+  return {
+    activityUrn: candidate.activityUrn || null,
+    postId: candidate.activityId || candidate.postId || null,
+    permalink: candidate.publicationUrl || candidate.permalink || null,
+    authorMatched: candidate.authorMatched === true,
+    contentMatched: candidate.contentMatched === true,
+    timestamp: candidate.candidateTimestamp || candidate.timestamp || null,
+    timestampMatched: candidate.timestampMatched === true
+  };
+}
+
 function validateMediaDescriptor(request) {
   if (!Array.isArray(request.media) || request.media.length > 1) throw new Error("LinkedIn adapter supports one approved media artifact per request");
   if (request.media.length === 0) return null;
@@ -262,10 +313,11 @@ export class LinkedInAdapter {
     supportsReconciliation: true
   });
 
-  constructor(browser, { verifier = new LinkedInPublicationVerifier(browser), mediaTimeoutMs = 60_000 } = {}) {
+  constructor(browser, { verifier = new LinkedInPublicationVerifier(browser), mediaTimeoutMs = 60_000, postClickEvidenceTimeoutMs = 5_000 } = {}) {
     this.browser = browser;
     this.verifier = verifier;
     this.mediaTimeoutMs = mediaTimeoutMs;
+    this.postClickEvidenceTimeoutMs = postClickEvidenceTimeoutMs;
   }
 
   async #getPage(request) {
@@ -361,17 +413,87 @@ export class LinkedInAdapter {
       });
       throw error;
     }
-    return { ...context, gates, submitRef: submit };
+    const tab = typeof this.browser.showTab === "function" ? await this.browser.showTab(context.pageId) : null;
+    return { ...context, gates, submitRef: submit, urlBeforeSubmit: tab?.url || null };
+  }
+
+  async #collectPostClickEvidence(context) {
+    const startedAt = Date.now();
+    const deadline = startedAt + this.postClickEvidenceTimeoutMs;
+    const expression = LINKEDIN_VERIFICATION_EXPRESSION(context.request.content.payload, context.expectedIdentityUrl);
+    let ui = null;
+    let candidates = [];
+    const collect = async () => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return;
+      try {
+        ui = await withinDeadline(this.browser.evaluate(context.pageId, LINKEDIN_POST_CLICK_UI_EXPRESSION), deadline);
+        const found = await withinDeadline(this.browser.evaluate(context.pageId, expression), deadline);
+        if (Array.isArray(found)) candidates = found;
+      } catch {
+        // Preserve the already-durable click evidence if the page cannot be inspected.
+      }
+    };
+    await collect();
+    const hasTerminalSignal = ui?.confirmationState === "SUCCESS" || ui?.confirmationState === "ERROR" || candidates.some((item) => item.activityId && item.publicationUrl && item.authorMatched && item.contentMatched && item.candidateTimestamp);
+    if (!hasTerminalSignal && typeof this.browser.waitForExpression === "function" && Date.now() < deadline) {
+      try {
+        await withinDeadline(this.browser.waitForExpression(context.pageId, LINKEDIN_POST_CLICK_WAIT_EXPRESSION(context.request.content.payload, context.expectedIdentityUrl), Math.max(1, deadline - Date.now())), deadline);
+      } catch {
+        // A timeout is lack of acceptance evidence, not permission to click again.
+      }
+      await collect();
+    }
+    const candidate = candidates[0] || null;
+    const strongCandidate = Boolean(candidate?.authorMatched && candidate.contentMatched && candidate.activityId && candidate.publicationUrl && candidate.candidateTimestamp &&
+      Date.parse(candidate.candidateTimestamp) >= Date.parse(context.clickEmittedAt) && Date.parse(candidate.candidateTimestamp) <= Date.parse(context.clickEmittedAt) + PUBLICATION_CANDIDATE_MAX_AGE_MS);
+    const successConfirmation = ui?.confirmationState === "SUCCESS";
+    const visibleError = ui?.errorMessages?.[0] || null;
+    const safeError = safePlatformErrorText(visibleError);
+    const platformAcceptance = successConfirmation || strongCandidate ? "ACCEPTED" : ui?.confirmationState === "ERROR" ? "REJECTED" : "UNKNOWN";
+    const acceptanceSource = successConfirmation ? "SUCCESS_CONFIRMATION" : strongCandidate ? "STABLE_PUBLICATION_IDENTITY" : ui?.confirmationState === "ERROR" ? "VISIBLE_PLATFORM_ERROR" : "NONE";
+    const evidence = {
+      ...context.submitAcceptanceEvidence,
+      platformAcceptance,
+      acceptanceSource,
+      observedAt: new Date().toISOString(),
+      composerState: ui?.composerState || "UNKNOWN",
+      postButtonState: ui?.postButtonState || "UNKNOWN",
+      confirmationState: ui?.confirmationState || "UNKNOWN",
+      confirmationText: safePlatformErrorText(ui?.successMessages?.[0]),
+      errorReasonCode: visibleError ? platformErrorReason(visibleError) : null,
+      errorText: safeError,
+      urlAfter: ui?.url || null,
+      candidate: candidateEvidence({ ...candidate, timestampMatched: strongCandidate })
+    };
+    return validateSubmitAcceptanceEvidence(evidence);
   }
 
   async submit(context, { beforeSubmitIntent, onSubmitSent } = {}) {
     if (typeof beforeSubmitIntent !== "function" || typeof onSubmitSent !== "function") throw new Error("Live submit requires durable intent and submit-state callbacks");
     await beforeSubmitIntent(context.gates);
     context.intentPersisted = true;
-    await this.browser.click(context.pageId, context.submitRef);
+    context.submitAcceptanceEvidence = {
+      clickStatus: "UNKNOWN", platformAcceptance: "UNKNOWN", acceptanceSource: "NONE",
+      composerState: "UNKNOWN", postButtonState: "UNKNOWN", confirmationState: "UNKNOWN",
+      urlBefore: context.urlBeforeSubmit || null, urlAfter: null, candidate: {}
+    };
+    try {
+      await this.browser.click(context.pageId, context.submitRef);
+    } catch (error) {
+      context.submitAcceptanceEvidence = validateSubmitAcceptanceEvidence({
+        ...context.submitAcceptanceEvidence, observedAt: new Date().toISOString(), errorReasonCode: "orca_click_outcome_unknown"
+      });
+      throw error;
+    }
+    context.clickEmittedAt = new Date().toISOString();
+    context.submittedAt = context.clickEmittedAt;
     context.submitted = true;
-    await onSubmitSent();
-    context.submittedAt = new Date().toISOString();
+    context.submitAcceptanceEvidence = validateSubmitAcceptanceEvidence({
+      ...context.submitAcceptanceEvidence, clickStatus: "CLICK_EMITTED", clickEmittedAt: context.clickEmittedAt, observedAt: context.clickEmittedAt
+    });
+    await onSubmitSent(context.submitAcceptanceEvidence);
+    context.submitAcceptanceEvidence = await this.#collectPostClickEvidence(context);
     return context;
   }
 
@@ -523,8 +645,20 @@ export class LinkedInAdapter {
       intentPersisted = lifecycleContext.intentPersisted === true;
       submitted = lifecycleContext.submitted === true;
       const verification = await this.verifyPublished(lifecycleContext);
-      if (verification.state !== "CONFIRMED") return { ...verification, submitState: "UNKNOWN", startedAt, finishedAt: new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN" };
-      return { ...verification, submitState: "CONFIRMED", startedAt, finishedAt: verification.publicationEvidence.verifiedAt, gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings, errorClassification: "NONE", recoveryClassification: "NONE" };
+      const verifiedCandidate = verification.publicationEvidence?.verificationDetails?.candidate;
+      const acceptanceInput = {
+        ...lifecycleContext.submitAcceptanceEvidence,
+        platformAcceptance: "ACCEPTED", acceptanceSource: "STABLE_PUBLICATION_IDENTITY",
+        candidate: candidateEvidence({
+          ...verifiedCandidate,
+          authorMatched: verification.publicationEvidence?.accountMatched === true,
+          contentMatched: verification.publicationEvidence?.contentHashMatched === true
+        })
+      };
+      const finalAcceptance = verification.state === "CONFIRMED" ? validateSubmitAcceptanceEvidence(acceptanceInput) : lifecycleContext.submitAcceptanceEvidence;
+      const common = { startedAt, finishedAt: verification.state === "CONFIRMED" ? verification.publicationEvidence.verifiedAt : new Date().toISOString(), gates, computerUseCalls, browserCommands: Math.max(0, (this.browser.browserCommandCount?.() ?? commandStart) - commandStart), retries: 0, durationMs: Date.now() - began, telemetry: phaseTimings, submitAcceptanceEvidence: finalAcceptance };
+      if (verification.state !== "CONFIRMED") return { ...verification, reasonCode: lifecycleContext.submitAcceptanceEvidence?.platformAcceptance === "REJECTED" ? lifecycleContext.submitAcceptanceEvidence.errorReasonCode : verification.reasonCode, submitState: "UNKNOWN", ...common, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN" };
+      return { ...verification, submitState: "CONFIRMED", ...common, errorClassification: "NONE", recoveryClassification: "NONE" };
     } catch (error) {
       if (pageId && !submitted && !intentPersisted) {
         const cleanupStarted = Date.now();
@@ -560,7 +694,8 @@ export class LinkedInAdapter {
         recoveryClassification,
         preSubmitFailure,
         uploadFailure: error.uploadFailure || null,
-        reasonCode: code.toLowerCase()
+        reasonCode: lifecycleContext?.submitAcceptanceEvidence?.platformAcceptance === "REJECTED" ? lifecycleContext.submitAcceptanceEvidence.errorReasonCode : code.toLowerCase(),
+        submitAcceptanceEvidence: lifecycleContext?.submitAcceptanceEvidence || undefined
       };
     }
   }

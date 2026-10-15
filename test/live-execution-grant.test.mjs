@@ -168,6 +168,28 @@ test("durable submit intent consumes the exact grant in one state write and cann
   await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
 });
 
+test("SUBMIT_SENT durably records click emission separately from acceptance", async () => {
+  const f = await fixture();
+  await f.createGrant();
+  const row = await f.service.prepareExecutionRequest(f.posts[0].id, "operator");
+  const acquired = await f.service.acquireExecutionLease(row.executionId, "fixture-worker");
+  await f.service.beginExecutionSubmitIntent(row.executionId, acquired.lease, {
+    liveEnabled: true, liveExecutionId: row.executionId, verifiedGates: gates
+  });
+  const clickEmittedAt = new Date().toISOString();
+  await f.service.markExecutionSubmitSent(row.executionId, acquired.lease, {
+    clickStatus: "CLICK_EMITTED", clickEmittedAt, observedAt: clickEmittedAt,
+    platformAcceptance: "UNKNOWN", acceptanceSource: "NONE"
+  });
+  const state = await f.service.snapshot();
+  const saved = state.executionRequests.find((item) => item.executionId === row.executionId);
+  assert.equal(saved.state, "SUBMIT_SENT");
+  assert.equal(saved.clickEmittedAt, clickEmittedAt);
+  assert.equal(saved.submitAcceptanceEvidence.clickStatus, "CLICK_EMITTED");
+  assert.equal(saved.submitAcceptanceEvidence.platformAcceptance, "UNKNOWN");
+  await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
+});
+
 test("exact operator dispatch uses the same durable submit boundary without background-worker execution-id opt-in", async () => {
   const f = await fixture();
   const grant = await f.createGrant();

@@ -109,6 +109,7 @@ export class JevExecutionWorker {
       publicationUrl: verification?.publicationUrl || result.publicationUrl || null,
       publicationReference: verification?.publicationReference || result.publicationReference || null,
       publicationEvidence: verification?.verificationEvidence || result.publicationEvidence || undefined,
+      submitAcceptanceEvidence: result.submitAcceptanceEvidence || undefined,
       reconciliation,
       errorClassification: errorClass(receiptResult, dryRun),
       recoveryClassification: recoveryClass(receiptResult),
@@ -297,7 +298,7 @@ export class JevExecutionWorker {
             throw error;
           }
         },
-        onSubmitSent: () => this.service.markExecutionSubmitSent(executionId, lease)
+        onSubmitSent: (submitAcceptanceEvidence) => this.service.markExecutionSubmitSent(executionId, lease, submitAcceptanceEvidence)
       });
       if (preSubmitFailure) {
         result.preSubmitFailure = preSubmitFailure;

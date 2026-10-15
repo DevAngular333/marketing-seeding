@@ -49,6 +49,38 @@ function browserFor(surfaceResults = {}, { onWait, confirmationSignals = [] } = 
   return browser;
 }
 
+async function runPostClickAdapter({ ui, candidates = [], verification = { state: "UNKNOWN", reasonCode: "publication_not_observed" }, onWait } = {}) {
+  const calls = [];
+  let postClicks = 0;
+  let clickEmittedAt = null;
+  const browser = {
+    calls,
+    async snapshot() { return '- button "Post" [ref=post]'; },
+    async click(_page, ref) { assert.equal(ref, "post"); postClicks += 1; clickEmittedAt = new Date().toISOString(); calls.push("click"); return { ok: true }; },
+    async evaluate(_page, expression) {
+      calls.push(expression.includes("const postButtons") ? "ui" : "candidate");
+      if (expression.includes("const postButtons")) return ui || { url: "https://www.linkedin.com/feed/", composerState: "OPEN", postButtonState: "ENABLED", confirmationState: "NONE", successMessages: [], errorMessages: [] };
+      return typeof candidates === "function" ? candidates(clickEmittedAt) : candidates;
+    },
+    async waitForExpression(_page, _expression, timeoutMs) { calls.push(["wait", timeoutMs]); await onWait?.(); }
+  };
+  const adapter = new LinkedInAdapter(browser, { verifier: {}, postClickEvidenceTimeoutMs: 100 });
+  adapter.prepareExecution = async (requestValue) => ({ request: requestValue, pageId: "page-1", expectedIdentityUrl });
+  adapter.navigate = async (context) => context;
+  adapter.verifyTarget = async (context) => ({ ...context, targetVerified: true });
+  adapter.openComposer = async (context) => context;
+  adapter.fillContent = async (context) => context;
+  adapter.attachMedia = async (context) => ({ ...context, media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
+  adapter.verifyPreSubmit = async (context) => ({ ...context, gates: { passed: true } });
+  adapter.verifyPublished = async (context) => typeof verification === "function" ? verification(context) : verification;
+  const result = await adapter.execute(request(), {
+    dryRun: false, liveEnabled: true,
+    async beforeSubmitIntent() { calls.push("intent"); },
+    async onSubmitSent(evidence) { calls.push(["sent", evidence]); }
+  });
+  return { result, calls, postClicks };
+}
+
 test("immediate feed candidate confirms only with stable author, content, permalink and submit-time evidence", async () => {
   const browser = browserFor({ "https://www.linkedin.com/feed/": [candidate({ mediaPresent: false, mediaType: null })] });
   const result = await new LinkedInPublicationVerifier(browser, { timeoutMs: 30 }).verify(request({ withMedia: false }), "page-1", { expectedIdentityUrl, submittedAt });
@@ -199,6 +231,95 @@ test("immediate UNKNOWN keeps collected evidence in its receipt result and does 
   assert.equal(result.submitState, "UNKNOWN");
   assert.equal(result.reasonCode, "publication_media_identity_not_verifiable");
   assert.equal(result.publicationEvidence.marker, "read-only-candidate");
+  assert.equal(postClicks, 1);
+});
+
+test("ORCA click success is recorded as CLICK_EMITTED, not platform acceptance, with intent persisted first", async () => {
+  const { result, calls, postClicks } = await runPostClickAdapter();
+  assert.equal(result.submitState, "UNKNOWN");
+  assert.equal(result.reasonCode, "publication_not_observed");
+  assert.equal(result.submitAcceptanceEvidence.clickStatus, "CLICK_EMITTED");
+  assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "UNKNOWN");
+  assert.equal(calls[0], "intent");
+  assert.equal(calls[1], "click");
+  assert.equal(calls[2][0], "sent");
+  assert.equal(calls[2][1].clickStatus, "CLICK_EMITTED");
+  assert.equal(calls.filter((call) => call === "click").length, 1);
+  assert.equal(postClicks, 1);
+});
+
+test("success confirmation records platform acceptance without claiming publication verification", async () => {
+  const { result, postClicks } = await runPostClickAdapter({ ui: {
+    url: "https://www.linkedin.com/feed/", composerState: "CLOSED", postButtonState: "DISAPPEARED",
+    confirmationState: "SUCCESS", successMessages: ["Your post was shared"], errorMessages: []
+  } });
+  assert.equal(result.submitState, "UNKNOWN");
+  assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "ACCEPTED");
+  assert.equal(result.submitAcceptanceEvidence.acceptanceSource, "SUCCESS_CONFIRMATION");
+  assert.equal(result.submitAcceptanceEvidence.confirmationText, "Your post was shared");
+  assert.equal(postClicks, 1);
+});
+
+test("stable activity identity and permalink record strong acceptance evidence", async () => {
+  const permalink = "https://www.linkedin.com/feed/update/urn:li:activity:987654321/";
+  const result = await runPostClickAdapter({
+    candidates: (clickAt) => [candidate({ candidateTimestamp: new Date(Date.parse(clickAt) + 1).toISOString() })],
+    verification: (context) => {
+      const observedAt = new Date(Date.parse(context.clickEmittedAt) + 2_000).toISOString();
+      return { state: "CONFIRMED", publicationUrl: permalink, publicationEvidence: {
+        verifiedAt: observedAt, accountMatched: true, targetMatched: true, contentHashMatched: true,
+        mediaHashMatched: false, accountId: "linkedin_primary", profileId: "profile-1", targetId: "target-1",
+        contentHash: request().content.sha256, mediaHash: null, verificationMethod: "test", evidenceReference: permalink,
+        preSubmitMediaIntegrity, verificationDetails: { executionId: "execution-1", submittedAt: context.clickEmittedAt, observedAt,
+          candidate: { postId: "987654321", activityUrn: "urn:li:activity:987654321", permalink, timestamp: new Date(Date.parse(context.clickEmittedAt) + 1).toISOString(), timestampMatched: true, surface: "feed" },
+          authorIdentity: { matched: true }, contentMatch: { matched: true }, media: { present: true, type: "video", hashStatus: "NOT_VERIFIABLE" } }
+      } };
+    }
+  });
+  assert.equal(result.result.submitState, "CONFIRMED");
+  assert.equal(result.result.submitAcceptanceEvidence.platformAcceptance, "ACCEPTED");
+  assert.equal(result.result.submitAcceptanceEvidence.acceptanceSource, "STABLE_PUBLICATION_IDENTITY");
+  assert.equal(result.result.submitAcceptanceEvidence.candidate.postId, "987654321");
+  assert.equal(result.result.submitAcceptanceEvidence.candidate.permalink, permalink);
+  assert.equal(result.postClicks, 1);
+});
+
+test("composer closure alone does not verify publication", async () => {
+  const { result, postClicks } = await runPostClickAdapter({ ui: {
+    url: "https://www.linkedin.com/feed/", composerState: "CLOSED", postButtonState: "DISAPPEARED",
+    confirmationState: "NONE", successMessages: [], errorMessages: []
+  } });
+  assert.equal(result.submitState, "UNKNOWN");
+  assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "UNKNOWN");
+  assert.equal(postClicks, 1);
+});
+
+test("visible post-click media error is preserved as rejection evidence without retry", async () => {
+  const { result, postClicks } = await runPostClickAdapter({ ui: {
+    url: "https://www.linkedin.com/feed/", composerState: "OPEN", postButtonState: "ENABLED",
+    confirmationState: "ERROR", successMessages: [], errorMessages: ["Unable to publish this video because media processing failed"]
+  } });
+  assert.equal(result.submitState, "UNKNOWN");
+  assert.equal(result.reasonCode, "linkedin_media_processing_error");
+  assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "REJECTED");
+  assert.equal(result.submitAcceptanceEvidence.errorText, "Unable to publish this video because media processing failed");
+  const receipt = validateExecutionReceiptV1({
+    schemaVersion: 1, executionId: "execution-1", jobId: "job-1", attempt: 1,
+    startedAt: result.startedAt, finishedAt: result.finishedAt,
+    readinessResult: { state: "READY", checkedAt: submittedAt }, submitState: "UNKNOWN", dryRun: false,
+    reasonCode: result.reasonCode, errorClassification: "PLATFORM_ERROR", recoveryClassification: "UNKNOWN",
+    submitAcceptanceEvidence: result.submitAcceptanceEvidence, telemetry: {}
+  });
+  assert.equal(receipt.reasonCode, "linkedin_media_processing_error");
+  assert.equal(receipt.submitAcceptanceEvidence.errorText, "Unable to publish this video because media processing failed");
+  assert.equal(postClicks, 1);
+});
+
+test("acceptance wait timeout is quarantined and never emits another click", async () => {
+  const { result, postClicks, calls } = await runPostClickAdapter({ onWait: async () => { throw new Error("semantic wait deadline"); } });
+  assert.equal(result.submitState, "UNKNOWN");
+  assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "UNKNOWN");
+  assert.equal(calls.filter((call) => call === "click").length, 1);
   assert.equal(postClicks, 1);
 });
 

@@ -428,10 +428,21 @@ test("exact dispatch uses only its execution through the registry and never scan
     state: "SUBMIT_RESULT_UNKNOWN", submitState: "UNKNOWN", liveGrantId: "old-consumed-grant",
     request: { oneTimeWindow: { windowId: "old-consumed-window" } }
   };
-  fixture.context.state.executionRequests = [protectedUnknown];
-  fixture.context.state.liveExecutionGrants = [{ grantId: "old-consumed-grant", status: "CONSUMED", consumedExecutionId: protectedUnknown.executionId }];
-  fixture.context.state.oneTimeExecutionWindows = [{ windowId: "old-consumed-window", status: "CONSUMED", consumedExecutionId: protectedUnknown.executionId }];
-  const protectedBefore = structuredClone({ request: protectedUnknown, grant: fixture.context.state.liveExecutionGrants[0], window: fixture.context.state.oneTimeExecutionWindows[0] });
+  const secondProtectedUnknown = {
+    executionId: "c2265ddf-4384-4339-a26b-4949b6a12af9",
+    state: "SUBMIT_RESULT_UNKNOWN", submitState: "UNKNOWN", liveGrantId: "second-consumed-grant",
+    request: { oneTimeWindow: { windowId: "second-consumed-window" } }
+  };
+  fixture.context.state.executionRequests = [protectedUnknown, secondProtectedUnknown];
+  fixture.context.state.liveExecutionGrants = [
+    { grantId: "old-consumed-grant", status: "CONSUMED", consumedExecutionId: protectedUnknown.executionId },
+    { grantId: "second-consumed-grant", status: "CONSUMED", consumedExecutionId: secondProtectedUnknown.executionId }
+  ];
+  fixture.context.state.oneTimeExecutionWindows = [
+    { windowId: "old-consumed-window", status: "CONSUMED", consumedExecutionId: protectedUnknown.executionId },
+    { windowId: "second-consumed-window", status: "CONSUMED", consumedExecutionId: secondProtectedUnknown.executionId }
+  ];
+  const protectedBefore = structuredClone({ requests: fixture.context.state.executionRequests, grants: fixture.context.state.liveExecutionGrants, windows: fixture.context.state.oneTimeExecutionWindows });
   const dispatchedIds = [];
   let clickCount = 0;
   const gates = Object.fromEntries([
@@ -462,7 +473,7 @@ test("exact dispatch uses only its execution through the registry and never scan
   assert.equal(clickCount, 1);
   assert.equal(readyQueueCalls, 0);
   assert.equal(reconciliationCalls, 0);
-  assert.deepEqual({ request: protectedUnknown, grant: fixture.context.state.liveExecutionGrants[0], window: fixture.context.state.oneTimeExecutionWindows[0] }, protectedBefore);
+  assert.deepEqual({ requests: fixture.context.state.executionRequests, grants: fixture.context.state.liveExecutionGrants, windows: fixture.context.state.oneTimeExecutionWindows }, protectedBefore);
   assert.equal(fixture.calls.find(([name]) => name === "intent")[1].exactLiveDispatchEnabled, true);
   assert.ok(fixture.calls.some(([name]) => name === "lease"));
   assert.ok(fixture.calls.some(([name]) => name === "release"));
@@ -780,10 +791,16 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
     assert.equal(calls.filter(([name, ref]) => name === "click" && ref === "post").length, postClicksBefore);
     assert.equal(phase, "feed");
 
-    const liveAdapter = new LinkedInAdapter(browser, { verifier: { async verify() {
+    const liveAdapter = new LinkedInAdapter(browser, { verifier: { async verify(_request, _page, { submittedAt }) {
+      const permalink = "https://www.linkedin.com/feed/update/urn:li:activity:123/";
+      const candidateTimestamp = new Date(Date.parse(submittedAt) + 1_000).toISOString();
+      const observedAt = new Date(Date.parse(submittedAt) + 2_000).toISOString();
       return {
-        state: "CONFIRMED", publicationUrl: "https://www.linkedin.com/feed/update/urn:li:activity:123/",
-        publicationEvidence: { verifiedAt: new Date().toISOString() }
+        state: "CONFIRMED", publicationUrl: permalink,
+        publicationEvidence: {
+          verifiedAt: observedAt, accountMatched: true, contentHashMatched: true,
+          verificationDetails: { candidate: { postId: "123", activityUrn: "urn:li:activity:123", permalink, timestamp: candidateTimestamp, timestampMatched: true } }
+        }
       };
     } } });
     let intentCalls = 0;
