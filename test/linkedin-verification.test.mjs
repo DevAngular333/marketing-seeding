@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { LinkedInAdapter, LinkedInPublicationVerifier, LINKEDIN_VERIFICATION_EXPRESSION } from "../src/linkedin-adapter.mjs";
+import { LinkedInAdapter, LinkedInPublicationVerifier, LINKEDIN_VERIFICATION_EXPRESSION, linkedinAdapterExpressions } from "../src/linkedin-adapter.mjs";
 import { validateExecutionReceiptV1 } from "../src/execution-contracts.mjs";
 
 const content = "Cedar Lantern 7Q4K distinctive validation post";
@@ -58,6 +58,12 @@ async function runPostClickAdapter({ ui, candidates = [], verification = { state
     async snapshot() { return '- button "Post" [ref=post]'; },
     async click(_page, ref) { assert.equal(ref, "post"); postClicks += 1; clickEmittedAt = new Date().toISOString(); calls.push("click"); return { ok: true }; },
     async evaluate(_page, expression) {
+      if (expression === linkedinAdapterExpressions.submitControl) return {
+        url: "https://www.linkedin.com/feed/", composerCount: 1, composerState: "OPEN", buttonCount: 1,
+        control: { role: "button", accessibleName: "Post", visible: true, connected: true, enabled: true,
+          controlId: "post-submit", composerId: "composer-1", busy: false,
+          boundingBox: { x: 10, y: 20, width: 80, height: 30 }, hitTargetMatched: true, hitTargetRole: "button" }
+      };
       calls.push(expression.includes("const postButtons") ? "ui" : "candidate");
       if (expression.includes("const postButtons")) return ui || { url: "https://www.linkedin.com/feed/", composerState: "OPEN", postButtonState: "ENABLED", confirmationState: "NONE", successMessages: [], errorMessages: [] };
       return typeof candidates === "function" ? candidates(clickEmittedAt) : candidates;
@@ -210,6 +216,7 @@ test("immediate UNKNOWN keeps collected evidence in its receipt result and does 
   const browser = {
     async snapshot() { return '- button "Post" [ref=post]'; },
     async click(_page, ref) { assert.equal(ref, "post"); postClicks += 1; },
+    async evaluate(_page, expression) { if (expression === linkedinAdapterExpressions.submitControl) return submitControlObservation(); return {}; },
     browserCommandCount() { return postClicks; }
   };
   const adapter = new LinkedInAdapter(browser, { verifier: {} });
@@ -240,12 +247,87 @@ test("ORCA click success is recorded as CLICK_EMITTED, not platform acceptance, 
   assert.equal(result.reasonCode, "publication_not_observed");
   assert.equal(result.submitAcceptanceEvidence.clickStatus, "CLICK_EMITTED");
   assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "UNKNOWN");
+  assert.equal(result.submitAcceptanceEvidence.clickCommandEvidence.status, "COMMAND_COMPLETED");
+  assert.equal(result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_NOT_OBSERVED");
+  assert.equal(result.submitAcceptanceEvidence.preClickControlEvidence.composerMatched, true);
   assert.equal(calls[0], "intent");
   assert.equal(calls[1], "click");
   assert.equal(calls[2][0], "sent");
   assert.equal(calls[2][1].clickStatus, "CLICK_EMITTED");
+  assert.equal(calls[2][1].clickCommandEvidence.status, "COMMAND_COMPLETED");
   assert.equal(calls.filter((call) => call === "click").length, 1);
   assert.equal(postClicks, 1);
+});
+
+function submitControlObservation(overrides = {}) {
+  return {
+    url: "https://www.linkedin.com/feed/", composerCount: 1, composerState: "OPEN", buttonCount: 1,
+    control: { role: "button", accessibleName: "Post", visible: true, connected: true, enabled: true,
+      controlId: "post-submit", composerId: "composer-1", boundingBox: { x: 10, y: 20, width: 80, height: 30 },
+      hitTargetMatched: true, hitTargetRole: "button", ...overrides }
+  };
+}
+
+test("pre-click evidence binds the unique visible enabled Post control to the active composer", async () => {
+  const adapter = new LinkedInAdapter({
+    async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+    async evaluate(_page, expression) { assert.equal(expression, linkedinAdapterExpressions.submitControl); return submitControlObservation(); },
+    async showTab() { return { url: "https://www.linkedin.com/feed/" }; }
+  }, { verifier: {} });
+  const context = await adapter.verifyPreSubmit({
+    request: request(), pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+  });
+  assert.equal(context.submitRef, "post");
+  assert.equal(context.preClickControlEvidence.accessibleName, "Post");
+  assert.equal(context.preClickControlEvidence.composerMatched, true);
+  assert.equal(context.preClickControlEvidence.hitTargetMatched, true);
+  assert.match(context.preClickControlEvidence.controlIdentity, /^[a-f0-9]{64}$/);
+  assert.equal(context.gates.submitControlSafe, true);
+});
+
+test("stale, hidden, intercepted, wrong-composer, and ambiguous Post controls fail before submit intent", async (t) => {
+  const cases = [
+    { name: "detached control", observed: submitControlObservation({ connected: false }), code: "SUBMIT_CONTROL_NOT_ACTIONABLE" },
+    { name: "hidden control", observed: submitControlObservation({ visible: false }), code: "SUBMIT_CONTROL_NOT_ACTIONABLE" },
+    { name: "busy control", observed: submitControlObservation({ busy: true }), code: "SUBMIT_CONTROL_NOT_ACTIONABLE" },
+    { name: "intercepted control", observed: submitControlObservation({ hitTargetMatched: false }), code: "SUBMIT_CONTROL_NOT_ACTIONABLE" },
+    { name: "wrong composer", observed: { ...submitControlObservation(), composerCount: 2 }, code: "SUBMIT_CONTROL_WRONG_COMPOSER" },
+    { name: "multiple DOM controls", observed: { ...submitControlObservation(), buttonCount: 2 }, code: "SUBMIT_CONTROL_AMBIGUOUS" },
+    { name: "multiple snapshot controls", snapshot: '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]\n- button "Post" [ref=post-2]', observed: submitControlObservation(), code: "SUBMIT_CONTROL_AMBIGUOUS" }
+  ];
+  for (const item of cases) await t.test(item.name, async () => {
+    const adapter = new LinkedInAdapter({
+      async snapshot() { return item.snapshot || '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+      async evaluate() { return item.observed; }, async showTab() { return { url: "https://www.linkedin.com/feed/" }; }
+    }, { verifier: {} });
+    await assert.rejects(() => adapter.verifyPreSubmit({
+      request: request(), pageId: "page-1", targetVerified: true,
+      media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+    }), (error) => error.code === item.code && error.preSubmitFailure.gate === "finalSubmitControl");
+  });
+});
+
+test("submit control identity change is rejected before durable intent and click", async () => {
+  let observations = 0;
+  let intentCalls = 0;
+  let clicks = 0;
+  const browser = {
+    async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+    async evaluate() { observations += 1; return submitControlObservation({ controlId: observations === 1 ? "post-submit" : "different-button" }); },
+    async showTab() { return { url: "https://www.linkedin.com/feed/" }; },
+    async click() { clicks += 1; }
+  };
+  const adapter = new LinkedInAdapter(browser, { verifier: {} });
+  const context = await adapter.verifyPreSubmit({
+    request: request(), pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+  });
+  await assert.rejects(() => adapter.submit(context, {
+    async beforeSubmitIntent() { intentCalls += 1; }, async onSubmitSent() {}
+  }), (error) => error.code === "SUBMIT_CONTROL_IDENTITY_CHANGED");
+  assert.equal(intentCalls, 0);
+  assert.equal(clicks, 0);
 });
 
 test("success confirmation records platform acceptance without claiming publication verification", async () => {
@@ -257,6 +339,7 @@ test("success confirmation records platform acceptance without claiming publicat
   assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "ACCEPTED");
   assert.equal(result.submitAcceptanceEvidence.acceptanceSource, "SUCCESS_CONFIRMATION");
   assert.equal(result.submitAcceptanceEvidence.confirmationText, "Your post was shared");
+  assert.equal(result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_ACTIVATED");
   assert.equal(postClicks, 1);
 });
 
@@ -281,6 +364,7 @@ test("stable activity identity and permalink record strong acceptance evidence",
   assert.equal(result.result.submitAcceptanceEvidence.acceptanceSource, "STABLE_PUBLICATION_IDENTITY");
   assert.equal(result.result.submitAcceptanceEvidence.candidate.postId, "987654321");
   assert.equal(result.result.submitAcceptanceEvidence.candidate.permalink, permalink);
+  assert.equal(result.result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_ACTIVATED");
   assert.equal(result.postClicks, 1);
 });
 
@@ -291,6 +375,7 @@ test("composer closure alone does not verify publication", async () => {
   } });
   assert.equal(result.submitState, "UNKNOWN");
   assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "UNKNOWN");
+  assert.equal(result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_ACTIVATED", "composer closure shows a UI transition, not publication");
   assert.equal(postClicks, 1);
 });
 
@@ -302,6 +387,8 @@ test("visible post-click media error is preserved as rejection evidence without 
   assert.equal(result.submitState, "UNKNOWN");
   assert.equal(result.reasonCode, "linkedin_media_processing_error");
   assert.equal(result.submitAcceptanceEvidence.platformAcceptance, "REJECTED");
+  assert.equal(result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_ACTIVATED");
+  assert.ok(result.submitAcceptanceEvidence.postClickObservedAt);
   assert.equal(result.submitAcceptanceEvidence.errorText, "Unable to publish this video because media processing failed");
   const receipt = validateExecutionReceiptV1({
     schemaVersion: 1, executionId: "execution-1", jobId: "job-1", attempt: 1,
@@ -312,6 +399,7 @@ test("visible post-click media error is preserved as rejection evidence without 
   });
   assert.equal(receipt.reasonCode, "linkedin_media_processing_error");
   assert.equal(receipt.submitAcceptanceEvidence.errorText, "Unable to publish this video because media processing failed");
+  assert.equal(receipt.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_ACTIVATED");
   assert.equal(postClicks, 1);
 });
 
@@ -328,6 +416,7 @@ test("LinkedIn adapter preserves a pre-submit reason and failed gate without cli
   const browser = {
     async snapshot() { return '- button "Post" [ref=post]'; },
     async click() { postClicks += 1; },
+    async evaluate(_page, expression) { if (expression === linkedinAdapterExpressions.submitControl) return submitControlObservation(); return {}; },
     browserCommandCount() { return postClicks; }
   };
   const adapter = new LinkedInAdapter(browser, { verifier: {} });

@@ -80,9 +80,55 @@ export function validateSubmitAcceptanceEvidence(input) {
     timestamp: timestamp(candidateInput.timestamp, "candidate.timestamp"),
     timestampMatched: candidateInput.timestampMatched === true
   };
+  const clickCommandInput = input.clickCommandEvidence && typeof input.clickCommandEvidence === "object" ? input.clickCommandEvidence : null;
+  const clickCommandEvidence = clickCommandInput ? {
+    status: enumValue(clickCommandInput.status, ["COMMAND_COMPLETED", "OUTCOME_UNKNOWN"], "clickCommandEvidence.status", "OUTCOME_UNKNOWN"),
+    observedAt: timestamp(clickCommandInput.observedAt, "clickCommandEvidence.observedAt")
+  } : null;
+  if (clickCommandEvidence && !clickCommandEvidence.observedAt) throw new Error("submitAcceptanceEvidence.clickCommandEvidence.observedAt is required");
+  const activationInput = input.controlActivationEvidence && typeof input.controlActivationEvidence === "object" ? input.controlActivationEvidence : null;
+  const controlActivationEvidence = activationInput ? {
+    status: enumValue(activationInput.status, ["CONTROL_ACTIVATED", "CONTROL_NOT_OBSERVED", "CONTROL_ACTIVATION_UNKNOWN"], "controlActivationEvidence.status", "CONTROL_ACTIVATION_UNKNOWN"),
+    observedAt: timestamp(activationInput.observedAt, "controlActivationEvidence.observedAt"),
+    signals: Array.isArray(activationInput.signals) ? activationInput.signals.map((signal) => String(signal).toLowerCase()).filter((signal) => /^[a-z0-9_:-]{1,80}$/.test(signal)).slice(0, 12) : []
+  } : null;
+  if (controlActivationEvidence && !controlActivationEvidence.observedAt) throw new Error("submitAcceptanceEvidence.controlActivationEvidence.observedAt is required");
+  if (controlActivationEvidence?.status === "CONTROL_ACTIVATED" && !controlActivationEvidence.signals.length) throw new Error("CONTROL_ACTIVATED requires an observed transition signal");
+  const controlInput = input.preClickControlEvidence && typeof input.preClickControlEvidence === "object" ? input.preClickControlEvidence : null;
+  const boxInput = controlInput?.boundingBox && typeof controlInput.boundingBox === "object" ? controlInput.boundingBox : null;
+  const boundingBox = boxInput && [boxInput.x, boxInput.y, boxInput.width, boxInput.height].every((value) => Number.isFinite(Number(value)))
+    ? { x: Number(boxInput.x), y: Number(boxInput.y), width: Number(boxInput.width), height: Number(boxInput.height) } : null;
+  const preClickControlEvidence = controlInput ? {
+    role: controlInput.role ? String(controlInput.role).slice(0, 40) : null,
+    accessibleName: controlInput.accessibleName ? String(controlInput.accessibleName).replace(/[\r\n\t]+/g, " ").slice(0, 120) : null,
+    controlRef: controlInput.controlRef ? String(controlInput.controlRef).slice(0, 100) : null,
+    controlIdentity: controlInput.controlIdentity ? String(controlInput.controlIdentity).toLowerCase().slice(0, 64) : null,
+    visible: controlInput.visible === true,
+    connected: controlInput.connected === true,
+    enabled: controlInput.enabled === true,
+    busy: controlInput.busy === true,
+    composerState: enumValue(controlInput.composerState, ["OPEN", "CLOSED", "UNKNOWN"], "preClickControlEvidence.composerState", "UNKNOWN"),
+    composerMatched: controlInput.composerMatched === true,
+    composerCount: Number.isFinite(Number(controlInput.composerCount)) ? Number(controlInput.composerCount) : 0,
+    buttonCount: Number.isFinite(Number(controlInput.buttonCount)) ? Number(controlInput.buttonCount) : 0,
+    hitTargetMatched: controlInput.hitTargetMatched === true,
+    boundingBox,
+    url: safeLinkedInPath(controlInput.url, "submitAcceptanceEvidence.preClickControlEvidence.url"),
+    capturedAt: timestamp(controlInput.capturedAt, "preClickControlEvidence.capturedAt")
+  } : null;
+  if (preClickControlEvidence?.controlIdentity && !/^[a-f0-9]{64}$/.test(preClickControlEvidence.controlIdentity)) throw new Error("submitAcceptanceEvidence.preClickControlEvidence.controlIdentity is invalid");
+  if (preClickControlEvidence && (!preClickControlEvidence.visible || !preClickControlEvidence.connected || !preClickControlEvidence.enabled || preClickControlEvidence.busy ||
+    !preClickControlEvidence.composerMatched || !preClickControlEvidence.hitTargetMatched || !preClickControlEvidence.boundingBox ||
+    preClickControlEvidence.boundingBox.width <= 0 || preClickControlEvidence.boundingBox.height <= 0)) {
+    throw new Error("preClickControlEvidence must identify a visible actionable control inside the active composer");
+  }
   const evidence = {
     clickStatus: enumValue(input.clickStatus, ["CLICK_EMITTED", "UNKNOWN"], "clickStatus", "UNKNOWN"),
     clickEmittedAt: timestamp(input.clickEmittedAt, "clickEmittedAt"),
+    clickCommandEvidence,
+    preClickControlEvidence,
+    controlActivationEvidence,
+    postClickObservedAt: timestamp(input.postClickObservedAt, "postClickObservedAt"),
     platformAcceptance: enumValue(input.platformAcceptance, ["ACCEPTED", "REJECTED", "UNKNOWN"], "platformAcceptance", "UNKNOWN"),
     acceptanceSource: enumValue(input.acceptanceSource, ["SUCCESS_CONFIRMATION", "STABLE_PUBLICATION_IDENTITY", "VISIBLE_PLATFORM_ERROR", "NONE"], "acceptanceSource", "NONE"),
     observedAt: timestamp(input.observedAt, "observedAt"),

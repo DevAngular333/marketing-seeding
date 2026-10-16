@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { JevExecutionWorker } from "../src/jev-execution-worker.mjs";
-import { LinkedInAdapter } from "../src/linkedin-adapter.mjs";
+import { LinkedInAdapter, linkedinAdapterExpressions } from "../src/linkedin-adapter.mjs";
 import { linkedInReadinessExpressions } from "../src/linkedin-readiness.mjs";
 import { PLATFORM_CAPABILITIES, PlatformAdapterRegistry } from "../src/platform-registries.mjs";
 
@@ -21,6 +21,14 @@ function adapterRegistry(entries) {
     });
   }
   return registry;
+}
+
+function submitControlFixture(url = "https://www.linkedin.com/feed/") {
+  return { url, composerCount: 1, composerState: "OPEN", buttonCount: 1, control: {
+    role: "button", accessibleName: "Post", visible: true, connected: true, enabled: true,
+    controlId: "submit", composerId: "composer", boundingBox: { x: 20, y: 20, width: 80, height: 32 },
+    hitTargetMatched: true, hitTargetRole: "button"
+  } };
 }
 
 function executionFixture(overrides = {}) {
@@ -704,6 +712,7 @@ test("LinkedIn adapter dry-run fills and verifies a draft, then closes without c
       return '- textbox "Post editor" [ref=editor]\n- button "Phương tiện truyền thông" [expanded=false, ref=media]\n- button "Post" [ref=post]';
     },
     async evaluate(_id, expression) {
+      if (expression === linkedinAdapterExpressions.submitControl) return submitControlFixture();
       if (expression.includes("LINKEDIN_MEDIA_SURFACE_STATE")) return { dialogCount: phase === "media" || phase === "uploaded" || phase === "media-next" ? 2 : 1, composerCount: 1, mediaDialogCount: phase === "media" || phase === "uploaded" || phase === "media-next" ? 1 : 0, fileInputCount: 2 };
       if (expression.includes("LINKEDIN_MEDIA_OPEN")) { phase = "media"; return { clicked: true }; }
       if (expression.includes("LINKEDIN_MEDIA_BASELINE")) return { fileInputCount: 2, selectedCount: 0 };
@@ -843,9 +852,10 @@ test("LinkedIn adapter waits for the authenticated shell after navigation instea
     },
     async snapshot() {
       if (phase === "feed") return '- button "Start a post" [ref=trigger]';
-      return '- textbox "Post editor" [ref=editor]\\n- button "Post" [ref=post]';
+      return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]';
     },
     async evaluate(_id, expression) {
+      if (expression === linkedinAdapterExpressions.submitControl) return submitControlFixture();
       if (expression.includes("LINKEDIN_MEDIA_CLEANUP_STATE")) return { path: phase === "feed" ? "/feed/" : "/sharing/compose", composerCount: phase === "feed" ? 0 : 1, mediaDialogCount: 0, selectedFileCount: 0 };
       if (expression.includes("LINKEDIN_MEDIA_CLEAR_COMPOSER")) return { cleared: true };
       if (expression.includes("LINKEDIN_MEDIA_CANCEL_COMPOSER")) { phase = "feed"; return { clicked: true }; }
@@ -892,8 +902,9 @@ test("LinkedIn composer trigger uses one strictly guarded direct DOM activation 
     async listTabs() { return [{ id: "page-1", profileId: "profile-1", url: "https://www.linkedin.com/feed/" }]; },
     async showTab() { return { pageId: "page-1", profileId: "profile-1", url: "https://www.linkedin.com/feed/" }; },
     async navigate() {}, async waitForUrl() {}, async waitForFeed() {},
-    async snapshot() { return phase === "feed" ? '- button "Start a post" [ref=trigger]' : '- textbox "Post editor" [ref=editor]\\n- button "Post" [ref=post]'; },
+    async snapshot() { return phase === "feed" ? '- button "Start a post" [ref=trigger]' : '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
     async evaluate(_id, expression) {
+      if (expression === linkedinAdapterExpressions.submitControl) return submitControlFixture();
       if (expression.includes("LINKEDIN_MEDIA_CLEANUP_STATE")) return { path: phase === "feed" ? "/feed/" : "/sharing/compose", composerCount: phase === "feed" ? 0 : 1, mediaDialogCount: 0, selectedFileCount: 0 };
       if (expression.includes("LINKEDIN_MEDIA_CLEAR_COMPOSER")) return { cleared: true };
       if (expression.includes("LINKEDIN_MEDIA_CANCEL_COMPOSER")) { phase = "feed"; return { clicked: true }; }

@@ -97,6 +97,8 @@ export class OrcaCliClient {
   }
 
   async click(pageId, element) {
+    // A successful CLI command only acknowledges the browser action request.
+    // It does not prove that the target activated or that the platform accepted it.
     await this.#run(["click", "--element", element, "--page", pageId, "--worktree", this.worktree]);
   }
 
