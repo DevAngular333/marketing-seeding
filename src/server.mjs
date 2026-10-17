@@ -271,6 +271,7 @@ function automationCanMutate(method, pathname) {
     /^\/api\/campaigns\/[^/]+\/stories$/,
     /^\/api\/campaigns\/[^/]+\/product-intelligence$/,
     /^\/api\/campaigns\/[^/]+\/discoveries$/,
+    /^\/api\/campaigns\/[^/]+\/outcome$/,
     /^\/api\/stories\/[^/]+\/channel-drafts$/,
     /^\/api\/schedules\/[^/]+\/runs$/,
     /^\/api\/posts\/[^/]+\/collect-metrics$/,
@@ -462,6 +463,10 @@ const server = http.createServer(async (request, response) => {
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/strategy$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 200, await service.deriveStrategy(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/outcome$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.deriveOutcomeSummary(match[1], await readJson(request), actor));
     }
     if (request.method === "POST" && url.pathname === "/api/targets") {
       return sendJson(response, 201, await service.createTarget(await readJson(request), actor));

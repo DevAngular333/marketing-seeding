@@ -22,6 +22,7 @@ import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtif
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { deriveContentCandidates } from "./content-foundation.mjs";
+import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
 import { appRoot } from "./paths.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
@@ -628,6 +629,21 @@ export class SeedingService {
       }
     }, actor);
     return { campaignId, inspection, productIntelligence: attached, persisted: true, externalSideEffects: false };
+  }
+
+  /** Persist one bounded deterministic outcome summary from existing read-only state. */
+  async deriveOutcomeSummary(campaignId, input = {}, actor = "outcome-observer") {
+    const state = await this.store.read();
+    requireItem(state.campaigns, campaignId, "Campaign");
+    const now = input.now ? new Date(input.now) : new Date();
+    if (!Number.isFinite(now.getTime())) throw new Error("Outcome summary time must be valid");
+    const summary = deriveOutcomeSummary(state, campaignId, { now });
+    const result = await this.store.mutate(actor, "campaign_outcome_summary_recorded", (nextState) => {
+      const campaign = requireItem(nextState.campaigns, campaignId, "Campaign");
+      appendOutcomeSummary(campaign, summary);
+      return summary;
+    });
+    return result.result;
   }
 
   /** Persist one bounded, deterministic advisory strategy decision. No execution authority is changed. */
@@ -3539,6 +3555,7 @@ export class SeedingService {
       pendingReplies: state.replies.filter((item) => item.status !== "sent").length,
       channels,
       campaigns: state.campaigns,
+      outcomes: state.campaigns.filter((campaign) => campaign.outcomeSummary).map((campaign) => ({ campaignId: campaign.id, latest: campaign.outcomeSummary, recent: (campaign.outcomeSummaries || []).slice(-24), updatedAt: campaign.outcomeUpdatedAt || null })),
       productIntelligence: state.campaigns
         .filter((campaign) => campaign.productIntelligence)
         .map((campaign) => ({
