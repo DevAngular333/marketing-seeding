@@ -1103,6 +1103,22 @@ function MissionControlPanel({ data }: { data: R }) {
           : "Đã bật · chưa chạy"
         : "Đang tắt"
     : "Chưa có runtime"
+  const accountRuntime = Array.isArray(data?.accountRuntime)
+    ? data.accountRuntime
+    : Array.isArray(data?.executionAccounts)
+      ? data.executionAccounts
+      : []
+  const accountRows = accountRuntime.map((account: R) => ({
+    id: String(account?.id || "UNKNOWN"),
+    platform: String(account?.platform || "UNKNOWN"),
+    sessionMode: String(account?.sessionMode || "UNKNOWN"),
+    authMode: String(account?.authMode || "UNKNOWN"),
+    eligible: account?.eligibleForExecution === true,
+    blocker: String(account?.currentBlocker || "UNKNOWN"),
+    reasons: Array.isArray(account?.ineligibilityReasons)
+      ? account.ineligibilityReasons.map((reason: unknown) => String(reason)).filter(Boolean)
+      : [],
+  }))
   return (
     <section className="panel mission-control-panel full-span">
       <div className="panel-head">
@@ -1147,6 +1163,34 @@ function MissionControlPanel({ data }: { data: R }) {
               : "Chưa có outcome summary"}
           </small>
         </article>
+      </div>
+      <div className="mission-account-runtime">
+        <div className="mission-account-head">
+          <div>
+            <span className="mission-eyebrow">Account / session readiness</span>
+            <small>Read-only projection · không đăng nhập, chọn account hoặc chạy browser</small>
+          </div>
+          <span className="status">{accountRows.length ? `${accountRows.length} account` : "UNKNOWN"}</span>
+        </div>
+        {accountRows.length ? (
+          <div className="mission-account-list">
+            {accountRows.map((account) => (
+              <article key={account.id}>
+                <div className="mission-account-title">
+                  <strong>{account.id}</strong>
+                  <span className={account.eligible ? "status completed" : "status failed"}>
+                    {account.eligible ? "Eligible" : "Ineligible"}
+                  </span>
+                </div>
+                <small>{account.platform} · {account.sessionMode} · {account.authMode}</small>
+                <small>Blocker: {account.blocker}</small>
+                <small>Reasons: {account.reasons.length ? account.reasons.join(" · ") : "—"}</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">Chưa có account runtime projection.</div>
+        )}
       </div>
     </section>
   )
