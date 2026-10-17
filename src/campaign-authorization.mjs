@@ -147,6 +147,13 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
   if (allowedAudiences.length === 0) throw new Error("Campaign authorization requires explicit allowedAudiences");
   const allowedVisibilities = Array.isArray(input.publicationVisibilityRules?.allowedVisibilities)
     ? [...new Set(input.publicationVisibilityRules.allowedVisibilities.map((item) => normalizePublicationVisibility(item)))] : ["PUBLIC"];
+  const executionMode = String(input.executionMode || "manual_exact").trim();
+  if (!["manual_exact", "standing_autonomous"].includes(executionMode)) {
+    throw new Error("Unsupported campaign executionMode");
+  }
+  const standingAuthorizationReference = executionMode === "standing_autonomous"
+    ? required(input.standingAuthorizationReference, "standingAuthorizationReference")
+    : null;
 
   const schedule = input.schedule || {};
   const timezone = required(schedule.timezone, "schedule timezone");
@@ -181,6 +188,8 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
     contentBoundary: contentBoundaryNormalized,
     audienceRules: { allowedAudiences },
     publicationVisibilityRules: { allowedVisibilities },
+    executionMode,
+    standingAuthorizationReference,
     schedule: { timezone, weekdays, startLocal, endLocal },
     rateLimits,
     allowLiveExecution: input.allowLiveExecution === true,

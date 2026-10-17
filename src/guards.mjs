@@ -32,6 +32,23 @@ export function approvalFingerprint(post, target) {
   })).digest("hex");
 }
 
+/**
+ * Global live-execution fence. A kill epoch is monotonic: queue entries are
+ * stamped with the epoch they were admitted under, and an epoch advance
+ * invalidates every older queued entry until an operator explicitly rebases
+ * that entry after the normal governance checks.
+ */
+export function killSwitchReasons(post, state, { mode = "live" } = {}) {
+  if (mode === "dry_run") return [];
+  const killSwitch = state?.control?.killSwitch || {};
+  const epoch = Number.isSafeInteger(killSwitch.epoch) && killSwitch.epoch >= 0 ? killSwitch.epoch : 0;
+  const reasons = [];
+  if (killSwitch.active === true) reasons.push("kill_switch_active");
+  if (epoch > 0 && !Number.isSafeInteger(post?.queuedKillEpoch)) reasons.push("kill_switch_epoch_unbound");
+  if (Number.isSafeInteger(post?.queuedKillEpoch) && epoch > post.queuedKillEpoch) reasons.push("kill_switch_epoch_advanced");
+  return reasons;
+}
+
 export function evaluateQueue(post, state, now = new Date(), { mode = "live", executionId = null } = {}) {
   const dryRun = mode === "dry_run";
   const target = state.targets.find((item) => item.id === post.targetId);
@@ -40,6 +57,7 @@ export function evaluateQueue(post, state, now = new Date(), { mode = "live", ex
   if (!policy) return { allowed: false, reasons: ["channel_policy_missing"] };
 
   const reasons = [];
+  reasons.push(...killSwitchReasons(post, state, { mode }));
   if (post.assetPath) {
     const artifact = (state.artifacts || []).find((item) => item.id === post.artifactId);
     if (!artifact || !post.assetSha256 || artifact.sha256 !== post.assetSha256) reasons.push("asset_evidence_missing_or_stale");

@@ -9,7 +9,7 @@ import { attachLinkedInMedia, cleanupLinkedInComposer } from "./linkedin-media.m
 import { isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateSubmitAcceptanceEvidence } from "./execution-contracts.mjs";
 import { publicationVisibilityMatchesLabels, normalizePublicationVisibility } from "./publication-visibility.mjs";
 import { assertClickPreflight, clickCommandEvidence, controlActivationEvidence as buildControlActivationEvidence } from "./click-transport.mjs";
-import { OrcaAccessibilityTransport, assertTransportCannotChangeAfterIntent } from "./browser-interaction-transport.mjs";
+import { OrcaAccessibilityTransport, assertTransportCannotChangeAfterIntent, assertValidatedTransport } from "./browser-interaction-transport.mjs";
 
 
 function refOf(line) {
@@ -696,7 +696,7 @@ export class LinkedInAdapter {
     return validateSubmitAcceptanceEvidence(evidence);
   }
 
-  async submit(context, { beforeSubmitIntent, onSubmitSent } = {}) {
+  async submit(context, { beforeSubmitIntent, beforeProviderSend, onSubmitSent } = {}) {
     if (typeof beforeSubmitIntent !== "function" || typeof onSubmitSent !== "function") throw new Error("Live submit requires durable intent and submit-state callbacks");
     const currentControl = await this.#captureSubmitControl(context);
     if (context.preClickControlEvidence?.controlIdentity && currentControl.preClickControlEvidence.controlIdentity !== context.preClickControlEvidence.controlIdentity) {
@@ -710,7 +710,12 @@ export class LinkedInAdapter {
     context.selectedTransport = this.selectedTransport;
     context.preClickControlEvidence = currentControl.preClickControlEvidence;
     context.urlBeforeSubmit = context.urlBeforeSubmit || currentControl.preClickControlEvidence.url;
-    if (!this.transport || typeof this.transport.click !== "function" || typeof this.browser?.click !== "function") {
+    try {
+      assertValidatedTransport(this.transport);
+    } catch (error) {
+      throw Object.assign(error, { preSubmitFailure: { reasonCode: "TRANSPORT_NOT_CERTIFIED", stage: "submit_boundary", gate: "browserTransport", gateStatus: false } });
+    }
+    if (!this.transport || typeof this.transport.click !== "function") {
       throw Object.assign(new Error("LinkedIn browser interaction transport is unavailable"), { code: "TRANSPORT_UNAVAILABLE", preSubmitFailure: { reasonCode: "TRANSPORT_UNAVAILABLE", stage: "submit_boundary", gate: "browserTransport", gateStatus: false } });
     }
     await beforeSubmitIntent(context.gates);
@@ -725,13 +730,15 @@ export class LinkedInAdapter {
     const preflight = clickPreflight;
     try {
       assertTransportCannotChangeAfterIntent({ selectedTransport: context.selectedTransport, requestedTransport: this.selectedTransport, intentPersisted: false });
-      commandResult = await this.transport.click({ pageId: context.pageId, targetRef: context.submitRef, targetIdentity: context.preClickControlEvidence.controlIdentity }, {
+      commandResult = await this.transport.click({ pageId: context.pageId, targetRef: context.submitRef, targetIdentity: context.preClickControlEvidence.controlIdentity, boundingBox: context.preClickControlEvidence.boundingBox }, {
         validate: async () => {
           const latest = await this.#captureSubmitControl(context);
           if (latest.preClickControlEvidence.controlIdentity !== context.preClickControlEvidence.controlIdentity) {
             throw submitControlFailure("SUBMIT_CONTROL_IDENTITY_CHANGED", "LinkedIn submit control changed immediately before browser input", "finalSubmitControl", latest.preClickControlEvidence);
           }
-          return assertClickPreflight(latest.preClickControlEvidence);
+          const safe = assertClickPreflight(latest.preClickControlEvidence);
+          await beforeProviderSend?.();
+          return safe;
         }
       });
     } catch (error) {
@@ -862,7 +869,7 @@ export class LinkedInAdapter {
     await cleanupLinkedInComposer(this.browser, pageId, request.content.sha256);
   }
 
-  async execute(request, { dryRun = true, liveEnabled = false, beforeSubmitIntent, onSubmitSent, account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl } = {}) {
+  async execute(request, { dryRun = true, liveEnabled = false, beforeSubmitIntent, beforeProviderSend, onSubmitSent, account, expectedIdentityUrl = account?.identityReference || account?.expectedIdentityUrl } = {}) {
     const startedAt = new Date().toISOString();
     const began = Date.now();
     let pageId;
@@ -909,7 +916,7 @@ export class LinkedInAdapter {
       }
       if (!liveEnabled || typeof beforeSubmitIntent !== "function" || typeof onSubmitSent !== "function") throw new Error("Live publish is disabled; dry-run is the default");
       lifecycleContext.submitRef = submit;
-      await this.submit(lifecycleContext, { beforeSubmitIntent, onSubmitSent });
+      await this.submit(lifecycleContext, { beforeSubmitIntent, beforeProviderSend, onSubmitSent });
       intentPersisted = lifecycleContext.intentPersisted === true;
       submitted = lifecycleContext.submitted === true;
       const verification = await this.verifyPublished(lifecycleContext);

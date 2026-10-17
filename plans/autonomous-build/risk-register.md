@@ -1,12 +1,14 @@
-# Risk Register
+# Risk Register (verified 2026-10-17)
 
 | ID | Risk | Severity | Control | State |
 |---|---|---:|---|---|
-| R1 | Standing delegation broadens authority | P0 | Derive narrower exact controls; fingerprint and bind campaign/account/profile/target/content/visibility; one execution only | OPEN |
-| R2 | Browser command receipt mistaken for publish | P0 | Preserve transport/activation/acceptance/verification layers and UNKNOWN quarantine | CONTROLLED |
-| R3 | Duplicate or blind retry after timeout | P0 | Durable submit intent, execution lease, idempotency, immutable UNKNOWN | CONTROLLED |
-| R4 | Product claims exceed evidence | P1 | Evidence/claim graph rejects unsupported claims | PLANNED |
-| R5 | Product factory executes unsafe repo code | P1 | Classifier and bounded local runner with explicit allowlist/isolation; no external mutation | PLANNED |
-| R6 | Workers share canonical runtime | P0 | Separate worktrees and fixture state/ports; live lane exclusive | CONTROLLED |
-| R7 | Core/domain duplication | P1 | Keep System-Agentic Core read-only; marketing owns domain state/policy | CONTROLLED |
-| R8 | Current live proof unavailable | P0 | Isolate as external hard blocker; continue local engineering | OPEN |
+| R1 | Standing delegation could broaden authority | P0 | Exact campaign/account/profile/target/content/visibility binding; active authorization; one-time window; single-use grant; lease; quotas/cadence/concurrency; kill epoch; provider-send fence; regression tests | CONTROLLED locally; live lane unproven |
+| R2 | Browser command receipt mistaken for publish | P0 | Separate transport, semantic activation, platform acceptance and independent publication verification; `UNKNOWN` quarantine | CONTROLLED in code/tests; real website unverified |
+| R3 | Timeout may cause duplicate submit | P0 | Durable submit intent, lease, idempotency, no blind redispatch, read-only reconciliation | CONTROLLED in code/tests; no live proof |
+| R4 | Product claims exceed evidence | P1 | Evidence hashes and claim references; unsupported claims quarantined | CONTROLLED for caller-supplied local evidence; automated discovery absent |
+| R5 | Product factory could execute unsafe repo code | P1 | Classifier, explicit binary allowlist, no shell, path containment, bounded output/time, redaction | CONTROLLED in local tests; broad build/render pipeline absent |
+| R6 | Workers share canonical runtime | P0 | Isolated worktrees/fixtures; canonical runtime read-only in this wave; live lane exclusive | CONTROLLED |
+| R7 | Core/domain duplication | P1 | System-Agentic Core read-only; domain state/policy remains marketing-seeding | CONTROLLED |
+| R8 | Live proof unavailable | P0 | Blocked lane recorded; do not invent grants or mutate UNKNOWN history | OPEN — external hard blocker |
+| R9 | Transport certification is duck-typed | P1 | LinkedIn submit boundary rejects unmarked transport; ORCA implementations enforce validator | ACCEPTED RESIDUAL; no bypass found |
+| R10 | Metrics/learning and multi-platform adapters incomplete | P1 | Explicit readiness classification; only LinkedIn adapter registered for execution | OPEN, downstream roadmap |

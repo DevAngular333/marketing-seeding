@@ -465,6 +465,27 @@ test("submit control identity change is rejected before durable intent and click
   assert.equal(clicks, 0);
 });
 
+test("LinkedIn final submit rejects a transport that cannot prove pre-provider validation", async () => {
+  let intentCalls = 0;
+  let clicks = 0;
+  const browser = {
+    async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+    async evaluate() { return submitControlObservation(); },
+    async showTab() { return { url: "https://www.linkedin.com/feed/" }; },
+    async click() { clicks += 1; }
+  };
+  const adapter = new LinkedInAdapter(browser, { verifier: {}, transport: { runtimeIdentity: () => ({ transport: "unmarked" }), async click() {} } });
+  const context = await adapter.verifyPreSubmit({
+    request: request(), pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+  });
+  await assert.rejects(() => adapter.submit(context, {
+    async beforeSubmitIntent() { intentCalls += 1; }, async onSubmitSent() {}
+  }), (error) => error.code === "TRANSPORT_NOT_CERTIFIED" && error.preSubmitFailure?.gate === "browserTransport");
+  assert.equal(intentCalls, 0);
+  assert.equal(clicks, 0);
+});
+
 test("immediate click preflight rejects a moved or covered control before durable intent", async (t) => {
   for (const [name, override] of [["moved", { controlId: "moved-control" }], ["covered", { hitTargetMatched: false }], ["detached", { connected: false }]]) {
     await t.test(name, async () => {

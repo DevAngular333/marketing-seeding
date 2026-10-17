@@ -1,9 +1,20 @@
 {
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
-  "baseHead": "b4fa42b161896f1d4992743d5daa9f0fc91c70a5",
-  "checkpointCommit": null,
-  "acceptedCommits": [],
+  "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
+  "checkpointCommit": "PENDING_RELEASE_COMMIT",
+  "acceptedCommits": [
+    "c4fb42f feat: add bounded standing campaign delegation",
+    "2428606 feat: add evidence-grounded product intelligence",
+    "a72d231 feat: add safe product factory foundation",
+    "working-tree seam changes: kill-switch fencing, readiness/provider-send guards, transport validation, queue epoch stamping, regression tests"
+  ],
   "rejectedCommits": [],
-  "gates": []
+  "gates": [
+    {"name":"independent_static_review","result":"ACCEPT","notes":"No blocking findings; bounded residual is duck-typed transport contract"},
+    {"name":"focused_integrated_tests","result":"PASS","tests":152,"passed":152,"failed":0,"skipped":0},
+    {"name":"full_node_suite","result":"PASS","tests":299,"passed":297,"failed":0,"skipped":2,"exitCode":0},
+    {"name":"syntax_and_diff_check","result":"PASS","nodeCheck":"passed","gitDiffCheck":"passed"},
+    {"name":"canonical_runtime_immutability","result":"PASS","schemaVersion":8,"revision":193,"sha256":"327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae"}
+  ]
 }

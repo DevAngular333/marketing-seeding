@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   OrcaAccessibilityTransport,
   OrcaPointerTransport,
+  assertValidatedTransport,
   assertTransportCannotChangeAfterIntent,
   selectCertifiedTransport,
   transportReceipt
@@ -91,6 +92,12 @@ test("selection is deterministic and transport cannot switch after durable inten
   assert.equal(assertTransportCannotChangeAfterIntent({ selectedTransport: "orca-accessibility", requestedTransport: "playwright-pointer", intentPersisted: false }), "orca-accessibility");
 });
 
+test("final-submit validation contract rejects an unmarked custom transport", () => {
+  assert.throws(() => assertValidatedTransport({ async click() {} }), /not certified/);
+  const transport = new OrcaAccessibilityTransport({ async click() {} });
+  assert.equal(assertValidatedTransport(transport), transport);
+});
+
 test("ORCA accessibility transport preserves normalized receipt", async () => {
   const browser = {
     runtimeVersion: "1.4.227",
@@ -118,4 +125,21 @@ test("ORCA pointer transport uses one validated normal pointer sequence", async 
   assert.equal(receipt.commandStatus, "COMMAND_COMPLETED");
   assert.deepEqual(calls, [["move", "page", 50, 35], ["down", "page", "left"], ["up", "page", "left"]]);
   assert.equal(receipt.activation, null);
+});
+
+test("ORCA pointer transport emits no pointer input when final validation fails", async () => {
+  const calls = [];
+  const browser = {
+    async mouseMove(...args) { calls.push(["move", ...args]); },
+    async mouseDown(...args) { calls.push(["down", ...args]); },
+    async mouseUp(...args) { calls.push(["up", ...args]); }
+  };
+  const transport = new OrcaPointerTransport(browser);
+  await assert.rejects(
+    transport.click({ pageId: "page", targetRef: "safe", boundingBox: { x: 10, y: 20, width: 80, height: 30 } }, {
+      validate: async () => { throw Object.assign(new Error("target moved"), { code: "HIT_TARGET_DRIFT" }); }
+    }),
+    /target moved/
+  );
+  assert.deepEqual(calls, []);
 });

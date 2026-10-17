@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import { JsonStore } from "../src/store.mjs";
 import { SeedingService, buildTrafficPulse, normalizeKeywords } from "../src/service.mjs";
+import { readinessBinding } from "../src/readiness.mjs";
 
 async function fixture(prefix = "seeding-fixture-") {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -23,6 +24,60 @@ async function fixture(prefix = "seeding-fixture-") {
   const post = await service.createPost({ campaignId: campaign.id, targetId: target.id, content: "Fixture post" }, "operator");
   return { directory, productRepo: await realpath(productRepo), groundingText, service, campaign, target, post };
 }
+
+test("kill switch controls are operator-only and advance the durable epoch", async () => {
+  const { service, post } = await fixture("seeding-kill-switch-controls-test-");
+  await assert.rejects(service.activateKillSwitch("maintenance", "scheduler"), /Only an operator/);
+  const activated = await service.activateKillSwitch("maintenance", "operator");
+  assert.equal(activated.active, true);
+  assert.equal(activated.epoch, 1);
+  await assert.rejects(service.deactivateKillSwitch("automation"), /Only an operator/);
+  const deactivated = await service.deactivateKillSwitch("local-human-operator");
+  assert.equal(deactivated.active, false);
+  assert.equal(deactivated.epoch, 2);
+  await assert.rejects(service.rebasePostKillEpoch(post.id, "scheduler"), /Only an operator/);
+});
+
+test("provider-send fence rejects changed execution identity and target binding", async () => {
+  const now = new Date();
+  const readiness = {
+    state: "READY",
+    checkedAt: new Date(now.getTime() - 1_000).toISOString(),
+    expiresAt: new Date(now.getTime() + 60_000).toISOString(),
+    binding: readinessBinding({ platform: "linkedin", accountId: "account-1", profileId: "profile-1", targetId: "target-1" }),
+    platform: "linkedin", accountId: "account-1", profileId: "profile-1", targetId: "target-1"
+  };
+  const base = {
+    requestRow: { executionId: "execution-1", jobId: "job-1", state: "SUBMIT_SENT_INTENT", submitState: "NOT_STARTED" },
+    request: {
+      executionId: "execution-1", jobId: "job-1", campaignId: "campaign-1", platform: "linkedin",
+      accountId: "account-1", profileId: "profile-1", target: { targetId: "target-1", url: "https://www.linkedin.com/feed/" },
+      authorization: { authorizationId: "authorization-1", binding: "authorization-binding" }
+    },
+    post: { id: "job-1", campaignId: "campaign-1", targetId: "target-1", status: "queued" },
+    target: { id: "target-1", channel: "linkedin", accountId: "account-1", profileId: "profile-1", status: "active", url: "https://www.linkedin.com/feed/", readiness },
+    account: { accountId: "account-1", profileId: "profile-1", status: "enabled", health: "healthy" },
+    authorization: { id: "authorization-1", status: "active", allowLiveExecution: true, binding: "authorization-binding" },
+    state: { executionLeases: [{ id: "lease-1", token: "lease-token", expiresAt: new Date(now.getTime() + 60_000).toISOString() }], control: { killSwitch: { active: false, epoch: 0 } } }
+  };
+  const service = Object.create(SeedingService.prototype);
+  service.readinessTtlMs = 300_000;
+  for (const mutate of [
+    (context) => { context.request.jobId = "other-job"; },
+    (context) => { context.request.platform = "threads"; },
+    (context) => { context.request.target.targetId = "other-target"; },
+    (context) => { context.request.target.url = "https://www.linkedin.com/company/other"; },
+    (context) => { context.target.status = "needs_review"; }
+  ]) {
+    const context = structuredClone(base);
+    mutate(context);
+    service.executionContext = async () => context;
+    await assert.rejects(service.assertExecutionSendable("execution-1", { id: "lease-1", token: "lease-token" }), { code: "IDENTITY_MISMATCH" });
+  }
+  service.executionContext = async () => structuredClone(base);
+  const allowed = await service.assertExecutionSendable("execution-1", { id: "lease-1", token: "lease-token" });
+  assert.equal(allowed.executionId, "execution-1");
+});
 
 test("R19 bootstrap is idempotent and does not fabricate publication evidence", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "seeding-test-"));

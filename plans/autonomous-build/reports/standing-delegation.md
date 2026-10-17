@@ -1,15 +1,8 @@
-# Standing Delegation Worker Report
+# Standing Campaign Delegation — Integration Report
 
-Status: DONE
-
-Acceptance addressed: A1, A2, A5, A7, A8, A9, A10, V2, V5, V6, V7, V8.
-
-Implemented `src/standing-campaign-delegation.mjs`, a pure provider-neutral bounded delegation gate. It derives an immutable exact control plan only when existing active authorization, campaign binding, account/profile/target/content/visibility scope, schedule/quota/cadence/concurrency eligibility, one-time window, live grant, kill switch, idempotency and UNKNOWN barriers all pass. It creates no authority and mutates no state.
-
-Focused tests: `test/standing-campaign-delegation.test.mjs` (3 passing), covering valid derivation, scope drift, paused authority, duplicate/UNKNOWN, missing/mismatched window and revoked grant.
-
-Evidence: `node --test test/standing-campaign-delegation.test.mjs` => 3 pass, 0 fail. `node --check src/standing-campaign-delegation.mjs` passed. No network, browser, canonical state or external side effect used.
-
-Confidence: high for pure derivation gate; full service integration and live proof remain unverified.
-
-Out of scope: wiring this helper into SeedingService/JEV worker requires integrator-owned shared seam and was not changed.
+- **Status:** LOCAL_VERIFIED; live execution blocked.
+- **Implementation:** `src/standing-campaign-delegation.mjs` derives exact immutable controls from existing active campaign authorization, exact job/campaign/content/account/profile/target/visibility scope, healthy account, fresh readiness, one-time window, execution-scoped live grant, kill switch epoch, idempotency and UNKNOWN barriers. `SeedingService` provisions the bounded window/grant for `standing_autonomous` mode and validates before execution and submit. A monotonic operator-only kill switch invalidates older queued posts; explicit operator rebase runs ordinary queue checks.
+- **Safety seams:** `JevExecutionWorker` checks health/readiness/lease; `LinkedInAdapter` requests a final callback immediately before provider input; `SeedingService.assertExecutionSendable` rereads persisted lease, intent state, exact request/job/campaign/platform/target URL+ID, active target/auth, account/profile, kill epoch and fresh readiness. Queue transitions stamp the kill epoch.
+- **Verification:** focused integrated suite contains standing delegation, authorization, kill switch, final-send fence, exact dispatch, UNKNOWN and transport regressions; 152 tests passed. Full suite: 299 tests, 297 passed, 0 failed, 2 skipped, exit 0. Independent static review: ACCEPT.
+- **Evidence class:** local synthetic/fixture. No browser or social side effect and no live publication claim.
+- **Remaining:** no active exact LIVE authorization/window/grant in canonical runtime; historical UNKNOWN executions remain immutable. Transport contract remains duck-typed; LinkedIn rejects unmarked transports.

@@ -86,3 +86,23 @@ test("approval binding becomes stale when target or content changes", () => {
   post.content = "Changed";
   assert.ok(evaluateQueue(post, { targets: [target], posts: [post] }).reasons.includes("approval_binding_stale"));
 });
+
+test("global kill switch blocks live queue evaluation", () => {
+  const target = { id: "t-kill", channel: "threads", accountId: "a1", status: "active", rulesStatus: "not_required" };
+  const post = { id: "p-kill", targetId: target.id, content: "Bounded copy", approvedAt: "2026-10-17T10:00:00Z", status: "approved", queuedKillEpoch: 0 };
+  post.approvalBinding = approvalFingerprint(post, target);
+  const state = { control: { killSwitch: { active: true, epoch: 1 } }, targets: [target], posts: [post] };
+  const decision = evaluateQueue(post, state, new Date("2026-10-17T12:00:00Z"));
+  assert.equal(decision.allowed, false);
+  assert.ok(decision.reasons.includes("kill_switch_active"));
+});
+
+test("kill epoch advancement blocks a previously queued live post", () => {
+  const target = { id: "t-epoch", channel: "threads", accountId: "a1", status: "active", rulesStatus: "not_required" };
+  const post = { id: "p-epoch", targetId: target.id, content: "Bounded copy", approvedAt: "2026-10-17T10:00:00Z", status: "approved", queuedKillEpoch: 2 };
+  post.approvalBinding = approvalFingerprint(post, target);
+  const state = { control: { killSwitch: { active: false, epoch: 3 } }, targets: [target], posts: [post] };
+  const decision = evaluateQueue(post, state, new Date("2026-10-17T12:00:00Z"));
+  assert.equal(decision.allowed, false);
+  assert.ok(decision.reasons.includes("kill_switch_epoch_advanced"));
+});

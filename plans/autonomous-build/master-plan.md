@@ -2,35 +2,31 @@
 
 ## Objective
 
-Build a bounded, evidence-driven product distribution runtime in `marketing-seeding` that can inspect a product, ground claims, plan distribution, use authorized account/session execution, independently verify external outcomes, persist campaign state, and resume without per-post human operation. `SYSTEM_AGENTIC_AI` Core remains frozen.
+Build a bounded, evidence-driven distribution runtime in `marketing-seeding` that can inspect a product, ground claims, plan distribution, use authorized account/session execution, independently verify external outcomes, persist campaign state, and recover without per-post human operation. `SYSTEM_AGENTIC_AI` Production Core remains frozen.
 
-## Current wave
+## Current wave — locally implemented and verified
 
-1. Preserve and checkpoint preexisting browser transport and LinkedIn safety hardening.
-2. Add standing campaign authorization and autonomous bounded execution delegation on top of existing authorization/window/grant/lease contracts.
-3. Add product intelligence and an evidence/claim graph.
-4. Add a safe local product factory/classifier and artifact evidence pipeline.
-5. Independently review, integrate, run focused tests and the full Node suite.
+1. Preserve preexisting LinkedIn/ORCA and transport work.
+2. Add standing campaign authorization with bounded execution delegation on existing authorization/window/grant/lease/idempotency/UNKNOWN contracts.
+3. Add a monotonic kill switch and epoch fencing, plus readiness/account/identity checks at queue, worker, durable intent and final provider-send boundary.
+4. Add deterministic caller-supplied product intelligence with evidence/claim graph and unsupported-claim quarantine.
+5. Add a deterministic repository classifier and bounded local command/artifact evidence pipeline.
+6. Independently review integration; run focused and complete Node tests.
 
-## Later waves
+Result: local implementation gates pass. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease.
 
-- system handoff boundary and versioned contracts;
-- discovery normalization, deduplication, audience/channel intelligence;
-- strategy and next-best-action;
-- evidence-grounded production content provider;
-- contextual engagement;
-- account/session registry and recovery;
-- metrics, learning, restart/24/7 hardening;
-- Mission Control read-only projections.
+## Later waves (dependency order)
+
+1. **Unblock controlled live M1** only when a fresh authorized account/profile/target/content/session and harmless post policy are supplied; execute once through existing JEV/LinkedIn path, independently verify, then freeze the proven contract.
+2. Versioned upstream System-Agentic → marketing domain handoff; persist product intelligence and claim evidence in campaign state/dashboard.
+3. Expand Product Factory into project-specific safe build/run/render/media workflow with persistent artifacts.
+4. Implement continuous discovery, normalized/deduplicated opportunities, audience/channel/community eligibility, strategy/NBA and grounded content generation.
+5. Add contextual engagement, account/session registry/recovery, metrics learning, restart/24-7 hardening and Mission Control projections; certify platforms incrementally.
 
 ## Frozen seams
 
-Reuse `JsonStore`, `SeedingService`, campaign authorization, one-time execution windows, live grants, execution leases, exact dispatch, LinkedIn adapter/verifier, transport evidence, UNKNOWN quarantine, and dashboard projections. Do not add a duplicate store/router/state machine/browser abstraction/LinkedIn publisher or change System-Agentic Core.
+Reuse `JsonStore`, `SeedingService`, campaign authorization, one-time windows, live grants, execution leases, exact dispatch, LinkedIn adapter/verifier, browser transport evidence, UNKNOWN quarantine, dashboard and platform registry. Do not create a duplicate store/router/state machine/browser abstraction/LinkedIn publisher or change System-Agentic Core.
 
 ## Evidence policy
 
-Runtime, source, tests, and artifacts outrank README/plans. Synthetic and local evidence never counts as real platform proof. No live social mutation is permitted in this build wave.
-
-## Stop conditions
-
-Do not claim a live LinkedIn milestone without fresh exact authorization and a complete verified receipt. Do not mutate historical UNKNOWN records or canonical production state. Do not merge a failing integration.
+Runtime, source, tests and artifacts outrank README/plans. Synthetic/local evidence never counts as real platform proof. `COMMAND_COMPLETED` does not imply activation, acceptance or publication. Post-submit uncertainty remains quarantined. No live action without exact current authority.

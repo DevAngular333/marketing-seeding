@@ -194,7 +194,7 @@ export class JevExecutionWorker {
     }, Math.max(1_000, Math.floor(this.leaseMs / 3)));
     heartbeat.unref?.();
     try {
-      if (!initial.account || initial.account.status !== "enabled" || initial.account.profileId !== initial.request.profileId || initial.account.accountId !== initial.request.accountId) {
+      if (!initial.account || initial.account.status !== "enabled" || initial.account.health !== "healthy" || initial.account.profileId !== initial.request.profileId || initial.account.accountId !== initial.request.accountId) {
         return { status: "HUMAN_REQUIRED", executionId, reasonCode: "account_profile_binding_invalid" };
       }
 
@@ -227,6 +227,10 @@ export class JevExecutionWorker {
         dryRun,
         liveEnabled,
         account: context.account,
+        beforeProviderSend: async () => {
+          if (dryRun) return null;
+          return this.service.assertExecutionSendable(executionId, lease);
+        },
         beforeSubmitIntent: async (verifiedGates) => {
           submitBoundaryAttemptedAt = this.now().toISOString();
           if (leaseLost) throw Object.assign(new Error("Execution lease was lost before submit"), { code: "LEASE_LOST" });

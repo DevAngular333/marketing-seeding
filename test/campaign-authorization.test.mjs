@@ -454,3 +454,41 @@ test("dry-run NOT_STARTED history does not consume account quota or cadence", as
   assert.equal(decision.reasons.includes("account_daily_limit_reached"), false);
   assert.equal(decision.reasons.includes("campaign_minimum_interval_not_met"), false);
 });
+
+test("standing autonomous authorization derives one bounded window and grant without per-post approval", async () => {
+  const { service, campaign, targets } = await campaignFixture({ channels: ["threads"] });
+  const copy = "Standing autonomous bounded copy.";
+  const authorization = await service.authorizeCampaign(campaign.id, {
+    id: "standing-autonomous-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: targets[0].accountId, profileId: targets[0].profileId, targetId: targets[0].id }],
+    approvedAssets: [],
+    contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(copy)] },
+    audienceRules: { allowedAudiences: ["public"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true,
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "fixture-standing-campaign-authority"
+  }, "operator");
+  const post = await service.createPost({ campaignId: campaign.id, targetId: targets[0].id, content: copy, audience: "public" }, "producer");
+  const state = await service.snapshot();
+  const latest = state.posts.find((item) => item.id === post.id);
+  const window = state.oneTimeExecutionWindows.find((item) => item.jobId === post.id);
+  const grant = state.liveExecutionGrants.find((item) => item.jobId === post.id);
+  const request = state.executionRequests.find((item) => item.jobId === post.id);
+  assert.equal(authorization.executionMode, "standing_autonomous");
+  assert.equal(latest.status, "queued");
+  assert.equal(request.state, "REQUEST_READY");
+  assert.equal(window.status, "RESERVED");
+  assert.equal(grant.status, "ACTIVE");
+  assert.equal(grant.boundExecutionId, request.executionId);
+  assert.equal(grant.operatorAuthorizationReference, "fixture-standing-campaign-authority");
+  const beforeWindows = state.oneTimeExecutionWindows.length;
+  const beforeGrants = state.liveExecutionGrants.length;
+  await service.queueAuthorizedCampaignJobs(campaign.id, "scheduler");
+  const after = await service.snapshot();
+  assert.equal(after.oneTimeExecutionWindows.length, beforeWindows);
+  assert.equal(after.liveExecutionGrants.length, beforeGrants);
+});

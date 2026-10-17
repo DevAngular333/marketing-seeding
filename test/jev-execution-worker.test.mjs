@@ -108,7 +108,6 @@ test("JEV worker runs a dry-run to the pre-submit boundary and records a non-ter
   assert.equal(submitCalls, 0);
   assert.deepEqual(fixture.calls.map(([name]) => name), ["lease", "readiness", "prepare", "started", "receipt", "release"]);
 });
-
 test("JEV worker clears its unref heartbeat after a completed execution", async () => {
   let renewCalls = 0;
   const fixture = executionFixture({ service: { async renewExecutionLease() { renewCalls += 1; return true; } } });
@@ -302,6 +301,78 @@ test("JEV worker refuses live execution unless exact one-job opt-in is present",
   assert.equal(result.status, "LIVE_NOT_AUTHORIZED");
   assert.equal(adapterCalls, 0);
   assert.ok(fixture.calls.some(([name]) => name === "release"));
+});
+
+test("unhealthy account stops exact dispatch before adapter execution", async () => {
+  const fixture = executionFixture();
+  fixture.context.account.health = "degraded";
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  let adapterCalls = 0;
+  const worker = new JevExecutionWorker({
+    service: fixture.service,
+    adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }),
+    env: exactLiveEnv()
+  });
+  const result = await worker.dispatchExactExecution("exec-1");
+  assert.equal(result.status, "PRE_SUBMIT_STOPPED");
+  assert.equal(result.reasonCode, "account_profile_binding_invalid");
+  assert.equal(adapterCalls, 0);
+  assert.ok(fixture.calls.some(([name]) => name === "release"));
+});
+
+test("exact dispatch remains stopped after a kill fence and never duplicates adapter input", async () => {
+  const fixture = executionFixture({
+    service: {
+      async markExecutionStarted() { throw Object.assign(new Error("kill switch active"), { code: "KILL_SWITCH_BLOCKED" }); }
+    }
+  });
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  let adapterCalls = 0;
+  const worker = new JevExecutionWorker({
+    service: fixture.service,
+    adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }),
+    env: exactLiveEnv()
+  });
+  const first = await worker.dispatchExactExecution("exec-1");
+  const second = await worker.dispatchExactExecution("exec-1");
+  assert.equal(first.status, "PRE_SUBMIT_STOPPED");
+  assert.equal(second.status, "PRE_SUBMIT_STOPPED");
+  assert.equal(adapterCalls, 0);
+  assert.equal(fixture.calls.filter(([name]) => name === "intent").length, 0);
+});
+
+test("final provider-send fence blocks input after durable intent", async () => {
+  const fixture = executionFixture({
+    service: {
+      async assertExecutionSendable() { throw Object.assign(new Error("kill switch active"), { code: "KILL_SWITCH_ACTIVE" }); }
+    }
+  });
+  fixture.context.authorization.allowLiveExecution = true;
+  attachFixtureGrant(fixture);
+  let providerInput = 0;
+  const adapter = {
+    async execute(_request, options) {
+      await options.beforeSubmitIntent(Object.fromEntries([
+        "authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch",
+        "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt",
+        "noExistingConfirmedPublication"
+      ].map((key) => [key, true])));
+      try {
+        await options.beforeProviderSend();
+      } catch (error) {
+        return { submitState: "FAILED", reasonCode: error.code, errorClassification: "PLATFORM_ERROR", recoveryClassification: "NONE", gates: { passed: false }, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+      }
+      providerInput += 1;
+      return { submitState: "SUBMIT_SENT", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+    }
+  };
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), env: exactLiveEnv() });
+  const result = await worker.dispatchExactExecution("exec-1");
+  assert.equal(result.status, "PRE_SUBMIT_STOPPED");
+  assert.equal(providerInput, 0);
+  assert.equal(fixture.calls.filter(([name]) => name === "intent").length, 1);
 });
 
 test("campaign live authorization and global worker opt-in cannot run an adapter without a job grant", async () => {

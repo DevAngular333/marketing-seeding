@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { CHANNELS, nowIso } from "./constants.mjs";
-import { approvalFingerprint, assertReplyCanSend, assertTransition, evaluateQueue } from "./guards.mjs";
+import { approvalFingerprint, assertReplyCanSend, assertTransition, evaluateQueue, killSwitchReasons } from "./guards.mjs";
 import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs";
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
 import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
@@ -14,6 +14,7 @@ import { assertLiveGrantMatchesExecution, createLiveExecutionGrantV1, liveGrantE
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 import { activeExecutionForPost, recordSubmissionUnknown, unresolvedSubmission, UNKNOWN_POST_STATUS } from "./submission-uncertainty.mjs";
+import { deriveStandingExecutionControlPlan } from "./standing-campaign-delegation.mjs";
 import { appRoot } from "./paths.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
@@ -276,6 +277,13 @@ function channelUrl(channel, value, label = "Target URL", platformPolicies = def
   return parsed.toString();
 }
 
+function canonicalExecutionTargetUrl(value) {
+  const parsed = canonicalPublicationUrl(value);
+  parsed.hash = "";
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+  return `${parsed.origin.toLowerCase()}${parsed.pathname}${parsed.search}`;
+}
+
 function requirePublicationEvidence(input, target, platformPolicies = defaultPlatformPolicies) {
   const evidence = String(input.evidence || "").trim();
   if (!evidence) throw new Error("Published transition requires verification evidence");
@@ -519,6 +527,197 @@ export class SeedingService {
 
   async snapshot() {
     return this.store.read();
+  }
+
+  #assertOperatorControlActor(actor) {
+    if (!['operator', 'local-human-operator'].includes(actor)) throw new Error('Only an operator may change the global execution kill switch');
+  }
+
+  async activateKillSwitch(reason, actor = 'operator') {
+    this.#assertOperatorControlActor(actor);
+    const text = String(reason || '').trim();
+    if (!text || text.length > 500) throw new Error('Kill switch reason of 1 to 500 characters is required');
+    const result = await this.store.mutate(actor, 'kill_switch_activated', (state) => {
+      state.control ||= {};
+      state.control.killSwitch ||= { active: false, epoch: 0, changedAt: null, changedBy: null, reason: null };
+      const killSwitch = state.control.killSwitch;
+      killSwitch.active = true;
+      killSwitch.epoch = (Number.isSafeInteger(killSwitch.epoch) && killSwitch.epoch >= 0 ? killSwitch.epoch : 0) + 1;
+      killSwitch.changedAt = nowIso();
+      killSwitch.changedBy = actor;
+      killSwitch.reason = text;
+      return killSwitch;
+    });
+    return result.result;
+  }
+
+  async deactivateKillSwitch(actor = 'operator') {
+    this.#assertOperatorControlActor(actor);
+    const result = await this.store.mutate(actor, 'kill_switch_deactivated', (state) => {
+      state.control ||= {};
+      state.control.killSwitch ||= { active: false, epoch: 0, changedAt: null, changedBy: null, reason: null };
+      const killSwitch = state.control.killSwitch;
+      killSwitch.active = false;
+      killSwitch.epoch = (Number.isSafeInteger(killSwitch.epoch) && killSwitch.epoch >= 0 ? killSwitch.epoch : 0) + 1;
+      killSwitch.changedAt = nowIso();
+      killSwitch.changedBy = actor;
+      killSwitch.reason = null;
+      return killSwitch;
+    });
+    return result.result;
+  }
+
+  async rebasePostKillEpoch(postId, actor = 'operator') {
+    this.#assertOperatorControlActor(actor);
+    const result = await this.store.mutate(actor, 'post_kill_epoch_rebased', (state) => {
+      const post = requireItem(state.posts, postId, 'Post');
+      const killSwitch = state.control?.killSwitch || { active: false, epoch: 0 };
+      if (killSwitch.active === true) throw new Error('Cannot rebase a post while the kill switch is active');
+      if (!['queued', 'blocked'].includes(post.status)) throw new Error('Only a queued or blocked post can be rebased after a kill switch epoch change');
+      if (unresolvedSubmission(state, post)) throw new Error('SUBMISSION_UNCERTAIN: post cannot be rebased');
+      if ((state.executionRequests || []).some((item) => item.jobId === post.id && ['REQUEST_READY', 'EXECUTING', 'SUBMIT_SENT_INTENT', 'SUBMIT_SENT', 'SUBMIT_RESULT_UNKNOWN', 'CONFIRMED'].includes(item.state))) {
+        throw new Error('Post has an execution request; cancel or reconcile it before kill epoch rebase');
+      }
+      const currentEpoch = Number.isSafeInteger(killSwitch.epoch) && killSwitch.epoch >= 0 ? killSwitch.epoch : 0;
+      const candidate = { ...post, queuedKillEpoch: currentEpoch };
+      const decision = evaluateQueue(candidate, state, new Date(), { mode: 'live' });
+      if (!decision.allowed) throw new Error(`Post remains blocked after kill epoch rebase: ${decision.reasons.join(', ')}`);
+      post.queuedKillEpoch = currentEpoch;
+      post.status = 'queued';
+      post.queuedAt = nowIso();
+      delete post.blockedAt;
+      post.authorizationDecision = { evaluatedAt: post.queuedAt, allowed: true, reasons: [] };
+      post.jobLifecycle ||= [{ state: 'CREATED', at: post.createdAt || post.queuedAt }];
+      post.jobLifecycle.push({ state: 'QUEUED', at: post.queuedAt, reason: 'kill_switch_epoch_rebased' });
+      return post;
+    });
+    return result.result;
+  }
+
+  async assertExecutionSendable(executionId, lease) {
+    const snapshot = await this.executionContext(executionId);
+    const { requestRow, request, post, target, account } = snapshot;
+    const persistedLease = (snapshot.state.executionLeases || []).find((item) => item.id === lease?.id && item.token === lease?.token && Date.parse(item.expiresAt) > Date.now());
+    if (!persistedLease) throw Object.assign(new Error('Execution lease is not active before browser input'), { code: 'LEASE_INVALID' });
+    if (requestRow.state !== 'SUBMIT_SENT_INTENT' || requestRow.submitState !== 'NOT_STARTED') throw Object.assign(new Error('Execution is not at the durable submit-intent boundary'), { code: 'NOT_DISPATCHABLE' });
+    const killReasons = killSwitchReasons(post, snapshot.state);
+    if (killReasons.length) throw Object.assign(new Error(`Live browser input blocked by global control: ${killReasons.join(', ')}`), { code: killReasons[0].toUpperCase() });
+    const authorization = snapshot.authorization;
+    const requestTargetUrl = request?.target?.url;
+    let targetUrlMatches = false;
+    try {
+      targetUrlMatches = canonicalExecutionTargetUrl(requestTargetUrl) === canonicalExecutionTargetUrl(target?.url);
+    } catch {
+      targetUrlMatches = false;
+    }
+    const exactBinding = request?.executionId === executionId &&
+      request?.jobId === requestRow.jobId && request?.jobId === post.id &&
+      request?.campaignId === post.campaignId &&
+      request?.platform === target.channel &&
+      request?.target?.targetId === post.targetId && request?.target?.targetId === target.id &&
+      targetUrlMatches && target.status === 'active' &&
+      request?.accountId === target.accountId && request?.profileId === target.profileId &&
+      request?.authorization?.authorizationId === authorization?.id &&
+      request?.authorization?.binding === authorization?.binding &&
+      authorization?.status === 'active' && authorization?.allowLiveExecution === true;
+    if (!exactBinding || !account || account.status !== 'enabled' || account.health !== 'healthy' || account.accountId !== request.accountId || account.profileId !== request.profileId || target.profileId !== request.profileId) {
+      throw Object.assign(new Error('Execution account/profile health changed before browser input'), { code: 'IDENTITY_MISMATCH' });
+    }
+    if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, new Date(), this.readinessTtlMs)) {
+      throw Object.assign(new Error('Execution readiness expired before browser input'), { code: 'READINESS_NOT_READY' });
+    }
+    return { executionId, controlEpoch: snapshot.state.control?.killSwitch?.epoch ?? 0, accountId: account.accountId, profileId: account.profileId };
+  }
+
+  #standingAutonomousAuthorization(authorization) {
+    return authorization?.executionMode === "standing_autonomous" && authorization.allowLiveExecution === true;
+  }
+
+  async ensureStandingExecutionWindow(postId, actor = "campaign-queue-scheduler") {
+    const allowedActors = new Set(["scheduler", "campaign-queue-scheduler", "automation", "local-draft-automation", "execution-router"]);
+    if (!allowedActors.has(actor)) throw new Error("Standing execution delegation is scheduler-only");
+    const snapshot = await this.store.read();
+    const post = requireItem(snapshot.posts, postId, "Post");
+    const authorization = requireItem(snapshot.campaignAuthorizations || [], post.campaignAuthorizationId, "Campaign authorization");
+    if (!this.#standingAutonomousAuthorization(authorization)) return null;
+    if (unresolvedSubmission(snapshot, post)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
+    if (["publishing", "processing", UNKNOWN_POST_STATUS, "published", "removed", "rejected"].includes(post.status)) return null;
+    const target = requireItem(snapshot.targets, post.targetId, "Target");
+    const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+    if (!account || account.status !== "enabled" || account.profileId !== target.profileId) throw new Error("Standing delegation requires an exact enabled account/profile binding");
+    const now = new Date();
+    const existing = (snapshot.oneTimeExecutionWindows || []).filter((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, now)));
+    if (existing.length > 1) throw new Error("Multiple active standing execution windows match this job");
+    if (existing.length === 1) return existing[0];
+    const fromMs = Math.max(now.getTime() - 5_000, Date.parse(authorization.validFrom));
+    const untilMs = Math.min(Date.parse(authorization.validUntil), now.getTime() + 15 * 60_000);
+    if (!Number.isFinite(fromMs) || !Number.isFinite(untilMs) || untilMs <= now.getTime()) throw new Error("Standing authorization has no current execution window");
+    const window = normalizeOneTimeExecutionWindow({
+      windowId: `standing-${post.id}-${now.getTime()}`,
+      campaignId: post.campaignId,
+      campaignAuthorizationId: authorization.id,
+      jobId: post.id,
+      validFrom: new Date(fromMs).toISOString(),
+      validUntil: new Date(untilMs).toISOString(),
+      timezone: authorization.schedule.timezone,
+      reason: `standing campaign authorization ${authorization.id}`
+    }, { post, authorization, authorizationFingerprint: authorization.binding, now, createdBy: actor });
+    const result = await this.store.mutate(actor, "standing_execution_window_derived", (state) => {
+      const current = requireItem(state.posts, postId, "Post");
+      if (unresolvedSubmission(state, current)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
+      const active = (state.oneTimeExecutionWindows || []).find((item) => item.jobId === postId && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
+      if (active) return active;
+      state.oneTimeExecutionWindows ||= [];
+      state.oneTimeExecutionWindows.push(window);
+      return window;
+    });
+    return result.result;
+  }
+
+  async ensureStandingExecutionGrant(postId, actor = "campaign-queue-scheduler") {
+    const allowedActors = new Set(["scheduler", "campaign-queue-scheduler", "automation", "local-draft-automation", "execution-router"]);
+    if (!allowedActors.has(actor)) throw new Error("Standing execution delegation is scheduler-only");
+    const snapshot = await this.store.read();
+    const post = requireItem(snapshot.posts, postId, "Post");
+    const authorization = requireItem(snapshot.campaignAuthorizations || [], post.campaignAuthorizationId, "Campaign authorization");
+    if (!this.#standingAutonomousAuthorization(authorization)) return null;
+    const target = requireItem(snapshot.targets, post.targetId, "Target");
+    const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+    const window = (snapshot.oneTimeExecutionWindows || []).find((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
+    if (!window) throw new Error("Standing execution grant requires an active one-time window");
+    const pending = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
+    if (pending.length > 1) throw new Error("Multiple live executions are pending for standing delegation");
+    const existing = (snapshot.liveExecutionGrants || []).find((item) => item.jobId === post.id && liveGrantEffectiveStatus(item) === "ACTIVE");
+    if (existing) return existing;
+    if (!account || account.status !== "enabled" || account.profileId !== target.profileId) throw new Error("Standing execution grant requires an exact enabled account/profile binding");
+    const now = new Date();
+    if (account.health !== "healthy") throw new Error("Standing execution grant requires a healthy account");
+    if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, now, this.readinessTtlMs)) throw new Error("Standing execution grant requires fresh readiness");
+    const validFrom = new Date(Math.max(now.getTime() - 5_000, Date.parse(window.validFrom))).toISOString();
+    const validUntil = new Date(Math.min(Date.parse(window.validUntil), Date.parse(authorization.validUntil))).toISOString();
+    const grant = createLiveExecutionGrantV1({
+      post, target, account, authorization, artifact: post.artifactId ? requireItem(snapshot.artifacts || [], post.artifactId, "Artifact") : null,
+      validFrom, validUntil, createdBy: "standing-campaign-delegation",
+      operatorAuthorizationReference: authorization.standingAuthorizationReference, now
+    });
+    const result = await this.store.mutate(actor, "standing_execution_grant_derived", (state) => {
+      const currentPost = requireItem(state.posts, postId, "Post");
+      const currentAuthorization = requireItem(state.campaignAuthorizations || [], currentPost.campaignAuthorizationId, "Campaign authorization");
+      if (!this.#standingAutonomousAuthorization(currentAuthorization)) throw new Error("Standing campaign authorization is no longer active");
+      if (unresolvedSubmission(state, currentPost)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
+      const currentExisting = (state.liveExecutionGrants || []).find((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE");
+      if (currentExisting) return currentExisting;
+      const currentRequest = (state.executionRequests || []).find((item) => item.jobId === postId && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
+      if (!currentRequest) throw new Error("Standing execution grant requires a pending live execution request");
+      grant.boundExecutionId = currentRequest.executionId;
+      currentRequest.request.liveGrant = { grantId: grant.grantId };
+      assertLiveGrantMatchesExecution(grant, currentRequest.request, currentAuthorization, new Date(), { checkWindow: false });
+      currentRequest.liveGrantId = grant.grantId;
+      state.liveExecutionGrants ||= [];
+      state.liveExecutionGrants.push(grant);
+      return grant;
+    });
+    return result.result;
   }
 
   async createLiveExecutionGrant(input, actor = "operator") {
@@ -1130,7 +1329,10 @@ export class SeedingService {
     });
     for (const post of result.result.filter((item) => item.campaignAuthorizationId)) {
       const readinessResult = await this.refreshCampaignJobReadiness(post.id, actor);
-      if (readinessResult.status === "queued") await this.prepareExecutionRequest(post.id, actor);
+      if (readinessResult.status === "queued") {
+        await this.prepareExecutionRequest(post.id, actor);
+        await this.ensureStandingExecutionGrant(post.id, "execution-router");
+      }
     }
     const latestState = await this.store.read();
     return result.result.map((post) => latestState.posts.find((item) => item.id === post.id) || post);
@@ -1142,6 +1344,8 @@ export class SeedingService {
       if (post.campaignId !== campaignId || !post.campaignAuthorizationId) return false;
       if (["blocked", "draft"].includes(post.status)) return true;
       if (post.status !== "queued") return false;
+      const authorization = snapshot.campaignAuthorizations?.find((item) => item.id === post.campaignAuthorizationId);
+      if (authorization?.executionMode === "standing_autonomous" && !post.executionState) return true;
       const latestExecution = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id).sort((a, b) => b.attempt - a.attempt)[0];
       if (latestExecution?.state === "FAILED" && latestExecution.recoveryClassification === "RECOVERABLE" && latestExecution.submitState === "FAILED" && latestExecution.attempt < 3) return true;
       if (post.executionState !== "REQUEST_READY") return false;
@@ -1152,7 +1356,10 @@ export class SeedingService {
     for (const post of candidates) {
       const result = await this.refreshCampaignJobReadiness(post.id, actor);
       decisions.push({ postId: post.id, status: result.status, readinessState: result.readinessState, reasons: result.reasons || [] });
-      if (result.status === "queued") await this.prepareExecutionRequest(post.id, actor);
+      if (result.status === "queued") {
+        await this.prepareExecutionRequest(post.id, actor);
+        await this.ensureStandingExecutionGrant(post.id, "campaign-queue-scheduler");
+      }
     }
     return decisions;
   }
@@ -1181,6 +1388,8 @@ export class SeedingService {
           return false;
         }
         if (post.status !== "queued") return false;
+        const authorization = state.campaignAuthorizations?.find((item) => item.id === post.campaignAuthorizationId);
+        if (authorization?.executionMode === "standing_autonomous" && !post.executionState) return true;
         const latestExecution = (state.executionRequests || []).filter((item) => item.jobId === post.id).sort((a, b) => b.attempt - a.attempt)[0];
         if (latestExecution?.state === "FAILED" && latestExecution.recoveryClassification === "RECOVERABLE" && latestExecution.submitState === "FAILED" && latestExecution.attempt < 3) return true;
         if (post.executionState !== "REQUEST_READY") return false;
@@ -1373,6 +1582,10 @@ export class SeedingService {
   async prepareExecutionRequest(postId, actor = "execution-router", { dryRun = false } = {}) {
     const snapshot = await this.store.read();
     const post = requireItem(snapshot.posts, postId, "Post");
+    const authorizationForDelegation = (snapshot.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
+    if (!dryRun && authorizationForDelegation?.executionMode === "standing_autonomous") {
+      await this.ensureStandingExecutionWindow(postId, "execution-router");
+    }
     if (unresolvedSubmission(snapshot, post)) throw new Error("SUBMISSION_UNCERTAIN: job or publication identity is quarantined");
     const previous = (snapshot.executionRequests || []).filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
     const operator = ["operator", "local-human-operator"].includes(actor);
@@ -1571,6 +1784,11 @@ export class SeedingService {
       const grant = (state.liveExecutionGrants || []).find((candidate) => candidate.grantId === item.request?.liveGrant?.grantId);
       const authorization = (state.campaignAuthorizations || []).find((candidate) => candidate.id === post.campaignAuthorizationId);
       try { assertLiveGrantMatchesExecution(grant, item.request, authorization); } catch { return false; }
+      if (authorization?.executionMode === "standing_autonomous") {
+        const window = (state.oneTimeExecutionWindows || []).find((candidate) => candidate.windowId === item.request.oneTimeWindow?.windowId);
+        const delegated = deriveStandingExecutionControlPlan({ authorization, state, post, target, account, executionId: item.executionId, oneTimeWindow: window, liveGrant: grant });
+        if (!delegated.allowed) return false;
+      }
       if (item.request?.oneTimeWindow?.windowId) {
         const window = (state.oneTimeExecutionWindows || []).find((candidate) => candidate.windowId === item.request.oneTimeWindow.windowId);
         if (!window || window.status !== "RESERVED" || window.reservedExecutionId !== item.executionId ||
@@ -1675,6 +1893,12 @@ export class SeedingService {
         return request;
       }
       const post = requireItem(state.posts, request.jobId, "Post");
+      const killReasons = killSwitchReasons(post, state);
+      if (killReasons.length) throw new Error(`Execution blocked before worker start: ${killReasons.join(", ")}`);
+      const target = requireItem(state.targets, post.targetId, "Target");
+      const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+      if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId) throw new Error("Execution account/profile health is not ready before worker start");
+      if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, new Date(), this.readinessTtlMs)) throw new Error("Execution readiness is not fresh before worker start");
       if (request.request?.oneTimeWindow?.windowId) {
         const eligibility = evaluateQueue(post, state, new Date(), { executionId });
         if (!eligibility.allowed) throw new Error(`Execution blocked before worker start: ${eligibility.reasons.join(", ")}`);
@@ -1711,6 +1935,13 @@ export class SeedingService {
     };
     const snapshot = await this.executionContext(executionId);
     const { request, post, target, account, authorization, artifact, liveGrant } = snapshot;
+    const preIntentKillReasons = killSwitchReasons(post, snapshot.state);
+    if (preIntentKillReasons.length) reject("KILL_SWITCH_BLOCKED", preIntentKillReasons[0], `Live submit blocked by global control: ${preIntentKillReasons.join(", ")}`);
+    if (authorization?.executionMode === "standing_autonomous") {
+      const window = (snapshot.state.oneTimeExecutionWindows || []).find((item) => item.windowId === request.oneTimeWindow?.windowId);
+      const delegated = deriveStandingExecutionControlPlan({ authorization, state: snapshot.state, post, target, account, executionId, oneTimeWindow: window, liveGrant });
+      if (!delegated.allowed) reject("STANDING_DELEGATION_INVALID", "authorizationValid", `Standing execution delegation blocked: ${delegated.reasons.join(", ")}`);
+    }
     const expectedGates = ["authorizationValid", "readinessFresh", "accountMatch", "profileMatch", "targetMatch", "contentHashMatch", "mediaHashMatch", "audienceMatch", "composerConfirmed", "mediaPreviewConfirmed", "noDuplicateReceipt", "noExistingConfirmedPublication"];
     const failedGate = expectedGates.find((key) => verifiedGates[key] !== true);
     if (failedGate) {
@@ -1755,6 +1986,8 @@ export class SeedingService {
       const currentAuthorization = (currentState.campaignAuthorizations || []).find((item) => item.id === currentPost.campaignAuthorizationId);
       const currentTarget = requireItem(currentState.targets, currentPost.targetId, "Target");
       const currentAccount = (currentState.executionAccounts || []).find((item) => item.id === executionAccountKey(currentTarget.channel, currentTarget.accountId));
+      const currentKillReasons = killSwitchReasons(currentPost, currentState);
+      if (currentKillReasons.length) reject("KILL_SWITCH_BLOCKED", currentKillReasons[0], `Live submit blocked by global control: ${currentKillReasons.join(", ")}`);
       const currentGrant = (currentState.liveExecutionGrants || []).find((item) => item.grantId === requestRow.request?.liveGrant?.grantId);
       try { assertLiveGrantMatchesExecution(currentGrant, requestRow.request, currentAuthorization); }
       catch (error) {
@@ -1767,12 +2000,13 @@ export class SeedingService {
           requestRow.request.publicationVisibility !== (currentPost.publicationVisibility || "PUBLIC") || currentGrant.publicationVisibility !== requestRow.request.publicationVisibility ||
           requestRow.request.platform !== currentTarget.channel || requestRow.request.target.targetId !== currentPost.targetId ||
           requestRow.request.accountId !== currentTarget.accountId || requestRow.request.profileId !== currentTarget.profileId ||
-          currentAccount?.profileId !== currentTarget.profileId || currentAccount?.status !== "enabled" ||
+          currentAccount?.profileId !== currentTarget.profileId || currentAccount?.status !== "enabled" || currentAccount?.health !== "healthy" ||
           requestRow.request.media.length !== (currentPost.artifactId ? 1 : 0)) reject("IDENTITY_MISMATCH", "executionBindingsMatch", "Job identity changed before live submit intent");
       if (currentPost.artifactId) {
         const currentArtifact = requireItem(currentState.artifacts || [], currentPost.artifactId, "Artifact");
         if (currentArtifact.sha256 !== requestRow.request.media[0].sha256 || currentArtifact.id !== requestRow.request.media[0].artifactId || currentArtifact.path !== requestRow.request.media[0].reference) reject("ARTIFACT_INTEGRITY_FAILED", "mediaHashMatch", "Media identity changed before live submit intent");
       }
+      if (!isReadinessFresh(currentTarget.readiness, { platform: currentTarget.channel, accountId: currentTarget.accountId, profileId: currentTarget.profileId, targetId: currentTarget.id }, new Date(), this.readinessTtlMs)) reject("READINESS_NOT_READY", "readinessFresh", "Readiness expired or was not READY before live submit intent");
       const decision = evaluateQueue(currentPost, currentState, new Date(), { executionId });
       if (!decision.allowed || currentAuthorization?.allowLiveExecution !== true) {
         const reason = decision.reasons[0] || "authorization_invalid";
@@ -2292,7 +2526,10 @@ export class SeedingService {
     });
     if (result.result.campaignAuthorizationId) {
       const readinessResult = await this.refreshCampaignJobReadiness(result.result.id, actor);
-      if (readinessResult.status === "queued") await this.prepareExecutionRequest(result.result.id, actor);
+      if (readinessResult.status === "queued") {
+        await this.prepareExecutionRequest(result.result.id, actor);
+        await this.ensureStandingExecutionGrant(result.result.id, "execution-router");
+      }
       const latest = await this.store.read();
       return latest.posts.find((item) => item.id === result.result.id) || result.result;
     }
@@ -2389,6 +2626,7 @@ export class SeedingService {
         if (decision.allowed) {
           post.status = "queued";
           post.queuedAt = target.updatedAt;
+          post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
           post.jobLifecycle ||= [{ state: "CREATED", at: post.createdAt }];
           post.jobLifecycle.push({ state: "READY", at: target.updatedAt }, { state: "QUEUED", at: target.updatedAt });
           delete post.blockedAt;

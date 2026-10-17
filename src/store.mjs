@@ -11,6 +11,15 @@ export function createInitialState(now = new Date()) {
     revision: 0,
     createdAt: timestamp,
     updatedAt: timestamp,
+    control: {
+      killSwitch: {
+        active: false,
+        epoch: 0,
+        changedAt: null,
+        changedBy: null,
+        reason: null
+      }
+    },
     campaigns: [],
     campaignAuthorizations: [],
     liveExecutionGrants: [],
@@ -50,6 +59,29 @@ export function migrateState(input, now = new Date()) {
   if (!Number.isSafeInteger(sourceVersion) || sourceVersion < 1) throw new Error("Unsupported or invalid state schemaVersion");
   if (sourceVersion > 8) throw new Error(`State schemaVersion ${sourceVersion} is newer than supported version 8`);
   let changed = false;
+  if (!state.control || typeof state.control !== "object" || Array.isArray(state.control)) {
+    state.control = {};
+    changed = true;
+  }
+  if (!state.control.killSwitch || typeof state.control.killSwitch !== "object" || Array.isArray(state.control.killSwitch)) {
+    state.control.killSwitch = {};
+    changed = true;
+  }
+  const killSwitch = state.control.killSwitch;
+  if (typeof killSwitch.active !== "boolean") {
+    killSwitch.active = false;
+    changed = true;
+  }
+  if (!Number.isSafeInteger(killSwitch.epoch) || killSwitch.epoch < 0) {
+    killSwitch.epoch = 0;
+    changed = true;
+  }
+  for (const key of ["changedAt", "changedBy", "reason"]) {
+    if (!(key in killSwitch)) {
+      killSwitch[key] = null;
+      changed = true;
+    }
+  }
   for (const key of STATE_COLLECTIONS) {
     if (!Array.isArray(state[key])) {
       state[key] = [];

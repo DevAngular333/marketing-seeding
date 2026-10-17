@@ -1,29 +1,36 @@
-# Current State (pinned 2026-10-17)
+# Current State (verified 2026-10-17)
 
 ## Repository
 
-- Path: `/Users/nam/Documents/marketing-seeding`
-- Branch: `pr3-4-2-presubmit-cancel`
-- HEAD: `b4fa42b161896f1d4992743d5daa9f0fc91c70a5`
-- Branch is ahead of origin by 6 commits.
-- Working tree is dirty with preexisting LinkedIn/ORCA hardening and transport certification files. These are preserved and checkpointed before workers.
+- Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
+- Branch: `integration/autonomous-build`
+- HEAD before release commit: `a72d231` (`feat: add safe product factory foundation`)
+- Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
+- Working tree contains the accepted integration seam changes listed in `git status`; they are committed after this report.
+- `SYSTEM_AGENTIC_AI` Core was not modified.
 
 ## Runtime
 
 - Canonical state: `/Users/nam/build-agentic-AI/.agentic/marketing-seeding/state.json`
 - Schema: 8; revision: 193; SHA-256: `327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae`.
-- Service PID: 64620; listener: `127.0.0.1:4318`.
+- Read-only `/health`: service PID 64620, listener `127.0.0.1:4318`, source commit `b4fa42b…`, schema 8, revision 193.
 - Traffic collector, daily automation, browser tracking and fixture worker disabled.
 - No active execution leases, active live grants, active one-time windows, or active campaign authorizations.
 
 ## Counts
 
-7 campaigns; 10 authorizations; 7 one-time windows; 7 grants; 8 execution requests; 8 receipts; 7 posts; 4 UNKNOWN posts; 3 blocked posts; 4 publication attempts; 0 published; 0 metrics; 0 stories/interactions/replies/conversions.
+7 campaigns (active); 10 authorizations (5 expired, 2 superseded, 3 paused); 7 one-time windows (all `CONSUMED`); 7 grants (4 `CONSUMED`, 3 `REVOKED`); 8 execution requests (1 dry-run complete, 4 `SUBMIT_RESULT_UNKNOWN`, 3 failed); 8 receipts; 7 posts (4 `submit_result_unknown`, 3 blocked); 4 publication attempts (all `unknown`); 4 submission uncertainties (`UNKNOWN`); 4 verified artifacts; 0 stories; 0 published; 0 metrics/interactions/replies/conversions.
 
 ## Protected history
 
-Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b588b-20fd-42e1-9f6d-9b3bf5f04628`, `c2265ddf-4384-4339-a26b-4949b6a12af9`, `8e058f6e-5f67-4078-99bf-6cf86e1b62d7`; uncertainty `df39df1c-2f06-4c20-8e9a-4ed07f5df34c`. They are immutable.
+Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b588b-20fd-42e1-9f6d-9b3bf5f04628`, `c2265ddf-4384-4339-a26b-4949b6a12af9`, `8e058f6e-5f67-4078-99bf-6cf86e1b62d7`; uncertainty `df39df1c-2f06-4c20-8e9a-4ed07f5df34c`. All remain immutable.
 
 ## Tests
 
-Baseline full suite: `node --test test/*.test.mjs` → 272 tests, 270 passed, 0 failed, 2 skipped.
+- Focused integrated gate: `node --test test/browser-interaction-transport.test.mjs test/jev-execution-worker.test.mjs test/linkedin-verification.test.mjs test/service.test.mjs test/standing-campaign-delegation.test.mjs test/campaign-authorization.test.mjs test/guards.test.mjs test/store-migration.test.mjs` → 152 passed, 0 failed, 0 skipped.
+- Full suite: `node --test test/*.test.mjs` → 299 total, 297 passed, 0 failed, 2 skipped; exit 0.
+- Static checks: `node --check` for changed `.mjs` files and `git diff --check` passed.
+
+## Live proof
+
+`LIVE_PROOF_BLOCKED`: no fresh exact LIVE campaign authorization, one-time window, execution-scoped grant, lease, or explicit harmless test content/session input exists. No browser mutation or social mutation occurred.

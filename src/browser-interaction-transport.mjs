@@ -10,6 +10,19 @@ export class BrowserInteractionTransport {
     this.id = String(id);
     this.provider = String(provider);
     this.providerVersion = providerVersion ? String(providerVersion) : null;
+    // A final-submit transport must prove that it runs the caller's
+    // pre-provider validation immediately before emitting browser input.
+    // Implementations opt into this explicit contract; LinkedIn rejects
+    // unmarked transports at its submit boundary.
+    this.transportContractVersion = 1;
+    this.requiresPreClickValidation = true;
+  }
+
+  assertPreClickValidation({ validate } = {}) {
+    if (typeof validate !== "function") {
+      throw Object.assign(new Error("Browser transport requires pre-provider validation"), { code: "TRANSPORT_VALIDATION_REQUIRED" });
+    }
+    return true;
   }
 
   runtimeIdentity() {
@@ -86,6 +99,7 @@ export class OrcaAccessibilityTransport extends BrowserInteractionTransport {
   async click({ pageId, targetRef, targetIdentity = targetRef }, { validate, diagnostics } = {}) {
     if (!pageId || !targetRef) throw Object.assign(new Error("Browser transport target is incomplete"), { code: "TRANSPORT_TARGET_INVALID" });
     if (typeof this.browser.click !== "function") throw Object.assign(new Error("ORCA accessibility click transport is unavailable"), { code: "TRANSPORT_UNAVAILABLE" });
+    this.assertPreClickValidation({ validate });
     const startedAt = new Date().toISOString();
     const result = await this.browser.click(pageId, targetRef, { validate });
     const completedAt = new Date().toISOString();
@@ -122,6 +136,7 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
     if (typeof this.browser.mouseMove !== "function" || typeof this.browser.mouseDown !== "function" || typeof this.browser.mouseUp !== "function") {
       throw Object.assign(new Error("ORCA pointer click transport is unavailable"), { code: "TRANSPORT_UNAVAILABLE" });
     }
+    this.assertPreClickValidation({ validate });
     const preflight = typeof validate === "function" ? await validate() : null;
     const startedAt = new Date().toISOString();
     const x = Math.round(Number(boundingBox.x) + Number(boundingBox.width) / 2);
@@ -156,4 +171,19 @@ export function assertTransportCannotChangeAfterIntent({ selectedTransport, requ
     throw Object.assign(new Error("Browser interaction transport cannot change after durable submit intent"), { code: "TRANSPORT_SWITCH_AFTER_INTENT" });
   }
   return selectedTransport;
+}
+
+/**
+ * Final-submit callers must use a transport that explicitly implements the
+ * validation contract. A duck-typed click function is insufficient because it
+ * could silently ignore the callback that fences the last browser input.
+ */
+export function assertValidatedTransport(transport) {
+  if (!transport || typeof transport.click !== "function" ||
+      transport.transportContractVersion !== 1 ||
+      transport.requiresPreClickValidation !== true ||
+      typeof transport.assertPreClickValidation !== "function") {
+    throw Object.assign(new Error("Browser interaction transport is not certified for validated final input"), { code: "TRANSPORT_NOT_CERTIFIED" });
+  }
+  return transport;
 }

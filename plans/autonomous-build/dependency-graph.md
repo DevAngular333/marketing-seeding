@@ -1,27 +1,33 @@
-# Dependency Graph
+# Dependency Graph (current implementation)
 
 ```text
-Existing JsonStore/schema/audit + authority/window/grant/lease contracts
-  ├─> Standing campaign authorization / bounded delegation
-  │     └─> future autonomous LinkedIn publish + independent verify (LIVE lane)
-  ├─> Product intelligence contracts + evidence/claim graph
-  │     └─> strategy/content safety
-  └─> Product classifier/factory + artifact evidence
-        └─> product intelligence grounding
+JsonStore / schema / audit / writer lease
+  ├─> campaign authorization + target/account binding
+  │     ├─> queue eligibility (rules, quotas, cadence, concurrency, kill epoch)
+  │     └─> standing autonomous delegation
+  │           └─> one-time window + single-use grant + execution lease
+  │                 └─> JEV exact dispatch
+  │                       ├─> LinkedIn readiness (ORCA profile/session/composer)
+  │                       └─> LinkedIn adapter
+  │                             └─> BrowserInteractionTransport
+  │                                   ├─> ORCA accessibility element click
+  │                                   └─> ORCA pointer sequence
+  │                             └─> activation → acceptance → independent publication verifier
+  │                                   └─> normalized receipt → canonical CONFIRMED/PUBLISHED
+  │
+  ├─> artifact/story/channel draft graph
+  │     ├─> Product Intelligence (caller evidence + claim graph)
+  │     └─> Product Factory (safe local classification/commands/artifact hash)
+  │
+  └─> metrics/interaction/reply/conversion collections and dashboard projections
 
 SYSTEM_AGENTIC_AI Core (frozen, read-only)
-  └─> future versioned handoff boundary
-
-Later, after the first wave:
-  discovery → audience/channel intelligence → strategy/NBA → content
-  account/session runtime → execution adapters → verification → metrics/learning
+  └─> future versioned handoff boundary (not implemented in this wave)
 ```
 
-## Safe parallelism
+## Dependency status
 
-- Worker A: authority/delegation, owns only new delegation module and its tests.
-- Worker B: product intelligence/evidence, owns only new product intelligence module and tests.
-- Worker C: product factory/classifier, owns only new factory module and tests.
-- Master: journal, integration, cross-module contract decisions, review, full gates.
-
-Workers read existing seams but do not edit shared service/store/adapter files in this wave. If a shared seam is required, report `CONTRACT_CHANGE_REQUIRED`.
+- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, product intelligence module, safe product factory module.
+- **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse.
+- **Design-only/not implemented:** continuous discovery, audience relevance scoring, strategy/NBA, production LLM content, contextual engagement, learning loop, multi-account registry/recovery, versioned System-Agentic handoff.
+- **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.

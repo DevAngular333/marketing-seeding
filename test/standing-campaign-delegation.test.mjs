@@ -10,7 +10,7 @@ import { executionAccountKey, readinessBinding } from "../src/readiness.mjs";
 function fixture() {
   const now = new Date("2026-10-17T12:00:00.000Z");
   const campaign = { id: "campaign-1", productRepo: "/tmp/product", objective: "test", audience: ["public"], landingUrl: null, status: "active" };
-  const target = { id: "target-1", channel: "linkedin", accountId: "acct-1", profileId: "profile-1", url: "https://www.linkedin.com/company/example", status: "active", readiness: { state: "ready", checkedAt: now.toISOString(), expiresAt: new Date(now.getTime()+3600000).toISOString(), binding: readinessBinding({ platform: "linkedin", accountId: "acct-1", profileId: "profile-1", targetId: "target-1" }), checks: { sessionValid: true, composerCapable: true, platformAvailable: true } } };
+  const target = { id: "target-1", channel: "linkedin", accountId: "acct-1", profileId: "profile-1", url: "https://www.linkedin.com/company/example", status: "active", readiness: { state: "READY", checkedAt: now.toISOString(), expiresAt: new Date(now.getTime()+4*60*1000).toISOString(), binding: readinessBinding({ platform: "linkedin", accountId: "acct-1", profileId: "profile-1", targetId: "target-1" }), platform: "linkedin", accountId: "acct-1", profileId: "profile-1", targetId: "target-1", checks: { sessionValid: true, composerCapable: true, platformAvailable: true } } };
   const account = { id: executionAccountKey("linkedin", "acct-1"), platform: "linkedin", accountId: "acct-1", profileId: "profile-1", status: "enabled", health: "healthy" };
   const content = "Approved bounded copy.";
   const authorization = { id: "auth-1", campaignId: campaign.id, status: "active", destinations: [{ platform: "linkedin", accountId: "acct-1", profileId: "profile-1", targetId: target.id, targetUrl: target.url }], approvedAssets: [], contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(content)], allowRepeatSameContent: false }, audienceRules: { allowedAudiences: ["public"] }, publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] }, schedule: { timezone: "UTC", weekdays: [6], startLocal: "00:00", endLocal: "23:59" }, rateLimits: { maxJobsPerAccountPerDay: 5, maxJobsPerCampaignPerDay: 5, maxConcurrency: 1, minIntervalMinutes: 0 }, allowLiveExecution: true, validFrom: "2026-10-17T00:00:00.000Z", validUntil: "2026-10-18T00:00:00.000Z", campaignBinding: campaignScopeFingerprint(campaign) };
@@ -42,4 +42,26 @@ test("rejects scope drift, revoked authority, duplicate and unknown", () => {
 
 test("rejects missing or mismatched one-time window and grant", () => {
   const f = fixture(); assert.ok(!deriveStandingExecutionControlPlan({ ...f, oneTimeWindow: null, liveGrant: f.grant, executionId: "exec-1" }).allowed); assert.ok(!deriveStandingExecutionControlPlan({ ...f, oneTimeWindow: f.window, liveGrant: f.grant, executionId: "other" }).allowed); f.grant.status = "REVOKED"; assert.ok(!deriveStandingExecutionControlPlan({ ...f, oneTimeWindow: f.window, liveGrant: f.grant, executionId: "exec-1" }).allowed);
+});
+
+test("standing delegation fails closed while the global kill switch is active or epoch advanced", () => {
+  for (const control of [
+    { active: true, epoch: 0 },
+    { active: false, epoch: 1 }
+  ]) {
+    const f = fixture();
+    f.post.queuedKillEpoch = 0;
+    f.state.control = { killSwitch: control };
+    const result = deriveStandingExecutionControlPlan({ ...f, oneTimeWindow: f.window, liveGrant: f.grant, executionId: "exec-1" });
+    assert.equal(result.allowed, false);
+    assert.ok(result.reasons.some((reason) => reason.startsWith("kill_switch_")));
+  }
+});
+
+test("standing delegation fails closed when the bound account is unhealthy", () => {
+  const f = fixture();
+  f.account.health = "degraded";
+  const result = deriveStandingExecutionControlPlan({ ...f, oneTimeWindow: f.window, liveGrant: f.grant, executionId: "exec-1" });
+  assert.equal(result.allowed, false);
+  assert.ok(result.reasons.includes("account_profile_binding_mismatch"));
 });

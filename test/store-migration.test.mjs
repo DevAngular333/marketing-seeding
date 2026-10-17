@@ -123,6 +123,35 @@ test("schema v7 migrates additively to v8 with an empty one-time window collecti
   assert.equal(state.auditLog.at(-1).event, "state_schema_migrated_v8");
 });
 
+test("legacy state migration creates an inactive kill switch at epoch zero without dropping control metadata", () => {
+  const { state, changed } = migrateState({
+    schemaVersion: 7,
+    revision: 4,
+    control: { killSwitch: { active: true, epoch: 12, changedAt: "2026-10-17T00:00:00.000Z", changedBy: "operator", reason: "maintenance" } },
+    campaigns: [], auditLog: []
+  });
+  assert.equal(changed, true);
+  assert.deepEqual(state.control.killSwitch, {
+    active: true,
+    epoch: 12,
+    changedAt: "2026-10-17T00:00:00.000Z",
+    changedBy: "operator",
+    reason: "maintenance"
+  });
+});
+
+test("migration defaults a missing kill switch control fence safely", () => {
+  const { state, changed } = migrateState({ schemaVersion: 7, revision: 4, campaigns: [], auditLog: [] });
+  assert.equal(changed, true);
+  assert.deepEqual(state.control.killSwitch, {
+    active: false,
+    epoch: 0,
+    changedAt: null,
+    changedBy: null,
+    reason: null
+  });
+});
+
 test("migration rejects a future schema instead of downgrading it", () => {
   assert.throws(() => migrateState({ schemaVersion: 9, revision: 9 }), /newer than supported/);
 });

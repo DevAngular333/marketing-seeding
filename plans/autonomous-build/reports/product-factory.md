@@ -1,9 +1,6 @@
-# Product Factory Worker Report
+# Product Factory — Local Capability Report
 
-- Acceptance: A4, A5, A6, A7, A8, A9, A10; constraints C1-C8; verification V4, V5, V6, V8.
-- Summary: Added `src/product-factory.mjs`, a deterministic Node/Python/static/unknown classifier, explicit allowlisted local command planner/runner, bounded timeout/output handling, secret redaction, and SHA-256 artifact evidence collection. Added focused tests in `test/product-factory.test.mjs`.
-- Evidence: `node --test test/product-factory.test.mjs` passed 5/5. No network, browser, social action, canonical state, credentials, or external side effect used.
-- Confidence: High for local synthetic behavior; live product builds and external publication remain unverified and out of scope.
-- Out of scope: campaign state, dashboard, browser/JEV, external platforms, production LLM, persistent artifact store.
-
-Status: DONE_WITH_CONCERNS
+- **Status:** PARTIAL, LOCAL_VERIFIED.
+- **Implementation:** `src/product-factory.mjs` classifies Node/Python/static/unknown repositories; creates deterministic plans; executes only allowed argv binaries with `shell:false`, repository containment, bounded timeout/output and secret-like output redaction; hashes selected files into artifact evidence.
+- **Verification:** `node --test test/product-factory.test.mjs` is included in full suite; worker focused tests passed 5/5. Full integration suite: 299 tests, 297 pass, 0 fail, 2 skip.
+- **Evidence class:** local synthetic. This is not a general repo build system: it does not install dependencies, execute arbitrary project builds, render product media/screenshots/video, persist artifact lifecycle in canonical state, or verify external product behavior. `externalSideEffects:false` reflects the local tool’s constrained command intent, not a sandbox against a malicious allowed binary/project behavior.

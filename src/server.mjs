@@ -362,6 +362,20 @@ const server = http.createServer(async (request, response) => {
       }
       return sendJson(response, 200, await service.snapshot());
     }
+    if (request.method === "POST" && url.pathname === "/api/control/kill-switch/activate") {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      const input = await readJson(request);
+      return sendJson(response, 200, await service.activateKillSwitch(input.reason, actor));
+    }
+    if (request.method === "POST" && url.pathname === "/api/control/kill-switch/deactivate") {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.deactivateKillSwitch(actor));
+    }
+    let killRebaseMatch = url.pathname.match(/^\/api\/control\/kill-switch\/posts\/([^/]+)\/rebase$/);
+    if (request.method === "POST" && killRebaseMatch) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 200, await service.rebasePostKillEpoch(killRebaseMatch[1], actor));
+    }
     if (request.method === "POST" && url.pathname === "/api/live-execution-grants") {
       if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
       return sendJson(response, 201, await service.createLiveExecutionGrant(await readJson(request), actor));
