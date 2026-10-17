@@ -4,9 +4,9 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration HEAD: `6e083ff` (`fix: harden public discovery observer`); the working tree contains the bounded audience/channel fit seam and journal updates described below.
+- Integration HEAD: `1fac781` (`docs: complete account projection worker contract`); the branch contains the bounded account runtime dashboard projection and journal updates described below.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
-- Working tree contains only the explicitly listed observer/config/journal artifacts; no source change has been merged into `main`.
+- Working tree contains only the account-runtime audit/projection plan artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
 
 ## Runtime
@@ -24,6 +24,7 @@
 - Discovery observations are normalized, deduplicated, policy-classified, scored, persisted on campaigns and projected read-only by `/api/dashboard`; integration adds an opt-in public HTTP observer and 15-minute poller, which are not enabled in the canonical service.
 - Discovery fit metadata now evaluates caller-supplied audience terms, channel and locale hints as bounded `MATCHED`/`MISMATCHED`/`UNKNOWN` advisory evidence through the existing persistence path; it does not create authority or publication work.
 - Product factory runtime can classify/run the registered campaign repository with the bounded allowlist, discover bounded media/document candidates when paths are omitted, return local artifact hashes, persist a bounded 24-run campaign-owned lineage and project recent runs read-only; it reports `externalSideEffects: false` and does not create publication authority.
+- Account runtime now has a deterministic read-only `accountRuntime`/`executionAccounts` dashboard projection with profile fingerprints, bounded readiness/blocker fields and bound-target counts; raw profile IDs, identity URLs, evidence and secret-like fields are excluded. This is an observability seam, not login, credential, selection or failover automation.
 
 ## Counts
 
@@ -36,7 +37,8 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 ## Tests
 
 - Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; product-factory focused gate 40/40; distribution-handoff/service/server gate 33/33.
-- Full suite: 364 total, 362 passed, 0 failed, 2 skipped; exit 0.
+- Full suite: 367 total, 365 passed, 0 failed, 2 skipped; exit 0.
+- Account projection focused gate: 3 passed, 0 failed, 0 skipped; independent release verifier: PASS (bounded).
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
 
 ## Live proof

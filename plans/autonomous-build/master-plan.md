@@ -16,8 +16,9 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 8. Add bounded caller-supplied audience/channel/locale fit metadata to discovery observations without changing authority or publication semantics.
 9. Add deterministic bounded artifact candidate discovery to the existing Product Factory without auto-approving publication assets.
 10. Verify and journal the existing provider-neutral DRY_RUN distribution handoff without promoting it to LIVE authority.
+11. Add a read-only account runtime dashboard projection with profile fingerprinting, readiness/blocker visibility and secret-safe redaction; do not add login, credential, selector or failover semantics.
 
-Result: local implementation gates pass (364 total, 362 passed, 0 failed, 2 skipped). No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
+Result: local implementation gates pass (367 total, 365 passed, 0 failed, 2 skipped). No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 
 ## Later waves (dependency order)
 
@@ -25,7 +26,7 @@ Result: local implementation gates pass (364 total, 362 passed, 0 failed, 2 skip
 2. Versioned upstream System-Agentic → marketing domain handoff; the downstream DRY_RUN validator/persistence seam exists locally, but upstream live producer/consumer wiring remains.
 3. Expand Product Factory into project-specific safe build/run/render/media workflow with persistent artifacts; current bounded candidate discovery is evidence-only.
 4. Extend the local deterministic discovery and advisory strategy foundations into continuous authorized observation, audience/channel/community eligibility, outcome-driven NBA and grounded content generation; current fit metadata remains caller-evidence driven.
-5. Add contextual engagement, account/session registry/recovery, metrics learning, restart/24-7 hardening and Mission Control projections; certify platforms incrementally.
+5. Add contextual engagement, account/session registry/recovery, metrics learning, restart/24-7 hardening and deeper Mission Control projections; the current account view is read-only and does not select or fail over accounts; certify platforms incrementally.
 
 ## Frozen seams
 

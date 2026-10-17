@@ -42,7 +42,7 @@ test("dashboard account projection is allowlisted, fingerprinted, and counts bou
   assert.equal(account.boundTargetCount, 2);
   assert.equal(account.readiness.state, "BLOCKED");
   assert.equal(account.readiness.reasonCode, "session_expired");
-  assert.equal(account.currentBlocker, "readiness:session_expired");
+  assert.equal(account.currentBlocker, "readiness:expired");
   assert.equal("profileId" in account, false);
   assert.equal("identityReference" in account, false);
   assert.equal("expectedIdentityUrl" in account, false);
@@ -60,4 +60,31 @@ test("dashboard account projection survives restart without state mutation", asy
   assert.deepEqual(second.accountRuntime, first.accountRuntime);
   assert.deepEqual(second.executionAccounts, first.executionAccounts);
   assert.deepEqual(await restarted.snapshot(), before);
+});
+
+test("disabled and stale accounts expose a bounded dashboard blocker", async () => {
+  const { service } = await fixture("account-runtime-blocker-projection-");
+  await service.store.mutate("fixture", "disable_projection_account", (state) => {
+    state.executionAccounts[0].status = "disabled";
+    state.targets.splice(0, 2);
+  });
+  let dashboard = await service.dashboard();
+  assert.equal(dashboard.accountRuntime[0].currentBlocker, "status:disabled");
+
+  await service.store.mutate("fixture", "enable_projection_account_without_readiness", (state) => {
+    state.executionAccounts[0].status = "enabled";
+    state.executionAccounts[0].health = "healthy";
+  });
+  dashboard = await service.dashboard();
+  assert.equal(dashboard.accountRuntime[0].currentBlocker, "readiness:missing");
+
+  await service.store.mutate("fixture", "inject_untrusted_readiness_reason", (state) => {
+    state.targets.push({
+      id: "target-untrusted", channel: "linkedin", accountId: "fixture-account", profileId,
+      readiness: { state: "blocked", checkedAt: "2026-10-17T00:03:00.000Z", reasonCode: "session_expired", recoveryClassification: "provider-private" }
+    });
+  });
+  dashboard = await service.dashboard();
+  assert.equal(dashboard.accountRuntime[0].readiness.reasonCode, "session_expired");
+  assert.equal(dashboard.accountRuntime[0].readiness.recoveryClassification, "UNKNOWN");
 });

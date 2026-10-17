@@ -500,6 +500,24 @@ function accountProfileFingerprint(profileId) {
   return createHash("sha256").update(String(profileId || "")).digest("hex");
 }
 
+const ACCOUNT_RUNTIME_READINESS_STATES = new Set(["READY", "BLOCKED", "HUMAN_REQUIRED", "UNKNOWN"]);
+const ACCOUNT_RUNTIME_RECOVERY_STATES = new Set(["RECOVERABLE", "HUMAN_REQUIRED", "UNKNOWN", "NONE"]);
+
+function safeAccountRuntimeReason(value) {
+  const reason = String(value || "").trim().toLowerCase();
+  return /^[a-z0-9_]{2,64}$/.test(reason) ? reason : "unknown";
+}
+
+function safeAccountRuntimeState(value) {
+  const state = String(value || "UNKNOWN").trim().toUpperCase();
+  return ACCOUNT_RUNTIME_READINESS_STATES.has(state) ? state : "UNKNOWN";
+}
+
+function safeAccountRuntimeRecovery(value) {
+  const recovery = String(value || "UNKNOWN").trim().toUpperCase();
+  return ACCOUNT_RUNTIME_RECOVERY_STATES.has(recovery) ? recovery : "UNKNOWN";
+}
+
 function projectExecutionAccountRuntime(state) {
   const targets = Array.isArray(state.targets) ? state.targets : [];
   const accounts = Array.isArray(state.executionAccounts) ? state.executionAccounts : [];
@@ -510,27 +528,36 @@ function projectExecutionAccountRuntime(state) {
       .filter((readiness) => readiness && typeof readiness === "object")
       .sort((left, right) => String(right.checkedAt || "").localeCompare(String(left.checkedAt || "")));
     const latest = boundReadiness[0] || null;
-    const readinessState = latest?.state ? String(latest.state).toUpperCase() : null;
+    const readinessState = latest ? safeAccountRuntimeState(latest.state) : null;
     const health = String(account.health || "unknown");
-    const currentBlocker = health !== "healthy"
+    const status = String(account.status || "unknown");
+    const readinessExpiresAt = Date.parse(latest?.expiresAt || "");
+    const readinessExpired = Number.isFinite(readinessExpiresAt) && readinessExpiresAt <= Date.now();
+    const currentBlocker = status !== "enabled"
+      ? `status:${status}`
+      : health !== "healthy"
       ? `health:${health}`
-      : latest && readinessState !== "READY"
-        ? `readiness:${String(latest.reasonCode || readinessState || "unknown")}`
+      : !latest
+        ? "readiness:missing"
+        : readinessExpired
+          ? "readiness:expired"
+          : readinessState !== "READY"
+            ? `readiness:${safeAccountRuntimeReason(latest.reasonCode || readinessState || "unknown")}`
         : null;
     return {
       id: String(account.id || `${account.platform}:${account.accountId}`),
       platform: String(account.platform || ""),
       accountId: String(account.accountId || ""),
       profileFingerprint: accountProfileFingerprint(account.profileId),
-      status: String(account.status || "unknown"),
+      status,
       health,
       lastReadinessAt: account.lastReadinessAt || latest?.checkedAt || null,
       readiness: latest ? {
         state: readinessState,
         checkedAt: latest.checkedAt || null,
         expiresAt: latest.expiresAt || null,
-        reasonCode: latest.reasonCode || null,
-        recoveryClassification: latest.recoveryClassification || "NONE"
+        reasonCode: latest ? safeAccountRuntimeReason(latest.reasonCode) : null,
+        recoveryClassification: safeAccountRuntimeRecovery(latest.recoveryClassification)
       } : null,
       boundTargetCount: targets.filter((target) => target && target.channel === account.platform && target.accountId === account.accountId && target.profileId === account.profileId).length,
       currentBlocker

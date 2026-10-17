@@ -14,7 +14,7 @@
 
 ## Outcome
 
-The integration branch now contains local, tested foundations for bounded standing campaign delegation, monotonic kill-switch epoch fencing, final provider-send revalidation, evidence-grounded product intelligence and versioned handoff, bounded product factory execution, deterministic discovery, advisory learning/control-cycle projections, and opt-in public HTTP discovery polling. Existing campaign store, authorization/window/grant/lease, JEV/LinkedIn, browser transport and UNKNOWN contracts were reused. No social mutation occurred.
+The integration branch now contains local, tested foundations for bounded standing campaign delegation, monotonic kill-switch epoch fencing, final provider-send revalidation, evidence-grounded product intelligence and versioned handoff, bounded product factory execution, deterministic discovery, advisory learning/control-cycle projections, opt-in public HTTP discovery polling, and a secret-safe read-only account runtime projection. Existing campaign store, authorization/window/grant/lease, JEV/LinkedIn, browser transport and UNKNOWN contracts were reused. No social mutation occurred.
 
 ## What works now
 
@@ -26,6 +26,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Discovery can attach bounded caller-supplied audience/channel/locale fit evidence with explicit `MATCHED`/`MISMATCHED`/`UNKNOWN` outcomes; this remains advisory and does not create platform support or execution authority.
 - Product Factory can discover and hash bounded media/document candidates from the registered repository through existing local evidence lineage; explicit paths remain authoritative and no candidate becomes a publication-approved asset automatically.
 - A provider-neutral distribution handoff can be validated and attached idempotently as DRY_RUN metadata with exact content/media/target references; it does not wire SYSTEM_AGENTIC_AI live or create execution authority.
+- Mission Control/API now projects registered account health, bound-target count, readiness state and bounded blocker reason with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. This is observability only and does not select, authenticate or fail over accounts.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
 
 ## Verification
@@ -33,7 +34,8 @@ The integration branch now contains local, tested foundations for bounded standi
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
-Full Node suite: 364 total, 362 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: 367 total, 365 passed, 0 failed, 2 skipped; exit 0
+ Account runtime projection: 3 passed, 0 failed, 0 skipped; independent release review PASS (bounded)
 Syntax check: all src/*.mjs passed
 Diff check: git diff --check passed
 Canonical runtime: schema 8, revision 194, SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6
@@ -43,7 +45,7 @@ Canonical counts: 7 campaigns; 10 authorizations (5 expired, 2 superseded, 3 pau
 
 ## Product readiness
 
-This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repository inspection and bounded factory run lineage are persistent locally, product research remains evidence-input driven, the factory lacks project-specific build/render/media capture, discovery has a bounded opt-in HTTP observer but no audience/community search, strategy and learning remain advisory, content has no production model/provider, account runtime is single-bound-profile rather than an account pool, only LinkedIn has an execution adapter, and no live publication is verified.
+This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repository inspection and bounded factory run lineage are persistent locally, product research remains evidence-input driven, the factory lacks project-specific build/render/media capture, discovery has a bounded opt-in HTTP observer but no audience/community search, strategy and learning remain advisory, content has no production model/provider, account runtime is single-bound-profile with read-only health projection rather than an account pool, only LinkedIn has an execution adapter, and no live publication is verified.
 
 ## Git/release state
 
