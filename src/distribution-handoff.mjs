@@ -42,10 +42,42 @@ function canonicalizeHandoff(input) {
   const productArtifacts = input.productArtifacts === undefined ? [] : input.productArtifacts;
   const mediaArtifacts = input.mediaArtifacts === undefined ? [] : input.mediaArtifacts;
   const contentVariants = input.contentVariants === undefined ? [] : input.contentVariants;
+  const requiredText = (record, field, label) => {
+    if (!record || typeof record[field] !== "string" || !record[field].trim()) throw new Error(`${label}.${field} is required`);
+  };
+  const requiredArray = (record, field, label, { nonempty = false } = {}) => {
+    if (!Array.isArray(record?.[field]) || (nonempty && record[field].length === 0) || record[field].some((value) => typeof value !== "string" || !value.trim())) throw new Error(`${label}.${field} must be an array of non-empty strings`);
+  };
+  const requiredObject = (record, field, label) => {
+    if (!record[field] || typeof record[field] !== "object" || Array.isArray(record[field])) throw new Error(`${label}.${field} must be an object`);
+  };
   if (!productRun || typeof productRun !== "object" || Array.isArray(productRun)) throw new Error("productRun is required for canonical handoff");
   if (!intent || typeof intent !== "object" || Array.isArray(intent)) throw new Error("distributionIntent is required for canonical handoff");
   if (!Array.isArray(productArtifacts) || !Array.isArray(mediaArtifacts) || !Array.isArray(contentVariants)) throw new Error("canonical artifact collections must be arrays");
-  if (packageRecord !== undefined && (!packageRecord || typeof packageRecord !== "object" || Array.isArray(packageRecord))) throw new Error("contentPackage must be an object");
+  if (!packageRecord || typeof packageRecord !== "object" || Array.isArray(packageRecord)) throw new Error("contentPackage is required for canonical handoff");
+
+  requiredText(productRun, "productId", "ProductRun"); requiredText(productRun, "objective", "ProductRun"); requiredText(productRun, "createdAt", "ProductRun");
+  if (productRun.status !== "COMPLETED") throw new Error("ProductRun.status must be COMPLETED");
+  for (const field of ["pipelineIds", "artifactRefs", "mediaRefs", "contentVariantRefs", "campaignRefs", "distributionIntentRefs"]) requiredArray(productRun, field, "ProductRun");
+  requiredObject(productRun, "metadata", "ProductRun");
+  for (const artifact of productArtifacts) {
+    for (const field of ["artifactId", "producerModuleId", "producerStepId", "pipelineId", "productType", "createdAt"]) requiredText(artifact, field, "ProductArtifact");
+    requiredArray(artifact, "files", "ProductArtifact", { nonempty: true }); requiredObject(artifact, "metadata", "ProductArtifact"); requiredObject(artifact, "technicalSpecs", "ProductArtifact");
+  }
+  for (const artifact of mediaArtifacts) {
+    for (const field of ["mediaArtifactId", "productId", "pipelineId", "producerModuleId", "producerStepId", "mediaType", "fileRef", "createdAt"]) requiredText(artifact, field, "MediaArtifact");
+    requiredObject(artifact, "metadata", "MediaArtifact"); requiredArray(artifact, "sourceArtifactRefs", "MediaArtifact");
+  }
+  for (const variant of contentVariants) {
+    for (const field of ["contentVariantId", "productId", "pipelineId", "format", "angle", "audience", "producerModuleId", "producerStepId", "createdAt"]) requiredText(variant, field, "ContentVariant");
+    requiredArray(variant, "sourceArtifactRefs", "ContentVariant"); requiredArray(variant, "sourceMediaRefs", "ContentVariant"); requiredArray(variant, "platformHints", "ContentVariant"); requiredArray(variant, "mediaRefs", "ContentVariant");
+    if (typeof variant.text !== "string" || !variant.text.trim()) throw new Error("ContentVariant.text is required");
+    requiredObject(variant, "metadata", "ContentVariant"); requiredObject(variant, "provenance", "ContentVariant");
+  }
+  for (const field of ["contentPackageId", "productId", "createdAt", "pipelineId", "producerModuleId", "producerStepId"]) requiredText(packageRecord, field, "ContentPackage");
+  requiredArray(packageRecord, "contentVariantRefs", "ContentPackage", { nonempty: true }); requiredArray(packageRecord, "mediaVariantRefs", "ContentPackage"); requiredArray(packageRecord, "sourceArtifactRefs", "ContentPackage"); requiredObject(packageRecord, "metadata", "ContentPackage");
+  for (const field of ["distributionIntentId", "productId", "objective", "createdAt", "pipelineId", "producerModuleId", "producerStepId"]) requiredText(intent, field, "DistributionIntent");
+  requiredArray(intent, "contentVariantRefs", "DistributionIntent", { nonempty: true }); requiredArray(intent, "mediaRefs", "DistributionIntent"); requiredArray(intent, "audienceHints", "DistributionIntent"); requiredArray(intent, "platformHints", "DistributionIntent"); requiredObject(intent, "metadata", "DistributionIntent");
 
   const productId = String(input.productId || productRun.productId || intent.productId || "");
   if (!productId || productRun.productId !== productId || intent.productId !== productId) throw new Error("canonical product identity mismatch");

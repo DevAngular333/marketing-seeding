@@ -29,7 +29,7 @@ The existing service persistence path remains authoritative and idempotent. Sani
 
 ## Evidence and confidence
 
-- Focused: `node --test test/distribution-handoff.test.mjs` — 7 passed, 0 failed.
+- Focused: `node --test test/distribution-handoff.test.mjs` — 7 passed, 0 failed; canonical fixtures now satisfy required ProductRun/ProductArtifact/MediaArtifact/ContentVariant/ContentPackage/DistributionIntent fields and malformed-field rejection is covered.
 - Regression: `node --test test/distribution-handoff.test.mjs test/service.test.mjs test/server.test.mjs` — 35 passed, 0 failed.
 - Static: `node --check src/distribution-handoff.mjs`; `git diff --check` — passed.
 - Confidence: high for local validation, normalization, persistence and side-effect fence; bounded for live/canonical state because none was accessed.
