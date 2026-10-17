@@ -704,6 +704,46 @@ export class SeedingService {
     return result.result;
   }
 
+  /**
+   * Run one bounded advisory control cycle from persisted campaign state.
+   *
+   * This deliberately composes the existing outcome, learning, and strategy
+   * projections. It never evaluates or creates execution authority, leases,
+   * grants, windows, browser actions, or provider/social side effects.
+   */
+  async runCampaignControlCycle(campaignId, input = {}, actor = "automation") {
+    const now = input.now ? new Date(input.now) : new Date();
+    if (!Number.isFinite(now.getTime())) throw new Error("Control cycle time must be valid");
+    const current = await this.store.read();
+    const campaign = requireItem(current.campaigns, campaignId, "Campaign");
+    const cycleAt = now.toISOString();
+    if (campaign.outcomeSummary?.generatedAt === cycleAt
+      && campaign.latestLearningFeedback?.generatedAt === cycleAt
+      && campaign.strategyDecisions?.at(-1)?.createdAt === cycleAt) {
+      return {
+        campaignId, cycleAt,
+        outcome: campaign.outcomeSummary,
+        learning: campaign.latestLearningFeedback,
+        strategy: campaign.strategyDecisions.at(-1),
+        advisory: true, authoritySideEffects: false, externalSideEffects: false
+      };
+    }
+    const cycleInput = { now: cycleAt };
+    const outcome = await this.deriveOutcomeSummary(campaignId, cycleInput, `${actor}:control-cycle`);
+    const learning = await this.deriveLearningFeedback(campaignId, cycleInput, `${actor}:control-cycle`);
+    const strategy = await this.deriveStrategy(campaignId, cycleInput, `${actor}:control-cycle`);
+    return {
+      campaignId,
+      cycleAt: now.toISOString(),
+      outcome,
+      learning,
+      strategy,
+      advisory: true,
+      authoritySideEffects: false,
+      externalSideEffects: false
+    };
+  }
+
   #assertOperatorControlActor(actor) {
     if (!['operator', 'local-human-operator'].includes(actor)) throw new Error('Only an operator may change the global execution kill switch');
   }

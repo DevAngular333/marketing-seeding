@@ -262,6 +262,7 @@ function automationCanMutate(method, pathname) {
   if (/^\/api\/campaigns\/[^/]+\/product-factory$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/product-intelligence\/inspect$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/distribution-handoff$/.test(pathname)) return true;
+  if (/^\/api\/campaigns\/[^/]+\/control-cycle$/.test(pathname)) return true;
   if (/^\/api\/posts\/[^/]+\/execution-request$/.test(pathname)) return true;
   if (/^\/api\/execution-requests\/[^/]+\/receipt$/.test(pathname)) return true;
   return [
@@ -478,6 +479,10 @@ const server = http.createServer(async (request, response) => {
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/learning$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 200, await service.deriveLearningFeedback(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/control-cycle$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.runCampaignControlCycle(match[1], await readJson(request), actor));
     }
     if (request.method === "POST" && url.pathname === "/api/targets") {
       return sendJson(response, 201, await service.createTarget(await readJson(request), actor));
