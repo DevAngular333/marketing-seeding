@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { evaluateQueue } from "./guards.mjs";
+import { publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
 
 const ACTIONS = new Set(["publish", "engage", "research", "wait", "do_nothing"]);
 const MAX_DECISIONS = 24;
@@ -35,8 +36,34 @@ function productReady(campaign) {
   return handoff?.readinessStatus === "READY" && required.every((field) => document?.[field]?.text && document[field].evidenceRefs?.length);
 }
 
-function unknownForCampaign(state, campaignId) {
-  return (state.submissionUncertainties || []).some((item) => item.status === "UNKNOWN" && item.campaignId === campaignId);
+function unknownForCampaign(state, campaignId, posts = []) {
+  const postIds = new Set(posts.map((post) => post.id).filter(Boolean));
+  const publicationAttemptIds = new Set(posts.map((post) => post.publicationAttemptId).filter(Boolean));
+  const executionIds = new Set();
+  for (const request of state.executionRequests || []) {
+    if (postIds.has(request.jobId) && request.executionId) executionIds.add(request.executionId);
+  }
+  for (const receipt of state.executionReceipts || []) {
+    if (postIds.has(receipt.jobId) && receipt.executionId) executionIds.add(receipt.executionId);
+  }
+  for (const lease of state.executionLeases || []) {
+    if (postIds.has(lease.jobId) && lease.executionId) executionIds.add(lease.executionId);
+  }
+  for (const attempt of state.publicationAttempts || []) {
+    if (postIds.has(attempt.postId) && attempt.executionId) executionIds.add(attempt.executionId);
+  }
+  const publicationKeys = new Set(posts.flatMap((post) => [
+    post.idempotencyKey,
+    ...publicationIdentityKeysForPost(post, state)
+  ]).filter(Boolean));
+  return (state.submissionUncertainties || []).some((item) => item.status === "UNKNOWN" && (
+    item.campaignId === campaignId ||
+    postIds.has(item.jobId) ||
+    postIds.has(item.postId) ||
+    publicationAttemptIds.has(item.publicationAttemptId) ||
+    executionIds.has(item.executionId) ||
+    (Array.isArray(item.idempotencyKeys) && item.idempotencyKeys.some((key) => publicationKeys.has(key)))
+  ));
 }
 
 function relevantDiscoveries(campaign) {
@@ -82,7 +109,7 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
   let refs = [];
   if (!productReady(campaign)) {
     reasonList = ["product_intelligence_incomplete"];
-  } else if (unknownForCampaign(state, campaignId)) {
+  } else if (unknownForCampaign(state, campaignId, posts)) {
     reasonList = ["submission_unknown_quarantined"];
   } else {
     const publishable = [];

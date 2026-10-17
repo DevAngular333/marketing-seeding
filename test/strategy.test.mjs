@@ -65,6 +65,23 @@ test("strategy fails closed for incomplete intelligence and UNKNOWN quarantine",
   assert.equal(decision.reasons.includes("submission_unknown_quarantined"), true);
 });
 
+test("strategy quarantines a realistic UNKNOWN linked only by idempotency key", async () => {
+  const { service, campaign, store, post } = await fixture("strategy-unknown-identity-");
+  await store.mutate("fixture", "unknown_identity_only", (state) => {
+    state.submissionUncertainties.push({
+      id: "uncertain-identity-only",
+      status: "UNKNOWN",
+      jobId: "historical-job-id",
+      executionId: "historical-execution-id",
+      idempotencyKeys: [post.idempotencyKey]
+    });
+  });
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00Z" });
+  assert.equal(decision.action, "do_nothing");
+  assert.equal(decision.eligible, false);
+  assert.deepEqual(decision.reasons, ["submission_unknown_quarantined"]);
+});
+
 test("strategy selects engage or research only from eligible relevant discovery", async () => {
   const { service, campaign, store } = await fixture("strategy-discovery-");
   await store.mutate("fixture", "discovery", (state) => {
