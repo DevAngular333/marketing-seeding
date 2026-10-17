@@ -43,6 +43,10 @@ test("dashboard account projection is allowlisted, fingerprinted, and counts bou
   assert.equal(account.readiness.state, "BLOCKED");
   assert.equal(account.readiness.reasonCode, "session_expired");
   assert.equal(account.currentBlocker, "readiness:expired");
+  assert.equal(account.sessionMode, "SESSION_REUSE");
+  assert.equal(account.authMode, "MANUAL_AUTH");
+  assert.equal(account.eligibleForExecution, false);
+  assert.deepEqual(account.ineligibilityReasons, ["readiness:expired"]);
   assert.equal("profileId" in account, false);
   assert.equal("identityReference" in account, false);
   assert.equal("expectedIdentityUrl" in account, false);
@@ -87,4 +91,37 @@ test("disabled and stale accounts expose a bounded dashboard blocker", async () 
   dashboard = await service.dashboard();
   assert.equal(dashboard.accountRuntime[0].readiness.reasonCode, "session_expired");
   assert.equal(dashboard.accountRuntime[0].readiness.recoveryClassification, "UNKNOWN");
+});
+
+test("ready account projection is explicitly eligible without authority side effects", async () => {
+  const { service } = await fixture();
+  await service.store.mutate("fixture", "make_projection_readiness_ready", (state) => {
+    const target = state.targets.find((item) => item.id === "target-2");
+    target.readiness = { ...target.readiness, state: "ready", reasonCode: "ready", expiresAt: new Date(Date.now() + 60_000).toISOString() };
+  });
+  const before = await service.snapshot();
+  const account = (await service.dashboard()).accountRuntime[0];
+  assert.equal(account.eligibleForExecution, true);
+  assert.deepEqual(account.ineligibilityReasons, []);
+  assert.deepEqual(await service.snapshot(), before);
+});
+
+test("human-required and unknown readiness remain explicitly ineligible", async () => {
+  const { service } = await fixture();
+  await service.store.mutate("fixture", "set_projection_human_required", (state) => {
+    state.executionAccounts[0].health = "human_required";
+    const target = state.targets.find((item) => item.id === "target-2");
+    target.readiness = { ...target.readiness, state: "blocked", reasonCode: "authentication_required", expiresAt: new Date(Date.now() + 60_000).toISOString() };
+  });
+  let account = (await service.dashboard()).accountRuntime[0];
+  assert.equal(account.eligibleForExecution, false);
+  assert.deepEqual(account.ineligibilityReasons, ["health:human_required", "readiness:authentication_required"]);
+  await service.store.mutate("fixture", "set_projection_unknown", (state) => {
+    state.executionAccounts[0].health = "unknown";
+    const target = state.targets.find((item) => item.id === "target-2");
+    target.readiness = { ...target.readiness, state: "blocked", reasonCode: "provider_error", expiresAt: new Date(Date.now() + 60_000).toISOString() };
+  });
+  account = (await service.dashboard()).accountRuntime[0];
+  assert.equal(account.eligibleForExecution, false);
+  assert.deepEqual(account.ineligibilityReasons, ["health:unknown", "readiness:provider_error"]);
 });

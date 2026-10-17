@@ -518,6 +518,17 @@ function safeAccountRuntimeRecovery(value) {
   return ACCOUNT_RUNTIME_RECOVERY_STATES.has(recovery) ? recovery : "UNKNOWN";
 }
 
+function accountRuntimeEligibility({ status, health, boundTargetCount, latest, readinessState, readinessExpired }) {
+  const reasons = [];
+  if (status !== "enabled") reasons.push(`status:${status}`);
+  if (health !== "healthy") reasons.push(`health:${health}`);
+  if (!boundTargetCount) reasons.push("target_binding:missing");
+  if (!latest) reasons.push("readiness:missing");
+  else if (readinessExpired) reasons.push("readiness:expired");
+  else if (readinessState !== "READY") reasons.push(`readiness:${safeAccountRuntimeReason(latest.reasonCode || readinessState || "unknown")}`);
+  return { eligibleForExecution: reasons.length === 0, ineligibilityReasons: reasons };
+}
+
 function projectExecutionAccountRuntime(state) {
   const targets = Array.isArray(state.targets) ? state.targets : [];
   const accounts = Array.isArray(state.executionAccounts) ? state.executionAccounts : [];
@@ -533,6 +544,8 @@ function projectExecutionAccountRuntime(state) {
     const status = String(account.status || "unknown");
     const readinessExpiresAt = Date.parse(latest?.expiresAt || "");
     const readinessExpired = Number.isFinite(readinessExpiresAt) && readinessExpiresAt <= Date.now();
+    const boundTargetCount = targets.filter((target) => target && target.channel === account.platform && target.accountId === account.accountId && target.profileId === account.profileId).length;
+    const eligibility = accountRuntimeEligibility({ status, health, boundTargetCount, latest, readinessState, readinessExpired });
     const currentBlocker = status !== "enabled"
       ? `status:${status}`
       : health !== "healthy"
@@ -549,6 +562,8 @@ function projectExecutionAccountRuntime(state) {
       platform: String(account.platform || ""),
       accountId: String(account.accountId || ""),
       profileFingerprint: accountProfileFingerprint(account.profileId),
+      sessionMode: "SESSION_REUSE",
+      authMode: "MANUAL_AUTH",
       status,
       health,
       lastReadinessAt: account.lastReadinessAt || latest?.checkedAt || null,
@@ -559,8 +574,9 @@ function projectExecutionAccountRuntime(state) {
         reasonCode: latest ? safeAccountRuntimeReason(latest.reasonCode) : null,
         recoveryClassification: safeAccountRuntimeRecovery(latest.recoveryClassification)
       } : null,
-      boundTargetCount: targets.filter((target) => target && target.channel === account.platform && target.accountId === account.accountId && target.profileId === account.profileId).length,
-      currentBlocker
+      boundTargetCount,
+      currentBlocker,
+      ...eligibility
     };
   }).sort((left, right) => left.id.localeCompare(right.id));
 }
