@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { normalizePublicationVisibility } from "./publication-visibility.mjs";
 
 export const EXECUTION_REQUEST_SCHEMA_VERSION = 1;
 export const EXECUTION_RECEIPT_SCHEMA_VERSION = 1;
@@ -83,17 +84,87 @@ export function validateSubmitAcceptanceEvidence(input) {
   const clickCommandInput = input.clickCommandEvidence && typeof input.clickCommandEvidence === "object" ? input.clickCommandEvidence : null;
   const clickCommandEvidence = clickCommandInput ? {
     status: enumValue(clickCommandInput.status, ["COMMAND_COMPLETED", "OUTCOME_UNKNOWN"], "clickCommandEvidence.status", "OUTCOME_UNKNOWN"),
-    observedAt: timestamp(clickCommandInput.observedAt, "clickCommandEvidence.observedAt")
+    observedAt: timestamp(clickCommandInput.observedAt, "clickCommandEvidence.observedAt"),
+    transport: clickCommandInput.transport ? String(clickCommandInput.transport).slice(0, 80) : null,
+    commandStatus: clickCommandInput.commandStatus ? String(clickCommandInput.commandStatus).toUpperCase().slice(0, 40) : null,
+    targetIdentity: clickCommandInput.targetIdentity ? String(clickCommandInput.targetIdentity).slice(0, 160) : null,
+    elementRef: clickCommandInput.elementRef ? String(clickCommandInput.elementRef).slice(0, 100) : null,
+    commandStartedAt: timestamp(clickCommandInput.commandStartedAt, "clickCommandEvidence.commandStartedAt"),
+    commandCompletedAt: timestamp(clickCommandInput.commandCompletedAt, "clickCommandEvidence.commandCompletedAt"),
+    providerResult: clickCommandInput.providerResult && typeof clickCommandInput.providerResult === "object" ? {
+      clicked: clickCommandInput.providerResult.clicked ? String(clickCommandInput.providerResult.clicked).slice(0, 100) : null
+    } : null,
+    diagnostics: clickCommandInput.diagnostics && typeof clickCommandInput.diagnostics === "object" ? {
+      trial: Number.isSafeInteger(Number(clickCommandInput.diagnostics.trial)) ? Number(clickCommandInput.diagnostics.trial) : null
+    } : null,
+    preflight: clickCommandInput.preflight && typeof clickCommandInput.preflight === "object" ? {
+      status: enumValue(clickCommandInput.preflight.status, ["PASSED", "FAILED"], "clickCommandEvidence.preflight.status", "FAILED"),
+      checkedAt: timestamp(clickCommandInput.preflight.checkedAt, "clickCommandEvidence.preflight.checkedAt"),
+      controlIdentity: clickCommandInput.preflight.controlIdentity ? String(clickCommandInput.preflight.controlIdentity).toLowerCase().slice(0, 64) : null,
+      controlRef: clickCommandInput.preflight.controlRef ? String(clickCommandInput.preflight.controlRef).slice(0, 100) : null,
+      connected: clickCommandInput.preflight.connected === true,
+      visible: clickCommandInput.preflight.visible === true,
+      enabled: clickCommandInput.preflight.enabled === true,
+      actionable: clickCommandInput.preflight.actionable === true,
+      hitTargetMatched: clickCommandInput.preflight.hitTargetMatched === true,
+      composerMatched: clickCommandInput.preflight.composerMatched === true,
+      composerState: String(clickCommandInput.preflight.composerState || "UNKNOWN").toUpperCase().slice(0, 20),
+      activeElement: clickCommandInput.preflight.activeElement && typeof clickCommandInput.preflight.activeElement === "object" ? {
+        tagName: clickCommandInput.preflight.activeElement.tagName ? String(clickCommandInput.preflight.activeElement.tagName).slice(0, 30) : null,
+        role: clickCommandInput.preflight.activeElement.role ? String(clickCommandInput.preflight.activeElement.role).slice(0, 40) : null,
+        id: clickCommandInput.preflight.activeElement.id ? String(clickCommandInput.preflight.activeElement.id).slice(0, 100) : null,
+        accessibleName: clickCommandInput.preflight.activeElement.accessibleName ? String(clickCommandInput.preflight.activeElement.accessibleName).slice(0, 120) : null,
+        isTargetControl: clickCommandInput.preflight.activeElement.isTargetControl === true
+      } : null,
+      scrollPosition: clickCommandInput.preflight.scrollPosition && typeof clickCommandInput.preflight.scrollPosition === "object" ? {
+        x: Number.isFinite(Number(clickCommandInput.preflight.scrollPosition.x)) ? Number(clickCommandInput.preflight.scrollPosition.x) : null,
+        y: Number.isFinite(Number(clickCommandInput.preflight.scrollPosition.y)) ? Number(clickCommandInput.preflight.scrollPosition.y) : null
+      } : null,
+      stateHash: clickCommandInput.preflight.stateHash ? String(clickCommandInput.preflight.stateHash).toLowerCase().slice(0, 64) : null
+    } : null
   } : null;
   if (clickCommandEvidence && !clickCommandEvidence.observedAt) throw new Error("submitAcceptanceEvidence.clickCommandEvidence.observedAt is required");
   const activationInput = input.controlActivationEvidence && typeof input.controlActivationEvidence === "object" ? input.controlActivationEvidence : null;
   const controlActivationEvidence = activationInput ? {
-    status: enumValue(activationInput.status, ["CONTROL_ACTIVATED", "CONTROL_NOT_OBSERVED", "CONTROL_ACTIVATION_UNKNOWN"], "controlActivationEvidence.status", "CONTROL_ACTIVATION_UNKNOWN"),
+    status: enumValue(activationInput.status, ["CONTROL_ACTIVATED", "CONTROL_NOT_OBSERVED", "CONTROL_ACTIVATION_UNKNOWN", "CONTROL_CHANGED_UNEXPECTEDLY"], "controlActivationEvidence.status", "CONTROL_ACTIVATION_UNKNOWN"),
     observedAt: timestamp(activationInput.observedAt, "controlActivationEvidence.observedAt"),
-    signals: Array.isArray(activationInput.signals) ? activationInput.signals.map((signal) => String(signal).toLowerCase()).filter((signal) => /^[a-z0-9_:-]{1,80}$/.test(signal)).slice(0, 12) : []
+    expectedTransition: activationInput.expectedTransition ? String(activationInput.expectedTransition).slice(0, 120) : null,
+    observedTransitions: Array.isArray(activationInput.observedTransitions) ? activationInput.observedTransitions.map((signal) => String(signal).toLowerCase()).filter((signal) => /^[a-z0-9_:-]{1,80}$/.test(signal)).slice(0, 12) : [],
+    signals: Array.isArray(activationInput.signals) ? activationInput.signals.map((signal) => String(signal).toLowerCase()).filter((signal) => /^[a-z0-9_:-]{1,80}$/.test(signal)).slice(0, 12) : [],
+    controlIdentity: activationInput.controlIdentity ? String(activationInput.controlIdentity).toLowerCase().slice(0, 64) : null,
+    beforeActiveElement: activationInput.beforeActiveElement && typeof activationInput.beforeActiveElement === "object" ? {
+      tagName: activationInput.beforeActiveElement.tagName ? String(activationInput.beforeActiveElement.tagName).slice(0, 30) : null,
+      role: activationInput.beforeActiveElement.role ? String(activationInput.beforeActiveElement.role).slice(0, 40) : null,
+      id: activationInput.beforeActiveElement.id ? String(activationInput.beforeActiveElement.id).slice(0, 100) : null,
+      accessibleName: activationInput.beforeActiveElement.accessibleName ? String(activationInput.beforeActiveElement.accessibleName).slice(0, 120) : null,
+      isTargetControl: activationInput.beforeActiveElement.isTargetControl === true
+    } : null,
+    afterActiveElement: activationInput.afterActiveElement && typeof activationInput.afterActiveElement === "object" ? {
+      tagName: activationInput.afterActiveElement.tagName ? String(activationInput.afterActiveElement.tagName).slice(0, 30) : null,
+      role: activationInput.afterActiveElement.role ? String(activationInput.afterActiveElement.role).slice(0, 40) : null,
+      id: activationInput.afterActiveElement.id ? String(activationInput.afterActiveElement.id).slice(0, 100) : null,
+      accessibleName: activationInput.afterActiveElement.accessibleName ? String(activationInput.afterActiveElement.accessibleName).slice(0, 120) : null,
+      isTargetControl: activationInput.afterActiveElement.isTargetControl === true
+    } : null,
+    beforeAriaExpanded: activationInput.beforeAriaExpanded === undefined ? null : activationInput.beforeAriaExpanded,
+    afterAriaExpanded: activationInput.afterAriaExpanded === undefined ? null : activationInput.afterAriaExpanded,
+    beforeRelatedComponentVisible: activationInput.beforeRelatedComponentVisible === undefined ? null : activationInput.beforeRelatedComponentVisible === true,
+    afterRelatedComponentVisible: activationInput.afterRelatedComponentVisible === undefined ? null : activationInput.afterRelatedComponentVisible === true,
+    beforeScrollPosition: activationInput.beforeScrollPosition && typeof activationInput.beforeScrollPosition === "object" ? {
+      x: Number.isFinite(Number(activationInput.beforeScrollPosition.x)) ? Number(activationInput.beforeScrollPosition.x) : null,
+      y: Number.isFinite(Number(activationInput.beforeScrollPosition.y)) ? Number(activationInput.beforeScrollPosition.y) : null
+    } : null,
+    afterScrollPosition: activationInput.afterScrollPosition && typeof activationInput.afterScrollPosition === "object" ? {
+      x: Number.isFinite(Number(activationInput.afterScrollPosition.x)) ? Number(activationInput.afterScrollPosition.x) : null,
+      y: Number.isFinite(Number(activationInput.afterScrollPosition.y)) ? Number(activationInput.afterScrollPosition.y) : null
+    } : null,
+    beforeStateHash: activationInput.beforeStateHash ? String(activationInput.beforeStateHash).toLowerCase().slice(0, 64) : null,
+    afterStateHash: activationInput.afterStateHash ? String(activationInput.afterStateHash).toLowerCase().slice(0, 64) : null,
+    activationConfidence: activationInput.activationConfidence ? String(activationInput.activationConfidence).toUpperCase().slice(0, 20) : "NONE"
   } : null;
   if (controlActivationEvidence && !controlActivationEvidence.observedAt) throw new Error("submitAcceptanceEvidence.controlActivationEvidence.observedAt is required");
   if (controlActivationEvidence?.status === "CONTROL_ACTIVATED" && !controlActivationEvidence.signals.length) throw new Error("CONTROL_ACTIVATED requires an observed transition signal");
+  if (controlActivationEvidence?.status === "CONTROL_NOT_OBSERVED" && controlActivationEvidence.signals.length) throw new Error("CONTROL_NOT_OBSERVED cannot include activation signals");
   const controlInput = input.preClickControlEvidence && typeof input.preClickControlEvidence === "object" ? input.preClickControlEvidence : null;
   const boxInput = controlInput?.boundingBox && typeof controlInput.boundingBox === "object" ? controlInput.boundingBox : null;
   const boundingBox = boxInput && [boxInput.x, boxInput.y, boxInput.width, boxInput.height].every((value) => Number.isFinite(Number(value)))
@@ -107,6 +178,9 @@ export function validateSubmitAcceptanceEvidence(input) {
     connected: controlInput.connected === true,
     enabled: controlInput.enabled === true,
     busy: controlInput.busy === true,
+    actionable: controlInput.actionable === true,
+    ariaExpanded: controlInput.ariaExpanded === undefined ? null : controlInput.ariaExpanded,
+    ariaPressed: controlInput.ariaPressed === undefined ? null : controlInput.ariaPressed,
     composerState: enumValue(controlInput.composerState, ["OPEN", "CLOSED", "UNKNOWN"], "preClickControlEvidence.composerState", "UNKNOWN"),
     composerMatched: controlInput.composerMatched === true,
     composerCount: Number.isFinite(Number(controlInput.composerCount)) ? Number(controlInput.composerCount) : 0,
@@ -114,7 +188,24 @@ export function validateSubmitAcceptanceEvidence(input) {
     hitTargetMatched: controlInput.hitTargetMatched === true,
     boundingBox,
     url: safeLinkedInPath(controlInput.url, "submitAcceptanceEvidence.preClickControlEvidence.url"),
-    capturedAt: timestamp(controlInput.capturedAt, "preClickControlEvidence.capturedAt")
+    capturedAt: timestamp(controlInput.capturedAt, "preClickControlEvidence.capturedAt"),
+    ownershipProof: controlInput.ownershipProof && typeof controlInput.ownershipProof === "object" ? {
+      composerId: controlInput.ownershipProof.composerId ? String(controlInput.ownershipProof.composerId).slice(0, 200) : null,
+      composerCount: Number.isFinite(Number(controlInput.ownershipProof.composerCount)) ? Number(controlInput.ownershipProof.composerCount) : 0,
+      editorCount: Number.isFinite(Number(controlInput.ownershipProof.editorCount)) ? Number(controlInput.ownershipProof.editorCount) : 0,
+      editorPayloadHash: controlInput.ownershipProof.editorPayloadHash ? String(controlInput.ownershipProof.editorPayloadHash).toLowerCase().slice(0, 64) : null,
+      expectedPayloadHash: controlInput.ownershipProof.expectedPayloadHash ? String(controlInput.ownershipProof.expectedPayloadHash).toLowerCase().slice(0, 64) : null,
+      payloadMatched: controlInput.ownershipProof.payloadMatched === true,
+      publicationVisibility: controlInput.ownershipProof.visibility ? String(controlInput.ownershipProof.visibility).toUpperCase().slice(0, 40) : null,
+      visibilityLabels: Array.isArray(controlInput.ownershipProof.visibilityLabels)
+        ? controlInput.ownershipProof.visibilityLabels.slice(0, 12).map((label) => String(label).replace(/[\r\n\t]+/g, " ").slice(0, 120))
+        : [],
+      visibilityMatched: controlInput.ownershipProof.visibilityMatched === true,
+      ownedControlCount: Number.isFinite(Number(controlInput.ownershipProof.ownedControlCount)) ? Number(controlInput.ownershipProof.ownedControlCount) : 0,
+      globalControlCount: Number.isFinite(Number(controlInput.ownershipProof.globalControlCount)) ? Number(controlInput.ownershipProof.globalControlCount) : 0,
+      controlBelongsToComposer: controlInput.ownershipProof.controlBelongsToComposer === true,
+      structuralEvidenceVersion: Number.isSafeInteger(Number(controlInput.ownershipProof.structuralEvidenceVersion)) ? Number(controlInput.ownershipProof.structuralEvidenceVersion) : 0
+    } : null
   } : null;
   if (preClickControlEvidence?.controlIdentity && !/^[a-f0-9]{64}$/.test(preClickControlEvidence.controlIdentity)) throw new Error("submitAcceptanceEvidence.preClickControlEvidence.controlIdentity is invalid");
   if (preClickControlEvidence && (!preClickControlEvidence.visible || !preClickControlEvidence.connected || !preClickControlEvidence.enabled || preClickControlEvidence.busy ||
@@ -177,6 +268,7 @@ export function validateExecutionRequestV1(input) {
       url: required(input.target?.url, "target.url")
     },
     audience: required(input.audience, "audience"),
+    publicationVisibility: normalizePublicationVisibility(input.publicationVisibility || "PUBLIC"),
     testJob: input.testJob === true,
     dryRun: input.dryRun === true,
     content: {
@@ -414,6 +506,7 @@ export function createExecutionRequestV1({ executionId, post, target, account, a
     profileId: account.profileId,
     target: { targetId: target.id, url: target.url },
     audience: post.audience,
+    publicationVisibility: post.publicationVisibility || "PUBLIC",
     testJob: post.testJob === true,
     dryRun,
     content: { contentId: post.contentId, sha256: contentSha256(post.content), payload: post.content },

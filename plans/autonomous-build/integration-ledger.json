@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "integrationBranch": "integration/autonomous-build",
+  "baseHead": "b4fa42b161896f1d4992743d5daa9f0fc91c70a5",
+  "checkpointCommit": null,
+  "acceptedCommits": [],
+  "rejectedCommits": [],
+  "gates": []
+}

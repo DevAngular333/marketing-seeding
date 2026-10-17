@@ -1,0 +1,28 @@
+{
+  "milestone": "M1 autonomous LinkedIn publish + verify",
+  "result": "LIVE_PROOF_BLOCKED",
+  "liveExecutionId": null,
+  "autonomousFinalClick": false,
+  "commandCompleted": false,
+  "controlActivated": false,
+  "submissionAccepted": false,
+  "publicationVerified": false,
+  "postId": null,
+  "permalink": null,
+  "authorMatch": null,
+  "contentMatch": null,
+  "timeMatch": null,
+  "canonicalPostStatus": null,
+  "duplicateExecutions": 0,
+  "historicalUnknownMutated": false,
+  "canonicalState": {
+    "schemaVersion": 8,
+    "revision": 193,
+    "sha256": "327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae",
+    "activeAuthorizations": 0,
+    "activeWindows": 0,
+    "activeGrants": 0,
+    "activeLeases": 0
+  },
+  "blocker": "No active exact LIVE campaign authorization exists. All existing authorizations are expired, paused, or superseded; all existing windows/grants are consumed or revoked. Creating a new authorization would require a fresh explicit operator authorization/input, so no new execution controls or live dispatch were created."
+}

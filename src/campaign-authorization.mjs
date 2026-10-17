@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { executionAccountKey } from "./readiness.mjs";
 import { matchingOneTimeExecutionWindow } from "./one-time-execution-window.mjs";
+import { normalizePublicationVisibility } from "./publication-visibility.mjs";
 
 const SUPPORTED_AUTH_STATUSES = new Set(["active", "paused", "expired", "revoked"]);
 const sha256Pattern = /^[a-f0-9]{64}$/i;
@@ -144,6 +145,8 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
   const allowedAudiences = Array.isArray(audienceRules.allowedAudiences)
     ? [...new Set(audienceRules.allowedAudiences.map((item) => required(item, "allowed audience")))] : [];
   if (allowedAudiences.length === 0) throw new Error("Campaign authorization requires explicit allowedAudiences");
+  const allowedVisibilities = Array.isArray(input.publicationVisibilityRules?.allowedVisibilities)
+    ? [...new Set(input.publicationVisibilityRules.allowedVisibilities.map((item) => normalizePublicationVisibility(item)))] : ["PUBLIC"];
 
   const schedule = input.schedule || {};
   const timezone = required(schedule.timezone, "schedule timezone");
@@ -177,6 +180,7 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
     approvedAssets,
     contentBoundary: contentBoundaryNormalized,
     audienceRules: { allowedAudiences },
+    publicationVisibilityRules: { allowedVisibilities },
     schedule: { timezone, weekdays, startLocal, endLocal },
     rateLimits,
     allowLiveExecution: input.allowLiveExecution === true,
@@ -264,6 +268,9 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
   if (Number.isFinite(maxChars) && maxChars > 0 && content.length > maxChars) reasons.push("content_too_long_for_campaign");
 
   if (!authorization.audienceRules?.allowedAudiences?.includes(post.audience)) reasons.push("audience_not_authorized");
+  const visibility = String(post.publicationVisibility || "PUBLIC").toUpperCase();
+  const allowedVisibilities = authorization.publicationVisibilityRules?.allowedVisibilities || ["PUBLIC"];
+  if (!allowedVisibilities.includes(visibility)) reasons.push("publication_visibility_not_authorized");
   // Dry runs validate the current authorization window and all content/destination
   // scope, but do not consume a publication slot or pretend to publish at the
   // campaign's scheduled time.

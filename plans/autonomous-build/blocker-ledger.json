@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "blockers": [
+    {
+      "blocker_id":"LIVE-LINKEDIN-AUTH-001",
+      "classification":"EXTERNAL_HARD_BLOCKER",
+      "milestone":"live-linkedin-proof",
+      "root_cause":"Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant, or lease; existing records are terminal/expired/paused/superseded.",
+      "affected_scope":"fresh real LinkedIn publish acceptance",
+      "detected_at":"2026-10-17T00:00:00Z",
+      "status":"EXTERNAL_HARD_BLOCKER",
+      "owner_worker":"master",
+      "remediation":"Implement and test standing bounded delegation locally; request/derive fresh exact authority only when an authorized live lane is explicitly supplied.",
+      "verification":"Pinned runtime-state.json and read-only state inspection; no external action taken.",
+      "resolved_at":null,
+      "resume_point":"Fresh exact authorized LinkedIn campaign/account/profile/session input",
+      "external_dependency":"Authorized campaign objective/content, account/profile, target and policy permitting one harmless live test"
+    }
+  ]
+}

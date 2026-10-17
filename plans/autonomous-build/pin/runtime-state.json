@@ -1,0 +1,53 @@
+{
+  "capturedAt": "2026-10-17T09:19:57.053556+00:00",
+  "path": "/Users/nam/build-agentic-AI/.agentic/marketing-seeding/state.json",
+  "sha256": "327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae",
+  "bytes": 179464,
+  "schemaVersion": 8,
+  "revision": 193,
+  "updatedAt": "2026-10-17T06:28:39.801Z",
+  "counts": {
+    "campaigns": 7,
+    "campaignAuthorizations": 10,
+    "oneTimeExecutionWindows": 7,
+    "liveExecutionGrants": 7,
+    "executionRequests": 8,
+    "executionReceipts": 8,
+    "posts": 7,
+    "publicationAttempts": 4,
+    "metrics": 0,
+    "stories": 0,
+    "interactions": 0,
+    "replies": 0,
+    "conversions": 0,
+    "targets": 1,
+    "executionAccounts": 1,
+    "submissionUncertainties": 4
+  },
+  "statusCounts": {
+    "posts": {
+      "submit_result_unknown": 4,
+      "blocked": 3
+    },
+    "executionRequests": {
+      "DRY_RUN_COMPLETE": 1,
+      "SUBMIT_RESULT_UNKNOWN": 4,
+      "FAILED": 3
+    },
+    "executionReceipts": {
+      "null": 8
+    },
+    "publicationAttempts": {
+      "unknown": 4
+    }
+  },
+  "protectedUnknownExecutionIds": [
+    "ce9cfc41-528b-425f-9dee-ab2563b50ed3",
+    "0f6b588b-20fd-42e1-9f6d-9b3bf5f04628",
+    "c2265ddf-4384-4339-a26b-4949b6a12af9",
+    "8e058f6e-5f67-4078-99bf-6cf86e1b62d7"
+  ],
+  "protectedUncertaintyIds": [
+    "df39df1c-2f06-4c20-8e9a-4ed07f5df34c"
+  ]
+}

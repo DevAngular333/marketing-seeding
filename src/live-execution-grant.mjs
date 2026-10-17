@@ -29,7 +29,8 @@ export function createLiveExecutionGrantV1({ post, target, account, authorizatio
     throw new Error("Live grant account/profile does not match the target");
   }
   if (!authorization.destinations?.some((item) => item.platform === target.channel && item.accountId === target.accountId && item.profileId === target.profileId && item.targetId === target.id && item.targetUrl === target.url) ||
-      !authorization.audienceRules?.allowedAudiences?.includes(post.audience)) {
+      !authorization.audienceRules?.allowedAudiences?.includes(post.audience) ||
+      !(authorization.publicationVisibilityRules?.allowedVisibilities || ["PUBLIC"]).includes(String(post.publicationVisibility || "PUBLIC").toUpperCase())) {
     throw new Error("Live grant destination or audience is outside campaign authorization");
   }
   const canonicalHash = campaignContentHash(post.content);
@@ -53,6 +54,7 @@ export function createLiveExecutionGrantV1({ post, target, account, authorizatio
     content: { contentId: required(post.contentId, "contentId"), canonicalSha256: canonicalHash, rawSha256: contentSha256(post.content) },
     media: artifact ? [{ artifactId: artifact.id, sha256: artifact.sha256 }] : [],
     audience: required(post.audience, "audience"), idempotencyKey: required(post.idempotencyKey, "idempotencyKey"),
+    publicationVisibility: String(post.publicationVisibility || "PUBLIC").toUpperCase(),
     validFrom: new Date(from).toISOString(), validUntil: new Date(until).toISOString(), maxExecutions: 1,
     createdAt: now.toISOString(), createdBy: required(createdBy, "createdBy"),
     operatorAuthorizationReference: required(operatorAuthorizationReference, "operatorAuthorizationReference"), status: "ACTIVE",
@@ -64,6 +66,7 @@ export function createLiveExecutionGrantV1({ post, target, account, authorizatio
 export function validateLiveExecutionGrantV1(grant) {
   if (!grant || grant.schemaVersion !== 1 || !LIVE_GRANT_STATUSES.includes(grant.status) || grant.maxExecutions !== 1) throw new Error("Invalid LiveExecutionGrantV1 status, schema or execution limit");
   for (const key of ["grantId", "campaignAuthorizationId", "campaignAuthorizationBinding", "campaignId", "jobId", "platform", "accountId", "profileId", "targetId", "audience", "idempotencyKey", "createdBy", "operatorAuthorizationReference"]) required(grant[key], key);
+  if (grant.publicationVisibility !== undefined) required(grant.publicationVisibility, "publicationVisibility");
   for (const key of ["canonicalSha256", "rawSha256"]) if (!SHA256.test(grant.content?.[key] || "")) throw new Error(`Invalid live grant content ${key}`);
   required(grant.content?.contentId, "content.contentId");
   if (!Array.isArray(grant.media) || grant.media.some((item) => !item.artifactId || !SHA256.test(item.sha256))) throw new Error("Invalid live grant media identity");
@@ -85,7 +88,7 @@ export function assertLiveGrantMatchesExecution(grant, request, authorization, n
   if (!request || request.dryRun === true || grant.boundExecutionId !== request.executionId || request.liveGrant?.grantId !== grant.grantId ||
       grant.campaignId !== request.campaignId || grant.jobId !== request.jobId || grant.platform !== request.platform ||
       grant.accountId !== request.accountId || grant.profileId !== request.profileId || grant.targetId !== request.target?.targetId ||
-      grant.audience !== request.audience || grant.idempotencyKey !== request.idempotencyKey ||
+      grant.audience !== request.audience || (grant.publicationVisibility || "PUBLIC") !== (request.publicationVisibility || "PUBLIC") || grant.idempotencyKey !== request.idempotencyKey ||
       grant.campaignAuthorizationId !== request.authorization?.authorizationId || grant.campaignAuthorizationBinding !== request.authorization?.binding ||
       grant.content.contentId !== request.content?.contentId || grant.content.rawSha256 !== request.content?.sha256 ||
       grant.media.length !== request.media?.length || grant.media.some((item, index) => item.artifactId !== request.media[index].artifactId || item.sha256 !== request.media[index].sha256) ||

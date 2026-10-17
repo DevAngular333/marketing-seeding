@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "milestones": [
+    {"id":"baseline-and-journal","status":"IN_PROGRESS","evidence":"acceptance.md and pin/"},
+    {"id":"standing-campaign-delegation","status":"PLANNED","evidence":null},
+    {"id":"product-intelligence","status":"PLANNED","evidence":null},
+    {"id":"product-factory","status":"PLANNED","evidence":null},
+    {"id":"live-linkedin-proof","status":"BLOCKED","evidence":"No active exact LIVE authorization/window/grant"}
+  ]
+}

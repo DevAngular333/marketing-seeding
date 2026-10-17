@@ -1,0 +1,951 @@
+diff --git a/src/campaign-authorization.mjs b/src/campaign-authorization.mjs
+index bd2b255..19c3cfc 100644
+--- a/src/campaign-authorization.mjs
++++ b/src/campaign-authorization.mjs
+@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
+ import path from "node:path";
+ import { executionAccountKey } from "./readiness.mjs";
+ import { matchingOneTimeExecutionWindow } from "./one-time-execution-window.mjs";
++import { normalizePublicationVisibility } from "./publication-visibility.mjs";
+ 
+ const SUPPORTED_AUTH_STATUSES = new Set(["active", "paused", "expired", "revoked"]);
+ const sha256Pattern = /^[a-f0-9]{64}$/i;
+@@ -144,6 +145,8 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
+   const allowedAudiences = Array.isArray(audienceRules.allowedAudiences)
+     ? [...new Set(audienceRules.allowedAudiences.map((item) => required(item, "allowed audience")))] : [];
+   if (allowedAudiences.length === 0) throw new Error("Campaign authorization requires explicit allowedAudiences");
++  const allowedVisibilities = Array.isArray(input.publicationVisibilityRules?.allowedVisibilities)
++    ? [...new Set(input.publicationVisibilityRules.allowedVisibilities.map((item) => normalizePublicationVisibility(item)))] : ["PUBLIC"];
+ 
+   const schedule = input.schedule || {};
+   const timezone = required(schedule.timezone, "schedule timezone");
+@@ -177,6 +180,7 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
+     approvedAssets,
+     contentBoundary: contentBoundaryNormalized,
+     audienceRules: { allowedAudiences },
++    publicationVisibilityRules: { allowedVisibilities },
+     schedule: { timezone, weekdays, startLocal, endLocal },
+     rateLimits,
+     allowLiveExecution: input.allowLiveExecution === true,
+@@ -264,6 +268,9 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
+   if (Number.isFinite(maxChars) && maxChars > 0 && content.length > maxChars) reasons.push("content_too_long_for_campaign");
+ 
+   if (!authorization.audienceRules?.allowedAudiences?.includes(post.audience)) reasons.push("audience_not_authorized");
++  const visibility = String(post.publicationVisibility || "PUBLIC").toUpperCase();
++  const allowedVisibilities = authorization.publicationVisibilityRules?.allowedVisibilities || ["PUBLIC"];
++  if (!allowedVisibilities.includes(visibility)) reasons.push("publication_visibility_not_authorized");
+   // Dry runs validate the current authorization window and all content/destination
+   // scope, but do not consume a publication slot or pretend to publish at the
+   // campaign's scheduled time.
+diff --git a/src/execution-contracts.mjs b/src/execution-contracts.mjs
+index 3da8cfe..3754b3e 100644
+--- a/src/execution-contracts.mjs
++++ b/src/execution-contracts.mjs
+@@ -1,4 +1,5 @@
+ import { createHash } from "node:crypto";
++import { normalizePublicationVisibility } from "./publication-visibility.mjs";
+ 
+ export const EXECUTION_REQUEST_SCHEMA_VERSION = 1;
+ export const EXECUTION_RECEIPT_SCHEMA_VERSION = 1;
+@@ -83,17 +84,87 @@ export function validateSubmitAcceptanceEvidence(input) {
+   const clickCommandInput = input.clickCommandEvidence && typeof input.clickCommandEvidence === "object" ? input.clickCommandEvidence : null;
+   const clickCommandEvidence = clickCommandInput ? {
+     status: enumValue(clickCommandInput.status, ["COMMAND_COMPLETED", "OUTCOME_UNKNOWN"], "clickCommandEvidence.status", "OUTCOME_UNKNOWN"),
+-    observedAt: timestamp(clickCommandInput.observedAt, "clickCommandEvidence.observedAt")
++    observedAt: timestamp(clickCommandInput.observedAt, "clickCommandEvidence.observedAt"),
++    transport: clickCommandInput.transport ? String(clickCommandInput.transport).slice(0, 80) : null,
++    commandStatus: clickCommandInput.commandStatus ? String(clickCommandInput.commandStatus).toUpperCase().slice(0, 40) : null,
++    targetIdentity: clickCommandInput.targetIdentity ? String(clickCommandInput.targetIdentity).slice(0, 160) : null,
++    elementRef: clickCommandInput.elementRef ? String(clickCommandInput.elementRef).slice(0, 100) : null,
++    commandStartedAt: timestamp(clickCommandInput.commandStartedAt, "clickCommandEvidence.commandStartedAt"),
++    commandCompletedAt: timestamp(clickCommandInput.commandCompletedAt, "clickCommandEvidence.commandCompletedAt"),
++    providerResult: clickCommandInput.providerResult && typeof clickCommandInput.providerResult === "object" ? {
++      clicked: clickCommandInput.providerResult.clicked ? String(clickCommandInput.providerResult.clicked).slice(0, 100) : null
++    } : null,
++    diagnostics: clickCommandInput.diagnostics && typeof clickCommandInput.diagnostics === "object" ? {
++      trial: Number.isSafeInteger(Number(clickCommandInput.diagnostics.trial)) ? Number(clickCommandInput.diagnostics.trial) : null
++    } : null,
++    preflight: clickCommandInput.preflight && typeof clickCommandInput.preflight === "object" ? {
++      status: enumValue(clickCommandInput.preflight.status, ["PASSED", "FAILED"], "clickCommandEvidence.preflight.status", "FAILED"),
++      checkedAt: timestamp(clickCommandInput.preflight.checkedAt, "clickCommandEvidence.preflight.checkedAt"),
++      controlIdentity: clickCommandInput.preflight.controlIdentity ? String(clickCommandInput.preflight.controlIdentity).toLowerCase().slice(0, 64) : null,
++      controlRef: clickCommandInput.preflight.controlRef ? String(clickCommandInput.preflight.controlRef).slice(0, 100) : null,
++      connected: clickCommandInput.preflight.connected === true,
++      visible: clickCommandInput.preflight.visible === true,
++      enabled: clickCommandInput.preflight.enabled === true,
++      actionable: clickCommandInput.preflight.actionable === true,
++      hitTargetMatched: clickCommandInput.preflight.hitTargetMatched === true,
++      composerMatched: clickCommandInput.preflight.composerMatched === true,
++      composerState: String(clickCommandInput.preflight.composerState || "UNKNOWN").toUpperCase().slice(0, 20),
++      activeElement: clickCommandInput.preflight.activeElement && typeof clickCommandInput.preflight.activeElement === "object" ? {
++        tagName: clickCommandInput.preflight.activeElement.tagName ? String(clickCommandInput.preflight.activeElement.tagName).slice(0, 30) : null,
++        role: clickCommandInput.preflight.activeElement.role ? String(clickCommandInput.preflight.activeElement.role).slice(0, 40) : null,
++        id: clickCommandInput.preflight.activeElement.id ? String(clickCommandInput.preflight.activeElement.id).slice(0, 100) : null,
++        accessibleName: clickCommandInput.preflight.activeElement.accessibleName ? String(clickCommandInput.preflight.activeElement.accessibleName).slice(0, 120) : null,
++        isTargetControl: clickCommandInput.preflight.activeElement.isTargetControl === true
++      } : null,
++      scrollPosition: clickCommandInput.preflight.scrollPosition && typeof clickCommandInput.preflight.scrollPosition === "object" ? {
++        x: Number.isFinite(Number(clickCommandInput.preflight.scrollPosition.x)) ? Number(clickCommandInput.preflight.scrollPosition.x) : null,
++        y: Number.isFinite(Number(clickCommandInput.preflight.scrollPosition.y)) ? Number(clickCommandInput.preflight.scrollPosition.y) : null
++      } : null,
++      stateHash: clickCommandInput.preflight.stateHash ? String(clickCommandInput.preflight.stateHash).toLowerCase().slice(0, 64) : null
++    } : null
+   } : null;
+   if (clickCommandEvidence && !clickCommandEvidence.observedAt) throw new Error("submitAcceptanceEvidence.clickCommandEvidence.observedAt is required");
+   const activationInput = input.controlActivationEvidence && typeof input.controlActivationEvidence === "object" ? input.controlActivationEvidence : null;
+   const controlActivationEvidence = activationInput ? {
+-    status: enumValue(activationInput.status, ["CONTROL_ACTIVATED", "CONTROL_NOT_OBSERVED", "CONTROL_ACTIVATION_UNKNOWN"], "controlActivationEvidence.status", "CONTROL_ACTIVATION_UNKNOWN"),
++    status: enumValue(activationInput.status, ["CONTROL_ACTIVATED", "CONTROL_NOT_OBSERVED", "CONTROL_ACTIVATION_UNKNOWN", "CONTROL_CHANGED_UNEXPECTEDLY"], "controlActivationEvidence.status", "CONTROL_ACTIVATION_UNKNOWN"),
+     observedAt: timestamp(activationInput.observedAt, "controlActivationEvidence.observedAt"),
+-    signals: Array.isArray(activationInput.signals) ? activationInput.signals.map((signal) => String(signal).toLowerCase()).filter((signal) => /^[a-z0-9_:-]{1,80}$/.test(signal)).slice(0, 12) : []
++    expectedTransition: activationInput.expectedTransition ? String(activationInput.expectedTransition).slice(0, 120) : null,
++    observedTransitions: Array.isArray(activationInput.observedTransitions) ? activationInput.observedTransitions.map((signal) => String(signal).toLowerCase()).filter((signal) => /^[a-z0-9_:-]{1,80}$/.test(signal)).slice(0, 12) : [],
++    signals: Array.isArray(activationInput.signals) ? activationInput.signals.map((signal) => String(signal).toLowerCase()).filter((signal) => /^[a-z0-9_:-]{1,80}$/.test(signal)).slice(0, 12) : [],
++    controlIdentity: activationInput.controlIdentity ? String(activationInput.controlIdentity).toLowerCase().slice(0, 64) : null,
++    beforeActiveElement: activationInput.beforeActiveElement && typeof activationInput.beforeActiveElement === "object" ? {
++      tagName: activationInput.beforeActiveElement.tagName ? String(activationInput.beforeActiveElement.tagName).slice(0, 30) : null,
++      role: activationInput.beforeActiveElement.role ? String(activationInput.beforeActiveElement.role).slice(0, 40) : null,
++      id: activationInput.beforeActiveElement.id ? String(activationInput.beforeActiveElement.id).slice(0, 100) : null,
++      accessibleName: activationInput.beforeActiveElement.accessibleName ? String(activationInput.beforeActiveElement.accessibleName).slice(0, 120) : null,
++      isTargetControl: activationInput.beforeActiveElement.isTargetControl === true
++    } : null,
++    afterActiveElement: activationInput.afterActiveElement && typeof activationInput.afterActiveElement === "object" ? {
++      tagName: activationInput.afterActiveElement.tagName ? String(activationInput.afterActiveElement.tagName).slice(0, 30) : null,
++      role: activationInput.afterActiveElement.role ? String(activationInput.afterActiveElement.role).slice(0, 40) : null,
++      id: activationInput.afterActiveElement.id ? String(activationInput.afterActiveElement.id).slice(0, 100) : null,
++      accessibleName: activationInput.afterActiveElement.accessibleName ? String(activationInput.afterActiveElement.accessibleName).slice(0, 120) : null,
++      isTargetControl: activationInput.afterActiveElement.isTargetControl === true
++    } : null,
++    beforeAriaExpanded: activationInput.beforeAriaExpanded === undefined ? null : activationInput.beforeAriaExpanded,
++    afterAriaExpanded: activationInput.afterAriaExpanded === undefined ? null : activationInput.afterAriaExpanded,
++    beforeRelatedComponentVisible: activationInput.beforeRelatedComponentVisible === undefined ? null : activationInput.beforeRelatedComponentVisible === true,
++    afterRelatedComponentVisible: activationInput.afterRelatedComponentVisible === undefined ? null : activationInput.afterRelatedComponentVisible === true,
++    beforeScrollPosition: activationInput.beforeScrollPosition && typeof activationInput.beforeScrollPosition === "object" ? {
++      x: Number.isFinite(Number(activationInput.beforeScrollPosition.x)) ? Number(activationInput.beforeScrollPosition.x) : null,
++      y: Number.isFinite(Number(activationInput.beforeScrollPosition.y)) ? Number(activationInput.beforeScrollPosition.y) : null
++    } : null,
++    afterScrollPosition: activationInput.afterScrollPosition && typeof activationInput.afterScrollPosition === "object" ? {
++      x: Number.isFinite(Number(activationInput.afterScrollPosition.x)) ? Number(activationInput.afterScrollPosition.x) : null,
++      y: Number.isFinite(Number(activationInput.afterScrollPosition.y)) ? Number(activationInput.afterScrollPosition.y) : null
++    } : null,
++    beforeStateHash: activationInput.beforeStateHash ? String(activationInput.beforeStateHash).toLowerCase().slice(0, 64) : null,
++    afterStateHash: activationInput.afterStateHash ? String(activationInput.afterStateHash).toLowerCase().slice(0, 64) : null,
++    activationConfidence: activationInput.activationConfidence ? String(activationInput.activationConfidence).toUpperCase().slice(0, 20) : "NONE"
+   } : null;
+   if (controlActivationEvidence && !controlActivationEvidence.observedAt) throw new Error("submitAcceptanceEvidence.controlActivationEvidence.observedAt is required");
+   if (controlActivationEvidence?.status === "CONTROL_ACTIVATED" && !controlActivationEvidence.signals.length) throw new Error("CONTROL_ACTIVATED requires an observed transition signal");
++  if (controlActivationEvidence?.status === "CONTROL_NOT_OBSERVED" && controlActivationEvidence.signals.length) throw new Error("CONTROL_NOT_OBSERVED cannot include activation signals");
+   const controlInput = input.preClickControlEvidence && typeof input.preClickControlEvidence === "object" ? input.preClickControlEvidence : null;
+   const boxInput = controlInput?.boundingBox && typeof controlInput.boundingBox === "object" ? controlInput.boundingBox : null;
+   const boundingBox = boxInput && [boxInput.x, boxInput.y, boxInput.width, boxInput.height].every((value) => Number.isFinite(Number(value)))
+@@ -107,6 +178,9 @@ export function validateSubmitAcceptanceEvidence(input) {
+     connected: controlInput.connected === true,
+     enabled: controlInput.enabled === true,
+     busy: controlInput.busy === true,
++    actionable: controlInput.actionable === true,
++    ariaExpanded: controlInput.ariaExpanded === undefined ? null : controlInput.ariaExpanded,
++    ariaPressed: controlInput.ariaPressed === undefined ? null : controlInput.ariaPressed,
+     composerState: enumValue(controlInput.composerState, ["OPEN", "CLOSED", "UNKNOWN"], "preClickControlEvidence.composerState", "UNKNOWN"),
+     composerMatched: controlInput.composerMatched === true,
+     composerCount: Number.isFinite(Number(controlInput.composerCount)) ? Number(controlInput.composerCount) : 0,
+@@ -114,7 +188,24 @@ export function validateSubmitAcceptanceEvidence(input) {
+     hitTargetMatched: controlInput.hitTargetMatched === true,
+     boundingBox,
+     url: safeLinkedInPath(controlInput.url, "submitAcceptanceEvidence.preClickControlEvidence.url"),
+-    capturedAt: timestamp(controlInput.capturedAt, "preClickControlEvidence.capturedAt")
++    capturedAt: timestamp(controlInput.capturedAt, "preClickControlEvidence.capturedAt"),
++    ownershipProof: controlInput.ownershipProof && typeof controlInput.ownershipProof === "object" ? {
++      composerId: controlInput.ownershipProof.composerId ? String(controlInput.ownershipProof.composerId).slice(0, 200) : null,
++      composerCount: Number.isFinite(Number(controlInput.ownershipProof.composerCount)) ? Number(controlInput.ownershipProof.composerCount) : 0,
++      editorCount: Number.isFinite(Number(controlInput.ownershipProof.editorCount)) ? Number(controlInput.ownershipProof.editorCount) : 0,
++      editorPayloadHash: controlInput.ownershipProof.editorPayloadHash ? String(controlInput.ownershipProof.editorPayloadHash).toLowerCase().slice(0, 64) : null,
++      expectedPayloadHash: controlInput.ownershipProof.expectedPayloadHash ? String(controlInput.ownershipProof.expectedPayloadHash).toLowerCase().slice(0, 64) : null,
++      payloadMatched: controlInput.ownershipProof.payloadMatched === true,
++      publicationVisibility: controlInput.ownershipProof.visibility ? String(controlInput.ownershipProof.visibility).toUpperCase().slice(0, 40) : null,
++      visibilityLabels: Array.isArray(controlInput.ownershipProof.visibilityLabels)
++        ? controlInput.ownershipProof.visibilityLabels.slice(0, 12).map((label) => String(label).replace(/[\r\n\t]+/g, " ").slice(0, 120))
++        : [],
++      visibilityMatched: controlInput.ownershipProof.visibilityMatched === true,
++      ownedControlCount: Number.isFinite(Number(controlInput.ownershipProof.ownedControlCount)) ? Number(controlInput.ownershipProof.ownedControlCount) : 0,
++      globalControlCount: Number.isFinite(Number(controlInput.ownershipProof.globalControlCount)) ? Number(controlInput.ownershipProof.globalControlCount) : 0,
++      controlBelongsToComposer: controlInput.ownershipProof.controlBelongsToComposer === true,
++      structuralEvidenceVersion: Number.isSafeInteger(Number(controlInput.ownershipProof.structuralEvidenceVersion)) ? Number(controlInput.ownershipProof.structuralEvidenceVersion) : 0
++    } : null
+   } : null;
+   if (preClickControlEvidence?.controlIdentity && !/^[a-f0-9]{64}$/.test(preClickControlEvidence.controlIdentity)) throw new Error("submitAcceptanceEvidence.preClickControlEvidence.controlIdentity is invalid");
+   if (preClickControlEvidence && (!preClickControlEvidence.visible || !preClickControlEvidence.connected || !preClickControlEvidence.enabled || preClickControlEvidence.busy ||
+@@ -177,6 +268,7 @@ export function validateExecutionRequestV1(input) {
+       url: required(input.target?.url, "target.url")
+     },
+     audience: required(input.audience, "audience"),
++    publicationVisibility: normalizePublicationVisibility(input.publicationVisibility || "PUBLIC"),
+     testJob: input.testJob === true,
+     dryRun: input.dryRun === true,
+     content: {
+@@ -414,6 +506,7 @@ export function createExecutionRequestV1({ executionId, post, target, account, a
+     profileId: account.profileId,
+     target: { targetId: target.id, url: target.url },
+     audience: post.audience,
++    publicationVisibility: post.publicationVisibility || "PUBLIC",
+     testJob: post.testJob === true,
+     dryRun,
+     content: { contentId: post.contentId, sha256: contentSha256(post.content), payload: post.content },
+diff --git a/src/linkedin-adapter.mjs b/src/linkedin-adapter.mjs
+index 86c66a1..fd0c9e9 100644
+--- a/src/linkedin-adapter.mjs
++++ b/src/linkedin-adapter.mjs
+@@ -7,6 +7,9 @@ import { LINKEDIN_FEED_URL_FOR_READINESS } from "./orca-browser-client.mjs";
+ import { linkedInReadinessExpressions, openLinkedInComposer } from "./linkedin-readiness.mjs";
+ import { attachLinkedInMedia, cleanupLinkedInComposer } from "./linkedin-media.mjs";
+ import { isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateSubmitAcceptanceEvidence } from "./execution-contracts.mjs";
++import { publicationVisibilityMatchesLabels, normalizePublicationVisibility } from "./publication-visibility.mjs";
++import { assertClickPreflight, clickCommandEvidence, controlActivationEvidence as buildControlActivationEvidence } from "./click-transport.mjs";
++import { OrcaAccessibilityTransport, assertTransportCannotChangeAfterIntent } from "./browser-interaction-transport.mjs";
+ 
+ 
+ function refOf(line) {
+@@ -24,42 +27,88 @@ function submitControlRefs(snapshot) {
+ }
+ 
+ const SUBMIT_CONTROL_EXPRESSION = `(() => {
++  // LinkedIn currently animates the dialog container with opacity: 0 while its
++  // editor and controls are already visible and actionable. Container opacity
++  // is therefore not an ownership signal. Descendant layout, visibility and
++  // hit testing remain required for every actionable element.
++  const containerPresent = (node) => Boolean(node && node.isConnected && node.getClientRects().length &&
++    getComputedStyle(node).display !== 'none' && getComputedStyle(node).visibility !== 'hidden' &&
++    node.getAttribute('aria-hidden') !== 'true');
+   const visible = (node) => {
+-    if (!node || !node.isConnected || !node.getClientRects().length) return false;
++    if (!containerPresent(node)) return false;
+     const style = getComputedStyle(node);
+     const rect = node.getBoundingClientRect();
+-    return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
++    return Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+   };
+   const nameOf = (node) => (node.getAttribute('aria-label') || node.innerText || node.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 120);
+-  const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter(visible);
+-  const composers = dialogs.filter((dialog) => Array.from(dialog.querySelectorAll('[contenteditable="true"],[role="textbox"]')).some(visible));
+-  const composer = composers.length === 1 ? composers[0] : null;
+-  const buttons = composer ? Array.from(composer.querySelectorAll('button,[role="button"]')).filter((node) => /^(post|share|đăng(?: bài)?)$/i.test(nameOf(node))) : [];
+-  const button = buttons.length === 1 ? buttons[0] : null;
+-  let hitTargetMatched = false;
+-  let hitTarget = null;
+-  let box = null;
+-  if (button && visible(button)) {
+-    const rect = button.getBoundingClientRect();
+-    box = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+-    hitTarget = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+-    hitTargetMatched = Boolean(hitTarget && (hitTarget === button || button.contains(hitTarget)));
+-  }
++  const postLike = /^(post|share|đăng(?: bài)?)$/i;
++  const boxOf = (node) => { const rect = node.getBoundingClientRect(); return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }; };
++  const controlEvidence = (node, composerId, belongsToComposer) => {
++    const box = node && visible(node) ? boxOf(node) : null;
++    const hitTarget = box ? document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) : null;
++    const hitTargetMatched = Boolean(hitTarget && (hitTarget === node || node.contains(hitTarget)));
++    const enabled = !node.disabled && node.getAttribute('aria-disabled') !== 'true';
++    const active = document.activeElement;
++    return {
++      role: node.getAttribute('role') || 'button', accessibleName: nameOf(node),
++      visible: visible(node), connected: node.isConnected === true, enabled,
++      busy: node.getAttribute('aria-busy') === 'true',
++      ariaExpanded: node.getAttribute('aria-expanded'),
++      ariaPressed: node.getAttribute('aria-pressed'),
++      controlId: node.id || node.getAttribute('componentkey') || '', composerId: composerId || '',
++      tagName: node.tagName.toLowerCase(), ariaLabel: node.getAttribute('aria-label') || '',
++      boundingBox: box, hitTargetMatched,
++      hitTargetRole: hitTarget?.getAttribute?.('role') || hitTarget?.tagName?.toLowerCase() || null,
++      activeElement: active ? {
++        tagName: active.tagName?.toLowerCase() || null,
++        role: active.getAttribute?.('role') || null,
++        id: active.id || null,
++        accessibleName: nameOf(active) || null,
++        isTargetControl: active === node || node.contains(active)
++      } : null,
++      scrollPosition: { x: Math.round(window.scrollX || 0), y: Math.round(window.scrollY || 0) },
++      belongsToComposer: belongsToComposer === true,
++      actionable: visible(node) && enabled && node.getAttribute('aria-busy') !== 'true' && hitTargetMatched
++    };
++  };
++  const dialogNodes = Array.from(document.querySelectorAll('dialog,[role="dialog"]'));
++  const records = dialogNodes.map((dialog, dialogIndex) => {
++    if (!containerPresent(dialog)) return null;
++    const editors = Array.from(dialog.querySelectorAll('[contenteditable="true"],[role="textbox"]')).filter(visible);
++    if (editors.length !== 1) return { dialogIndex, dialogVisible: false, editorCount: editors.length, controls: [], labels: [] };
++    const editor = editors[0];
++    const dialogKey = dialog.getAttribute('data-testid') || dialog.id || 'dialog';
++    const editorKey = editor.getAttribute('componentkey') || editor.id || editor.getAttribute('aria-label') || 'editor';
++    const composerId = dialogKey + ':' + editorKey + ':' + dialogIndex;
++    const labels = Array.from(dialog.querySelectorAll('button,[role="button"],[role="combobox"]')).filter(visible)
++      .map((node) => nameOf(node)).filter(Boolean);
++    const controls = Array.from(dialog.querySelectorAll('button,[role="button"]')).filter((node) => postLike.test(nameOf(node)))
++      .map((node) => controlEvidence(node, composerId, true));
++    return {
++      dialogIndex, dialogVisible: true, composerId, editorCount: 1,
++      editorText: String(editor.innerText || editor.textContent || ''),
++      editorComponentKey: editorKey, labels, controls,
++      visibilityBoundToComposer: labels.length > 0
++    };
++  }).filter(Boolean);
++  const composers = records.filter((record) => record.editorCount === 1 && record.dialogVisible === true);
++  const globalControls = Array.from(document.querySelectorAll('button,[role="button"]')).filter((node) => postLike.test(nameOf(node)))
++    .map((node) => {
++      const owner = node.closest('dialog,[role="dialog"]');
++      const record = records.find((item) => item.dialogIndex === dialogNodes.indexOf(owner));
++      return controlEvidence(node, record?.composerId || '', Boolean(record));
++    });
+   return {
+     url: location.href,
+     composerCount: composers.length,
+-    composerState: composer ? 'OPEN' : 'UNKNOWN',
+-    buttonCount: buttons.length,
+-    control: button ? {
+-      role: button.getAttribute('role') || 'button', accessibleName: nameOf(button),
+-      visible: visible(button), connected: button.isConnected === true,
+-      enabled: !button.disabled && button.getAttribute('aria-disabled') !== 'true',
+-      busy: button.getAttribute('aria-busy') === 'true',
+-      controlId: button.id || '', composerId: composer.id || '', tagName: button.tagName.toLowerCase(),
+-      ariaLabel: button.getAttribute('aria-label') || '',
+-      boundingBox: box, hitTargetMatched,
+-      hitTargetRole: hitTarget?.getAttribute?.('role') || hitTarget?.tagName?.toLowerCase() || null
+-    } : null
++    composerState: composers.length ? 'OPEN' : 'UNKNOWN',
++    composers,
++    globalControlCount: globalControls.length,
++    globalControls,
++    // Legacy top-level fields are retained for fixture compatibility and
++    // sanitized evidence consumers; the adapter uses composers above.
++    buttonCount: composers.length === 1 ? composers[0].controls.length : 0,
++    control: composers.length === 1 && composers[0].controls.length === 1 ? composers[0].controls[0] : null
+   };
+ })()`;
+ 
+@@ -80,15 +129,8 @@ function controlIdentity(control, ref) {
+   })).digest("hex");
+ }
+ 
+-function activationEvidence(ui, strongCandidate, baseline, observedAt) {
+-  if (!ui) return { status: "CONTROL_ACTIVATION_UNKNOWN", observedAt, signals: [] };
+-  const signals = [];
+-  if (ui.composerState && ui.composerState !== baseline?.composerState) signals.push("composer_state_changed");
+-  if (ui.postButtonState && ui.postButtonState !== baseline?.postButtonState) signals.push("post_button_state_changed");
+-  if (ui.confirmationState && ui.confirmationState !== "NONE" && ui.confirmationState !== "UNKNOWN") signals.push("confirmation_ui_observed");
+-  if (ui.url && baseline?.url && ui.url !== baseline.url) signals.push("url_changed");
+-  if (strongCandidate) signals.push("candidate_identity_observed");
+-  return { status: signals.length ? "CONTROL_ACTIVATED" : "CONTROL_NOT_OBSERVED", observedAt, signals };
++function contentDigest(value) {
++  return createHash("sha256").update(String(value || "")).digest("hex");
+ }
+ 
+ async function withinDeadline(operation, deadline) {
+@@ -179,15 +221,14 @@ const EDITOR_EXPRESSION = `(() => {
+   return { dialogCount: dialogs.length, editorCount: editors.length, text: editor ? (editor.innerText || editor.textContent || '') : '' };
+ })()`;
+ 
+-const AUDIENCE_EXPRESSION = (audience) => `(() => {
++const VISIBILITY_EXPRESSION = (visibility) => `(() => {
+   const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter((node) => node.getClientRects().length);
+   const dialog = dialogs.length === 1 ? dialogs[0] : null;
+   const labels = dialog ? Array.from(dialog.querySelectorAll('button,[role="button"],[role="combobox"]')).filter((node) => node.getClientRects().length).map((node) => [node.getAttribute('aria-label') || '', node.innerText || ''].join(' ')) : [];
+-  const expected = ${JSON.stringify(audience)};
+-  const audienceMatch = expected === 'public' ? labels.some((label) => /anyone|public|everyone|mọi người/i.test(label))
+-    : expected === 'connections' ? labels.some((label) => /connections|kết nối/i.test(label))
+-    : labels.some((label) => label.toLowerCase().includes(expected.toLowerCase()));
+-  return { dialogCount: dialogs.length, audienceMatch };
++  const expected = ${JSON.stringify(String(visibility).toLowerCase())};
++  const normalizedExpected = expected.toUpperCase();
++  const visibilityMatch = normalizedExpected === 'PUBLIC' ? labels.some((label) => /anyone|public|everyone|mọi người|moi nguoi|tất cả mọi người|tat ca moi nguoi/i.test(label)) : false;
++  return { dialogCount: dialogs.length, visibilityMatch, audienceMatch: visibilityMatch };
+ })()`;
+ 
+ export const LINKEDIN_VERIFICATION_EXPRESSION = (content, expectedIdentityUrl) => `(() => {
+@@ -233,13 +274,21 @@ const LINKEDIN_POST_CLICK_UI_EXPRESSION = `(() => {
+   const postButtonState = !postButtons.length ? 'DISAPPEARED'
+     : postButtons.some((node) => node.getAttribute('aria-busy') === 'true' || /posting|sharing|publishing|đang đăng/i.test(buttonText)) ? 'SUBMITTING'
+       : postButtons.every((node) => node.disabled || node.getAttribute('aria-disabled') === 'true') ? 'DISABLED' : 'ENABLED';
++  const postButton = postButtons.length === 1 ? postButtons[0] : null;
+   const messages = Array.from(document.querySelectorAll('[role="alert"],[role="status"],.artdeco-toast-item,.share-creation-state__error-container,.share-creation-state__success-container')).filter(visible)
+     .map((node) => (node.innerText || node.textContent || '').trim()).filter(Boolean).slice(0, 8).map((text) => text.slice(0, 240));
+   const successMessages = messages.filter((text) => /post(?:ed| is live)|shared|published|đã đăng|đã chia sẻ/i.test(text));
+   const errorMessages = messages.filter((text) => /error|failed|try again|cannot|couldn.?t|unable|too many|restricted|invalid|lỗi|không thể|thử lại/i.test(text));
+   const confirmationState = successMessages.length && errorMessages.length ? 'UNKNOWN'
+     : successMessages.length ? 'SUCCESS' : errorMessages.length ? 'ERROR' : 'NONE';
+-  return { url: location.href, composerState: composerOpen ? 'OPEN' : 'CLOSED', postButtonState, confirmationState, successMessages, errorMessages };
++  const active = document.activeElement;
++  return { url: location.href, composerState: composerOpen ? 'OPEN' : 'CLOSED', postButtonState, confirmationState, successMessages, errorMessages,
++    activeElement: active ? { tagName: active.tagName?.toLowerCase() || null, role: active.getAttribute?.('role') || null, id: active.id || null,
++      accessibleName: (active.getAttribute?.('aria-label') || active.innerText || active.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 120) || null,
++      isTargetControl: postButtons.some((node) => node === active || node.contains(active)) } : null,
++    ariaExpanded: postButton?.getAttribute('aria-expanded') ?? null,
++    relatedComponentVisible: Boolean(composer || successMessages.length || errorMessages.length),
++    scrollPosition: { x: Math.round(window.scrollX || 0), y: Math.round(window.scrollY || 0) } };
+ })()`;
+ 
+ const LINKEDIN_POST_CLICK_WAIT_EXPRESSION = (content, expectedIdentityUrl) => `(() => {
+@@ -388,11 +437,13 @@ export class LinkedInAdapter {
+     supportsReconciliation: true
+   });
+ 
+-  constructor(browser, { verifier = new LinkedInPublicationVerifier(browser), mediaTimeoutMs = 60_000, postClickEvidenceTimeoutMs = 5_000 } = {}) {
++  constructor(browser, { verifier = new LinkedInPublicationVerifier(browser), mediaTimeoutMs = 60_000, postClickEvidenceTimeoutMs = 5_000, transport = null } = {}) {
+     this.browser = browser;
+     this.verifier = verifier;
+     this.mediaTimeoutMs = mediaTimeoutMs;
+     this.postClickEvidenceTimeoutMs = postClickEvidenceTimeoutMs;
++    this.transport = transport || new OrcaAccessibilityTransport(browser);
++    this.selectedTransport = this.transport.runtimeIdentity?.().transport || "browser-interaction";
+   }
+ 
+   async #getPage(request) {
+@@ -471,25 +522,68 @@ export class LinkedInAdapter {
+     const refs = submitControlRefs(snapshot);
+     const observed = await this.browser.evaluate(context.pageId, SUBMIT_CONTROL_EXPRESSION);
+     const control = observed?.control;
++    const requestedVisibility = normalizePublicationVisibility(context.request?.publicationVisibility || "PUBLIC");
++    const expectedPayload = String(context.request?.content?.payload || "");
++    const expectedPayloadHash = String(context.request?.content?.sha256 || contentDigest(expectedPayload));
++    const composerRecords = Array.isArray(observed?.composers) ? observed.composers : null;
++    const activeComposer = composerRecords?.length === 1 ? composerRecords[0] : null;
++    const editorText = activeComposer?.editorText;
++    const payloadHash = editorText === undefined ? null : contentDigest(editorText);
++    const payloadMatched = editorText === undefined ? true : payloadHash === expectedPayloadHash && editorText === expectedPayload;
++    const visibilityLabels = activeComposer?.labels || [];
++    const visibilityMatched = composerRecords
++      ? activeComposer?.visibilityBoundToComposer === true && publicationVisibilityMatchesLabels(requestedVisibility, visibilityLabels)
++      : true;
++    const ownedControls = activeComposer?.controls || (control ? [control] : []);
++    const ownedControlCount = ownedControls.length;
++    const controlComposerMatched = !control || !activeComposer || control.composerId === activeComposer.composerId;
++    const ownershipProof = {
++      composerId: activeComposer?.composerId || control?.composerId || null,
++      composerCount: Number(observed?.composerCount) || 0,
++      editorCount: Number(activeComposer?.editorCount ?? (activeComposer ? 1 : 0)),
++      editorPayloadHash: payloadHash,
++      expectedPayloadHash,
++      payloadMatched,
++      visibility: requestedVisibility,
++      visibilityLabels: visibilityLabels.slice(0, 12),
++      visibilityMatched,
++      ownedControlCount,
++      globalControlCount: Number(observed?.globalControlCount) || 0,
++      controlBelongsToComposer: control?.belongsToComposer !== false && controlComposerMatched,
++      structuralEvidenceVersion: Array.isArray(observed?.composers) ? 1 : 0
++    };
+     const safeObservation = {
+       role: control?.role || null, accessibleName: control?.accessibleName || null,
+       visible: control?.visible === true, connected: control?.connected === true,
+       enabled: control?.enabled === true, busy: control?.busy === true, composerState: observed?.composerState || "UNKNOWN",
+       composerCount: Number(observed?.composerCount) || 0, buttonCount: Number(observed?.buttonCount) || 0,
+-      composerMatched: Number(observed?.composerCount) === 1 && observed?.composerState === "OPEN" && Number(observed?.buttonCount) === 1,
++      composerMatched: Number(observed?.composerCount) === 1 && observed?.composerState === "OPEN" && ownedControlCount === 1 && payloadMatched && visibilityMatched,
+       hitTargetMatched: control?.hitTargetMatched === true, hitTargetRole: control?.hitTargetRole || null,
+-      boundingBox: control?.boundingBox || null
++      boundingBox: control?.boundingBox || null,
++      actionable: control?.actionable === true || Boolean(control && control.visible === true && control.connected === true && control.enabled === true && control.busy !== true && control.hitTargetMatched === true),
++      activeElement: control?.activeElement || null,
++      ariaExpanded: control?.ariaExpanded ?? null,
++      ariaPressed: control?.ariaPressed ?? null,
++      scrollPosition: control?.scrollPosition || null,
++      ownershipProof
+     };
+     safeObservation.controlRef = refs.length === 1 ? refs[0] : null;
+     safeObservation.controlIdentity = control && refs.length === 1 ? controlIdentity(control, refs[0]) : null;
+     let code = null;
+     let message = "LinkedIn submit control is not uniquely actionable in the active composer";
+     if (safeObservation.composerCount !== 1 || safeObservation.composerState !== "OPEN") code = "SUBMIT_CONTROL_WRONG_COMPOSER";
+-    else if (refs.length !== 1 || safeObservation.buttonCount !== 1) code = "SUBMIT_CONTROL_AMBIGUOUS";
++    else if (!controlComposerMatched || control?.belongsToComposer === false) code = "SUBMIT_CONTROL_WRONG_COMPOSER";
++    else if (!payloadMatched) code = "CONTENT_MISMATCH";
++    else if (!visibilityMatched) code = "TARGET_MISMATCH";
++    else if (refs.length !== 1 || ownedControlCount !== 1 || safeObservation.buttonCount !== 1) code = "SUBMIT_CONTROL_AMBIGUOUS";
+     else if (!control || !safeObservation.connected || !safeObservation.visible || !safeObservation.enabled || safeObservation.busy || !safeObservation.hitTargetMatched ||
+       !safeObservation.boundingBox || safeObservation.boundingBox.width <= 0 || safeObservation.boundingBox.height <= 0) code = "SUBMIT_CONTROL_NOT_ACTIONABLE";
+     else if (!/^(post|share|đăng(?: bài)?)$/i.test(safeObservation.accessibleName || "")) code = "SUBMIT_CONTROL_IDENTITY_MISMATCH";
+-    if (code) throw submitControlFailure(code, message, "finalSubmitControl", safeObservation);
++    if (code) {
++      const failureMessage = code === "CONTENT_MISMATCH" ? "LinkedIn active composer payload does not match the authorized content" :
++        code === "TARGET_MISMATCH" ? "LinkedIn publication visibility is not bound to the active composer" : message;
++      throw submitControlFailure(code, failureMessage, "finalSubmitControl", safeObservation);
++    }
+     const ref = refs[0];
+     return {
+       submitRef: ref,
+@@ -575,11 +669,21 @@ export class LinkedInAdapter {
+       acceptanceSource,
+       observedAt,
+       postClickObservedAt: observedAt,
+-      controlActivationEvidence: activationEvidence(ui, strongCandidate, {
++      controlActivationEvidence: buildControlActivationEvidence({
++        before: {
+         composerState: context.preClickControlEvidence?.composerState || "OPEN",
+         postButtonState: context.preClickControlEvidence?.enabled ? "ENABLED" : "DISABLED",
+-        url: context.preClickControlEvidence?.url || context.urlBeforeSubmit || null
+-      }, observedAt),
++        url: context.preClickControlEvidence?.url || context.urlBeforeSubmit || null,
++        activeElement: context.preClickControlEvidence?.activeElement || null,
++        ariaExpanded: context.preClickControlEvidence?.ariaExpanded ?? null,
++        relatedComponentVisible: context.preClickControlEvidence?.composerState === "OPEN",
++        scrollPosition: context.preClickControlEvidence?.scrollPosition || null
++        },
++        after: ui,
++        controlIdentity: context.preClickControlEvidence?.controlIdentity,
++        strongCandidate,
++        observedAt
++      }),
+       composerState: ui?.composerState || "UNKNOWN",
+       postButtonState: ui?.postButtonState || "UNKNOWN",
+       confirmationState: ui?.confirmationState || "UNKNOWN",
+@@ -598,9 +702,17 @@ export class LinkedInAdapter {
+     if (context.preClickControlEvidence?.controlIdentity && currentControl.preClickControlEvidence.controlIdentity !== context.preClickControlEvidence.controlIdentity) {
+       throw submitControlFailure("SUBMIT_CONTROL_IDENTITY_CHANGED", "LinkedIn submit control changed after pre-submit validation", "finalSubmitControl", currentControl.preClickControlEvidence);
+     }
++    // This is the last pre-submit gate. It runs before the durable intent is
++    // persisted, so a moved, detached, covered, or disabled target emits no
++    // browser input and does not become a post-submit UNKNOWN.
++    const clickPreflight = assertClickPreflight(currentControl.preClickControlEvidence);
+     context.submitRef = currentControl.submitRef;
++    context.selectedTransport = this.selectedTransport;
+     context.preClickControlEvidence = currentControl.preClickControlEvidence;
+     context.urlBeforeSubmit = context.urlBeforeSubmit || currentControl.preClickControlEvidence.url;
++    if (!this.transport || typeof this.transport.click !== "function" || typeof this.browser?.click !== "function") {
++      throw Object.assign(new Error("LinkedIn browser interaction transport is unavailable"), { code: "TRANSPORT_UNAVAILABLE", preSubmitFailure: { reasonCode: "TRANSPORT_UNAVAILABLE", stage: "submit_boundary", gate: "browserTransport", gateStatus: false } });
++    }
+     await beforeSubmitIntent(context.gates);
+     context.intentPersisted = true;
+     context.submitAcceptanceEvidence = {
+@@ -609,13 +721,24 @@ export class LinkedInAdapter {
+       urlBefore: context.urlBeforeSubmit || null, urlAfter: null, candidate: {},
+       preClickControlEvidence: context.preClickControlEvidence
+     };
++    let commandResult;
++    const preflight = clickPreflight;
+     try {
+-      await this.browser.click(context.pageId, context.submitRef);
++      assertTransportCannotChangeAfterIntent({ selectedTransport: context.selectedTransport, requestedTransport: this.selectedTransport, intentPersisted: false });
++      commandResult = await this.transport.click({ pageId: context.pageId, targetRef: context.submitRef, targetIdentity: context.preClickControlEvidence.controlIdentity }, {
++        validate: async () => {
++          const latest = await this.#captureSubmitControl(context);
++          if (latest.preClickControlEvidence.controlIdentity !== context.preClickControlEvidence.controlIdentity) {
++            throw submitControlFailure("SUBMIT_CONTROL_IDENTITY_CHANGED", "LinkedIn submit control changed immediately before browser input", "finalSubmitControl", latest.preClickControlEvidence);
++          }
++          return assertClickPreflight(latest.preClickControlEvidence);
++        }
++      });
+     } catch (error) {
+       const observedAt = new Date().toISOString();
+       context.submitAcceptanceEvidence = validateSubmitAcceptanceEvidence({
+         ...context.submitAcceptanceEvidence, observedAt,
+-        clickCommandEvidence: { status: "OUTCOME_UNKNOWN", observedAt },
++        clickCommandEvidence: { status: "OUTCOME_UNKNOWN", observedAt, transport: this.selectedTransport, elementRef: context.submitRef, preflight },
+         controlActivationEvidence: { status: "CONTROL_ACTIVATION_UNKNOWN", observedAt, signals: [] },
+         errorReasonCode: "orca_click_outcome_unknown"
+       });
+@@ -627,7 +750,11 @@ export class LinkedInAdapter {
+     context.submitAcceptanceEvidence = validateSubmitAcceptanceEvidence({
+       ...context.submitAcceptanceEvidence,
+       clickStatus: "CLICK_EMITTED", clickEmittedAt: context.clickEmittedAt, observedAt: context.clickEmittedAt,
+-      clickCommandEvidence: { status: "COMMAND_COMPLETED", observedAt: context.clickEmittedAt },
++      clickCommandEvidence: clickCommandEvidence(commandResult || {}, {
++        elementRef: context.submitRef,
++        preflight: commandResult?.preflight || preflight,
++        completedAt: commandResult?.completedAt || context.clickEmittedAt
++      }),
+       controlActivationEvidence: { status: "CONTROL_ACTIVATION_UNKNOWN", observedAt: context.clickEmittedAt, signals: [] }
+     });
+     await onSubmitSent(context.submitAcceptanceEvidence);
+@@ -702,8 +829,8 @@ export class LinkedInAdapter {
+     if (state.linkedinDomain !== true || state.route !== true || state.dialogCount !== 1 || state.editorCount !== 1 || state.audience !== true || state.postButton !== true || state.mediaControl !== true || state.advertisingControls !== 0) {
+       throw Object.assign(new Error("LinkedIn composer structure is not confirmed"), { code: "UNKNOWN_COMPOSER" });
+     }
+-    const audience = await this.browser.evaluate(pageId, AUDIENCE_EXPRESSION(request.audience));
+-    if (audience.dialogCount !== 1 || audience.audienceMatch !== true) throw Object.assign(new Error("LinkedIn audience does not match the approved campaign audience"), { code: "TARGET_MISMATCH" });
++    const visibility = await this.browser.evaluate(pageId, VISIBILITY_EXPRESSION(request.publicationVisibility || "PUBLIC"));
++    if (visibility.dialogCount !== 1 || (visibility.visibilityMatch !== true && visibility.audienceMatch !== true)) throw Object.assign(new Error("LinkedIn publication visibility is not supported by the active composer"), { code: "TARGET_MISMATCH" });
+     return { snapshot: await this.browser.snapshot(pageId), domFallbackUsed };
+   }
+ 
+@@ -724,8 +851,8 @@ export class LinkedInAdapter {
+     if (fileHash !== media.sha256) throw Object.assign(new Error("Media hash differs from the approved artifact"), { code: "MEDIA_MISMATCH" });
+     if (!await verifyMediaType(media.path, media.type)) throw Object.assign(new Error("Media file type does not match the approved descriptor"), { code: "MEDIA_MISMATCH" });
+     const result = await attachLinkedInMedia(this.browser, pageId, media, { timeoutMs: this.mediaTimeoutMs });
+-    const audience = await this.browser.evaluate(pageId, AUDIENCE_EXPRESSION(request.audience));
+-    if (audience.dialogCount !== 1 || audience.audienceMatch !== true) throw Object.assign(new Error("LinkedIn audience changed while attaching media"), { code: "TARGET_MISMATCH" });
++    const visibility = await this.browser.evaluate(pageId, VISIBILITY_EXPRESSION(request.publicationVisibility || "PUBLIC"));
++    if (visibility.dialogCount !== 1 || (visibility.visibilityMatch !== true && visibility.audienceMatch !== true)) throw Object.assign(new Error("LinkedIn publication visibility changed while attaching media"), { code: "TARGET_MISMATCH" });
+     return { ...result, audienceMatch: true, preSubmitMediaIntegrity: {
+       artifactId: media.artifactId, expectedSha256: media.sha256, localFileSha256: fileHash,
+       mediaType: media.type, attached: true, previewReady: result.mediaPreviewConfirmed === true
+@@ -842,4 +969,4 @@ export class LinkedInAdapter {
+   }
+ }
+ 
+-export const linkedinAdapterExpressions = { target: TARGET_EXPRESSION, audience: AUDIENCE_EXPRESSION, editor: EDITOR_EXPRESSION, submitControl: SUBMIT_CONTROL_EXPRESSION };
++export const linkedinAdapterExpressions = { target: TARGET_EXPRESSION, audience: VISIBILITY_EXPRESSION, visibility: VISIBILITY_EXPRESSION, editor: EDITOR_EXPRESSION, submitControl: SUBMIT_CONTROL_EXPRESSION };
+diff --git a/src/live-execution-grant.mjs b/src/live-execution-grant.mjs
+index 42592aa..e9ff21f 100644
+--- a/src/live-execution-grant.mjs
++++ b/src/live-execution-grant.mjs
+@@ -29,7 +29,8 @@ export function createLiveExecutionGrantV1({ post, target, account, authorizatio
+     throw new Error("Live grant account/profile does not match the target");
+   }
+   if (!authorization.destinations?.some((item) => item.platform === target.channel && item.accountId === target.accountId && item.profileId === target.profileId && item.targetId === target.id && item.targetUrl === target.url) ||
+-      !authorization.audienceRules?.allowedAudiences?.includes(post.audience)) {
++      !authorization.audienceRules?.allowedAudiences?.includes(post.audience) ||
++      !(authorization.publicationVisibilityRules?.allowedVisibilities || ["PUBLIC"]).includes(String(post.publicationVisibility || "PUBLIC").toUpperCase())) {
+     throw new Error("Live grant destination or audience is outside campaign authorization");
+   }
+   const canonicalHash = campaignContentHash(post.content);
+@@ -53,6 +54,7 @@ export function createLiveExecutionGrantV1({ post, target, account, authorizatio
+     content: { contentId: required(post.contentId, "contentId"), canonicalSha256: canonicalHash, rawSha256: contentSha256(post.content) },
+     media: artifact ? [{ artifactId: artifact.id, sha256: artifact.sha256 }] : [],
+     audience: required(post.audience, "audience"), idempotencyKey: required(post.idempotencyKey, "idempotencyKey"),
++    publicationVisibility: String(post.publicationVisibility || "PUBLIC").toUpperCase(),
+     validFrom: new Date(from).toISOString(), validUntil: new Date(until).toISOString(), maxExecutions: 1,
+     createdAt: now.toISOString(), createdBy: required(createdBy, "createdBy"),
+     operatorAuthorizationReference: required(operatorAuthorizationReference, "operatorAuthorizationReference"), status: "ACTIVE",
+@@ -64,6 +66,7 @@ export function createLiveExecutionGrantV1({ post, target, account, authorizatio
+ export function validateLiveExecutionGrantV1(grant) {
+   if (!grant || grant.schemaVersion !== 1 || !LIVE_GRANT_STATUSES.includes(grant.status) || grant.maxExecutions !== 1) throw new Error("Invalid LiveExecutionGrantV1 status, schema or execution limit");
+   for (const key of ["grantId", "campaignAuthorizationId", "campaignAuthorizationBinding", "campaignId", "jobId", "platform", "accountId", "profileId", "targetId", "audience", "idempotencyKey", "createdBy", "operatorAuthorizationReference"]) required(grant[key], key);
++  if (grant.publicationVisibility !== undefined) required(grant.publicationVisibility, "publicationVisibility");
+   for (const key of ["canonicalSha256", "rawSha256"]) if (!SHA256.test(grant.content?.[key] || "")) throw new Error(`Invalid live grant content ${key}`);
+   required(grant.content?.contentId, "content.contentId");
+   if (!Array.isArray(grant.media) || grant.media.some((item) => !item.artifactId || !SHA256.test(item.sha256))) throw new Error("Invalid live grant media identity");
+@@ -85,7 +88,7 @@ export function assertLiveGrantMatchesExecution(grant, request, authorization, n
+   if (!request || request.dryRun === true || grant.boundExecutionId !== request.executionId || request.liveGrant?.grantId !== grant.grantId ||
+       grant.campaignId !== request.campaignId || grant.jobId !== request.jobId || grant.platform !== request.platform ||
+       grant.accountId !== request.accountId || grant.profileId !== request.profileId || grant.targetId !== request.target?.targetId ||
+-      grant.audience !== request.audience || grant.idempotencyKey !== request.idempotencyKey ||
++      grant.audience !== request.audience || (grant.publicationVisibility || "PUBLIC") !== (request.publicationVisibility || "PUBLIC") || grant.idempotencyKey !== request.idempotencyKey ||
+       grant.campaignAuthorizationId !== request.authorization?.authorizationId || grant.campaignAuthorizationBinding !== request.authorization?.binding ||
+       grant.content.contentId !== request.content?.contentId || grant.content.rawSha256 !== request.content?.sha256 ||
+       grant.media.length !== request.media?.length || grant.media.some((item, index) => item.artifactId !== request.media[index].artifactId || item.sha256 !== request.media[index].sha256) ||
+diff --git a/src/orca-browser-client.mjs b/src/orca-browser-client.mjs
+index 4001b00..45d1847 100644
+--- a/src/orca-browser-client.mjs
++++ b/src/orca-browser-client.mjs
+@@ -27,15 +27,20 @@ function pageIdFrom(value) {
+ }
+ 
+ export class OrcaCliClient {
+-  constructor({ executable = process.env.ORCA_CLI || "orca", timeoutMs = 12_000, worktree = process.env.SEEDING_ORCA_WORKTREE || "current" } = {}) {
++  constructor({ executable = process.env.ORCA_CLI || "orca", timeoutMs = 12_000, worktree = process.env.SEEDING_ORCA_WORKTREE || "current", providerVersion = process.env.ORCA_VERSION || null } = {}) {
+     this.executable = executable;
+     this.timeoutMs = timeoutMs;
+     this.worktree = worktree;
++    this.runtimeVersion = providerVersion ? String(providerVersion) : null;
+     this.browserCommands = 0;
+   }
+ 
+   browserCommandCount() { return this.browserCommands; }
+ 
++  runtimeIdentity() {
++    return { provider: "orca", providerVersion: this.runtimeVersion, executable: this.executable, worktree: this.worktree };
++  }
++
+   async #run(args) {
+     this.browserCommands += 1;
+     try {
+@@ -96,10 +101,37 @@ export class OrcaCliClient {
+     return raw;
+   }
+ 
+-  async click(pageId, element) {
+-    // A successful CLI command only acknowledges the browser action request.
+-    // It does not prove that the target activated or that the platform accepted it.
+-    await this.#run(["click", "--element", element, "--page", pageId, "--worktree", this.worktree]);
++  async click(pageId, element, { validate } = {}) {
++    // The optional validator runs immediately before the single transport
++    // command. It proves only that the target is still safe to address; the
++    // command receipt remains separate from control activation.
++    const preflight = typeof validate === "function" ? await validate() : null;
++    const startedAt = new Date().toISOString();
++    const result = await this.#run(["click", "--element", element, "--page", pageId, "--worktree", this.worktree]);
++    const completedAt = new Date().toISOString();
++    return {
++      status: "COMMAND_COMPLETED",
++      transport: "orca-cli-browser-click",
++      elementRef: String(element),
++      startedAt,
++      completedAt,
++      preflight,
++      providerResult: result && typeof result === "object" ? {
++        clicked: result.clicked ? String(result.clicked).slice(0, 100) : null
++      } : null
++    };
++  }
++
++  async mouseMove(pageId, x, y) {
++    return this.#run(["mouse", "move", "--x", String(Math.round(x)), "--y", String(Math.round(y)), "--page", pageId, "--worktree", this.worktree]);
++  }
++
++  async mouseDown(pageId, button = "left") {
++    return this.#run(["mouse", "down", "--button", button, "--page", pageId, "--worktree", this.worktree]);
++  }
++
++  async mouseUp(pageId, button = "left") {
++    return this.#run(["mouse", "up", "--button", button, "--page", pageId, "--worktree", this.worktree]);
+   }
+ 
+   async fill(pageId, element, value) {
+diff --git a/src/service.mjs b/src/service.mjs
+index 78651ff..4a47ade 100644
+--- a/src/service.mjs
++++ b/src/service.mjs
+@@ -1735,6 +1735,8 @@ export class SeedingService {
+     }
+     if (request.content.sha256 !== createHash("sha256").update(post.content).digest("hex") || request.content.payload !== post.content) reject("CONTENT_MISMATCH", "contentHashMatch", "Execution content changed after request creation");
+     if (request.audience !== post.audience || !authorization.audienceRules.allowedAudiences.includes(post.audience)) reject("AUDIENCE_MISMATCH", "audienceMatch", "Execution audience does not match authorized audience");
++    if (request.publicationVisibility !== (post.publicationVisibility || "PUBLIC")) reject("TARGET_MISMATCH", "targetMatch", "Execution publication visibility changed");
++    if (!(authorization.publicationVisibilityRules?.allowedVisibilities || ["PUBLIC"]).includes(request.publicationVisibility)) reject("TARGET_MISMATCH", "targetMatch", "Publication visibility is outside authorization");
+     if (artifact && (request.media.length !== 1 || request.media[0].artifactId !== artifact.id || request.media[0].reference !== artifact.path || request.media[0].sha256 !== artifact.sha256 || !authorization.approvedAssets.some((item) => item.artifactId === artifact.id && item.sha256 === artifact.sha256))) reject("ARTIFACT_INTEGRITY_FAILED", "mediaHashMatch", "Execution media identity is not the approved artifact");
+     if (!artifact && request.media.length !== 0) reject("ARTIFACT_INTEGRITY_FAILED", "mediaHashMatch", "Execution request contains unregistered media");
+     if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId || request.accountId !== target.accountId || request.profileId !== target.profileId) reject("IDENTITY_MISMATCH", "accountMatch", "Execution account/profile binding changed");
+@@ -1762,6 +1764,7 @@ export class SeedingService {
+       }
+       if (requestRow.request.content.sha256 !== createHash("sha256").update(currentPost.content).digest("hex") || requestRow.request.content.contentId !== currentPost.contentId ||
+           currentGrant.content.canonicalSha256 !== campaignContentHash(currentPost.content) || requestRow.request.audience !== currentPost.audience ||
++          requestRow.request.publicationVisibility !== (currentPost.publicationVisibility || "PUBLIC") || currentGrant.publicationVisibility !== requestRow.request.publicationVisibility ||
+           requestRow.request.platform !== currentTarget.channel || requestRow.request.target.targetId !== currentPost.targetId ||
+           requestRow.request.accountId !== currentTarget.accountId || requestRow.request.profileId !== currentTarget.profileId ||
+           currentAccount?.profileId !== currentTarget.profileId || currentAccount?.status !== "enabled" ||
+@@ -2250,6 +2253,7 @@ export class SeedingService {
+         contentId,
+         idempotencyKey,
+         audience: String(input.audience || "").trim(),
++        publicationVisibility: input.publicationVisibility ? String(input.publicationVisibility).trim().toUpperCase() : "PUBLIC",
+         testJob: input.testJob === true,
+         templateId: String(input.templateId || "").trim() || null,
+         claimIds: Array.isArray(input.claimIds) ? [...new Set(input.claimIds.map(String))] : [],
+diff --git a/test/jev-execution-worker.test.mjs b/test/jev-execution-worker.test.mjs
+index 719488a..9e35a69 100644
+--- a/test/jev-execution-worker.test.mjs
++++ b/test/jev-execution-worker.test.mjs
+@@ -109,6 +109,21 @@ test("JEV worker runs a dry-run to the pre-submit boundary and records a non-ter
+   assert.deepEqual(fixture.calls.map(([name]) => name), ["lease", "readiness", "prepare", "started", "receipt", "release"]);
+ });
+ 
++test("JEV worker clears its unref heartbeat after a completed execution", async () => {
++  let renewCalls = 0;
++  const fixture = executionFixture({ service: { async renewExecutionLease() { renewCalls += 1; return true; } } });
++  const adapter = { async execute() {
++    return { submitState: "NOT_STARTED", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
++      errorClassification: "NONE", gates: { passed: true }, durationMs: 1 };
++  } };
++  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), leaseMs: 3_000 });
++  const result = await worker.run("exec-1");
++  assert.equal(result.status, "DRY_RUN_COMPLETE");
++  await new Promise((resolve) => setTimeout(resolve, 1_100));
++  assert.equal(renewCalls, 0);
++  assert.deepEqual(fixture.calls.map(([name]) => name), ["lease", "readiness", "prepare", "started", "receipt", "release"]);
++});
++
+ test("JEV worker reports a failed no-submit dry-run truthfully", async () => {
+   const fixture = executionFixture();
+   const adapter = {
+diff --git a/test/linkedin-verification.test.mjs b/test/linkedin-verification.test.mjs
+index a3faae5..d3eef27 100644
+--- a/test/linkedin-verification.test.mjs
++++ b/test/linkedin-verification.test.mjs
+@@ -2,7 +2,7 @@ import test from "node:test";
+ import assert from "node:assert/strict";
+ import { createHash } from "node:crypto";
+ import { LinkedInAdapter, LinkedInPublicationVerifier, LINKEDIN_VERIFICATION_EXPRESSION, linkedinAdapterExpressions } from "../src/linkedin-adapter.mjs";
+-import { validateExecutionReceiptV1 } from "../src/execution-contracts.mjs";
++import { validateExecutionReceiptV1, validateSubmitAcceptanceEvidence } from "../src/execution-contracts.mjs";
+ 
+ const content = "Cedar Lantern 7Q4K distinctive validation post";
+ const submittedAt = "2026-10-14T13:00:00.000Z";
+@@ -268,6 +268,38 @@ function submitControlObservation(overrides = {}) {
+   };
+ }
+ 
++function structuredSubmitObservation({ payload = content, visibilityLabels = ["Đăng cho Mọi người"], controls = [{}], composerCount = 1 } = {}) {
++  const expectedHash = createHash("sha256").update(payload).digest("hex");
++  const composerId = "dialog:ShareBox_textEditor:0";
++  const owned = controls.map((overrides, index) => ({
++    role: "button", accessibleName: "Đăng bài", visible: true, connected: true, enabled: true,
++    busy: false, controlId: `post-submit-${index}`, composerId, tagName: "button", ariaLabel: "",
++    boundingBox: { x: 10 + index * 90, y: 20, width: 80, height: 30 }, hitTargetMatched: true,
++    hitTargetRole: "span", belongsToComposer: true, actionable: true, ...overrides
++  }));
++  return {
++    url: "https://www.linkedin.com/sharing/compose", composerCount, composerState: composerCount ? "OPEN" : "UNKNOWN",
++    buttonCount: composerCount === 1 ? owned.length : 0,
++    composers: composerCount === 1 ? [{
++      dialogIndex: 0, dialogVisible: true, composerId, editorCount: 1, editorText: payload,
++      editorComponentKey: "ShareBox_textEditor", labels: visibilityLabels, controls: owned,
++      visibilityBoundToComposer: true
++    }] : [],
++    globalControlCount: owned.length,
++    globalControls: owned,
++    control: composerCount === 1 && owned.length === 1 ? owned[0] : null,
++    expectedHash
++  };
++}
++
++function structuredBrowser(observed, snapshot = '- textbox "Post editor" [ref=editor]\n- button "Đăng bài" [ref=post]') {
++  return {
++    async snapshot() { return snapshot; },
++    async evaluate() { return typeof observed === "function" ? observed() : observed; },
++    async showTab() { return { url: "https://www.linkedin.com/sharing/compose" }; }
++  };
++}
++
+ test("pre-click evidence binds the unique visible enabled Post control to the active composer", async () => {
+   const adapter = new LinkedInAdapter({
+     async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+@@ -286,6 +318,109 @@ test("pre-click evidence binds the unique visible enabled Post control to the ac
+   assert.equal(context.gates.submitControlSafe, true);
+ });
+ 
++test("active composer payload, PUBLIC visibility, and its unique Post control are bound structurally", async () => {
++  const adapter = new LinkedInAdapter(structuredBrowser(structuredSubmitObservation()), { verifier: {} });
++  const context = await adapter.verifyPreSubmit({
++    request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
++    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
++  });
++  assert.equal(context.gates.submitControlSafe, true);
++  assert.equal(context.preClickControlEvidence.ownershipProof.payloadMatched, true);
++  assert.equal(context.preClickControlEvidence.ownershipProof.visibilityMatched, true);
++  assert.equal(context.preClickControlEvidence.ownershipProof.ownedControlCount, 1);
++  assert.equal(context.preClickControlEvidence.ownershipProof.composerId, "dialog:ShareBox_textEditor:0");
++});
++
++test("submit acceptance receipt preserves sanitized active-composer ownership proof", () => {
++  const ownershipProof = {
++    composerId: "dialog:ShareBox_textEditor:0",
++    composerCount: 1,
++    editorCount: 1,
++    editorPayloadHash: "a".repeat(64),
++    expectedPayloadHash: "a".repeat(64),
++    payloadMatched: true,
++    visibility: "PUBLIC",
++    visibilityLabels: ["Đăng cho Mọi người"],
++    visibilityMatched: true,
++    ownedControlCount: 1,
++    globalControlCount: 2,
++    controlBelongsToComposer: true,
++    structuralEvidenceVersion: 1
++  };
++  const evidence = validateSubmitAcceptanceEvidence({
++    clickStatus: "CLICK_EMITTED",
++    clickEmittedAt: "2026-10-17T06:02:26.286Z",
++    clickCommandEvidence: { status: "COMMAND_COMPLETED", observedAt: "2026-10-17T06:02:26.286Z" },
++    controlActivationEvidence: { status: "CONTROL_NOT_OBSERVED", observedAt: "2026-10-17T06:02:31.299Z", signals: [] },
++    preClickControlEvidence: {
++      role: "button", accessibleName: "Đăng bài", controlRef: "e13", controlIdentity: "b".repeat(64),
++      visible: true, connected: true, enabled: true, busy: false, actionable: true,
++      composerState: "OPEN", composerMatched: true, composerCount: 1, buttonCount: 1,
++      hitTargetMatched: true, boundingBox: { x: 1, y: 2, width: 3, height: 4 },
++      url: "https://www.linkedin.com/sharing/compose/", capturedAt: "2026-10-17T06:02:20.952Z", ownershipProof
++    },
++    platformAcceptance: "UNKNOWN", acceptanceSource: "NONE", observedAt: "2026-10-17T06:02:31.299Z",
++    composerState: "OPEN", postButtonState: "ENABLED", confirmationState: "NONE",
++    urlBefore: "https://www.linkedin.com/sharing/compose/", urlAfter: "https://www.linkedin.com/sharing/compose/", candidate: {}
++  });
++  assert.deepEqual(evidence.preClickControlEvidence.ownershipProof, {
++    composerId: "dialog:ShareBox_textEditor:0", composerCount: 1, editorCount: 1,
++    editorPayloadHash: "a".repeat(64), expectedPayloadHash: "a".repeat(64), payloadMatched: true,
++    publicationVisibility: "PUBLIC", visibilityLabels: ["Đăng cho Mọi người"], visibilityMatched: true,
++    ownedControlCount: 1, globalControlCount: 2, controlBelongsToComposer: true, structuralEvidenceVersion: 1
++  });
++});
++
++test("payload hash mismatch fails before submit control authorization", async () => {
++  const observed = structuredSubmitObservation({ payload: "different authorized payload" });
++  const adapter = new LinkedInAdapter(structuredBrowser(observed), { verifier: {} });
++  await assert.rejects(() => adapter.verifyPreSubmit({
++    request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
++    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
++  }), (error) => error.code === "CONTENT_MISMATCH" && error.preSubmitFailure.gate === "finalSubmitControl");
++});
++
++test("PUBLIC visibility from a different composer fails closed", async () => {
++  const observed = structuredSubmitObservation({ visibilityLabels: ["Đăng cho Kết nối"] });
++  const adapter = new LinkedInAdapter(structuredBrowser(observed), { verifier: {} });
++  await assert.rejects(() => adapter.verifyPreSubmit({
++    request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
++    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
++  }), (error) => error.code === "TARGET_MISMATCH" && error.preSubmitFailure.gate === "finalSubmitControl");
++});
++
++test("multiple owned Post controls are ambiguous even when the composer payload is valid", async () => {
++  const observed = structuredSubmitObservation({ controls: [{}, {}] });
++  const adapter = new LinkedInAdapter(structuredBrowser(observed, '- textbox "Post editor" [ref=editor]\n- button "Đăng bài" [ref=post]\n- button "Đăng bài" [ref=post-2]'), { verifier: {} });
++  await assert.rejects(() => adapter.verifyPreSubmit({
++    request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
++    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
++  }), (error) => error.code === "SUBMIT_CONTROL_AMBIGUOUS");
++});
++
++test("hidden or detached owned Post controls remain rejected", async (t) => {
++  for (const [name, overrides] of [["hidden", { visible: false }], ["detached", { connected: false }], ["disabled", { enabled: false }]]) {
++    await t.test(name, async () => {
++      const observed = structuredSubmitObservation({ controls: [overrides] });
++      const adapter = new LinkedInAdapter(structuredBrowser(observed), { verifier: {} });
++      await assert.rejects(() => adapter.verifyPreSubmit({
++        request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
++        media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
++      }), (error) => error.code === "SUBMIT_CONTROL_NOT_ACTIONABLE");
++    });
++  }
++});
++
++test("content audience hints do not affect submit-control ownership", async () => {
++  const observed = structuredSubmitObservation();
++  const adapter = new LinkedInAdapter(structuredBrowser(observed), { verifier: {} });
++  const context = await adapter.verifyPreSubmit({
++    request: { ...request({ withMedia: false }), audience: "builders", publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
++    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
++  });
++  assert.equal(context.gates.submitControlSafe, true);
++});
++
+ test("stale, hidden, intercepted, wrong-composer, and ambiguous Post controls fail before submit intent", async (t) => {
+   const cases = [
+     { name: "detached control", observed: submitControlObservation({ connected: false }), code: "SUBMIT_CONTROL_NOT_ACTIONABLE" },
+@@ -330,6 +465,33 @@ test("submit control identity change is rejected before durable intent and click
+   assert.equal(clicks, 0);
+ });
+ 
++test("immediate click preflight rejects a moved or covered control before durable intent", async (t) => {
++  for (const [name, override] of [["moved", { controlId: "moved-control" }], ["covered", { hitTargetMatched: false }], ["detached", { connected: false }]]) {
++    await t.test(name, async () => {
++      let observations = 0;
++      let intents = 0;
++      let clicks = 0;
++      const browser = {
++        async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
++        async evaluate() {
++          observations += 1;
++          return submitControlObservation(observations === 1 ? {} : override);
++        },
++        async showTab() { return { url: "https://www.linkedin.com/feed/" }; },
++        async click() { clicks += 1; }
++      };
++      const adapter = new LinkedInAdapter(browser, { verifier: {} });
++      const context = await adapter.verifyPreSubmit({ request: request(), pageId: "page-1", targetVerified: true,
++        media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
++      await assert.rejects(() => adapter.submit(context, {
++        async beforeSubmitIntent() { intents += 1; }, async onSubmitSent() {}
++      }), /changed|preflight|actionable/i);
++      assert.equal(intents, 0);
++      assert.equal(clicks, 0);
++    });
++  }
++});
++
+ test("success confirmation records platform acceptance without claiming publication verification", async () => {
+   const { result, postClicks } = await runPostClickAdapter({ ui: {
+     url: "https://www.linkedin.com/feed/", composerState: "CLOSED", postButtonState: "DISAPPEARED",
+@@ -364,7 +526,7 @@ test("stable activity identity and permalink record strong acceptance evidence",
+   assert.equal(result.result.submitAcceptanceEvidence.acceptanceSource, "STABLE_PUBLICATION_IDENTITY");
+   assert.equal(result.result.submitAcceptanceEvidence.candidate.postId, "987654321");
+   assert.equal(result.result.submitAcceptanceEvidence.candidate.permalink, permalink);
+-  assert.equal(result.result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_ACTIVATED");
++  assert.equal(result.result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_NOT_OBSERVED", "publication identity is acceptance evidence, not control activation");
+   assert.equal(result.postClicks, 1);
+ });
+ 

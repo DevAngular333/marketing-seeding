@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "controller": "master",
+  "mode": "SUPERVISED",
+  "workers": [],
+  "policy": "builder != verifier; isolated worktrees/state; no live external side effects"
+}

@@ -27,14 +27,19 @@ function pageIdFrom(value) {
 }
 
 export class OrcaCliClient {
-  constructor({ executable = process.env.ORCA_CLI || "orca", timeoutMs = 12_000, worktree = process.env.SEEDING_ORCA_WORKTREE || "current" } = {}) {
+  constructor({ executable = process.env.ORCA_CLI || "orca", timeoutMs = 12_000, worktree = process.env.SEEDING_ORCA_WORKTREE || "current", providerVersion = process.env.ORCA_VERSION || null } = {}) {
     this.executable = executable;
     this.timeoutMs = timeoutMs;
     this.worktree = worktree;
+    this.runtimeVersion = providerVersion ? String(providerVersion) : null;
     this.browserCommands = 0;
   }
 
   browserCommandCount() { return this.browserCommands; }
+
+  runtimeIdentity() {
+    return { provider: "orca", providerVersion: this.runtimeVersion, executable: this.executable, worktree: this.worktree };
+  }
 
   async #run(args) {
     this.browserCommands += 1;
@@ -96,10 +101,37 @@ export class OrcaCliClient {
     return raw;
   }
 
-  async click(pageId, element) {
-    // A successful CLI command only acknowledges the browser action request.
-    // It does not prove that the target activated or that the platform accepted it.
-    await this.#run(["click", "--element", element, "--page", pageId, "--worktree", this.worktree]);
+  async click(pageId, element, { validate } = {}) {
+    // The optional validator runs immediately before the single transport
+    // command. It proves only that the target is still safe to address; the
+    // command receipt remains separate from control activation.
+    const preflight = typeof validate === "function" ? await validate() : null;
+    const startedAt = new Date().toISOString();
+    const result = await this.#run(["click", "--element", element, "--page", pageId, "--worktree", this.worktree]);
+    const completedAt = new Date().toISOString();
+    return {
+      status: "COMMAND_COMPLETED",
+      transport: "orca-cli-browser-click",
+      elementRef: String(element),
+      startedAt,
+      completedAt,
+      preflight,
+      providerResult: result && typeof result === "object" ? {
+        clicked: result.clicked ? String(result.clicked).slice(0, 100) : null
+      } : null
+    };
+  }
+
+  async mouseMove(pageId, x, y) {
+    return this.#run(["mouse", "move", "--x", String(Math.round(x)), "--y", String(Math.round(y)), "--page", pageId, "--worktree", this.worktree]);
+  }
+
+  async mouseDown(pageId, button = "left") {
+    return this.#run(["mouse", "down", "--button", button, "--page", pageId, "--worktree", this.worktree]);
+  }
+
+  async mouseUp(pageId, button = "left") {
+    return this.#run(["mouse", "up", "--button", button, "--page", pageId, "--worktree", this.worktree]);
   }
 
   async fill(pageId, element, value) {

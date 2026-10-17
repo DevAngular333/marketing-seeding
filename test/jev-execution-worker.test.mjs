@@ -109,6 +109,21 @@ test("JEV worker runs a dry-run to the pre-submit boundary and records a non-ter
   assert.deepEqual(fixture.calls.map(([name]) => name), ["lease", "readiness", "prepare", "started", "receipt", "release"]);
 });
 
+test("JEV worker clears its unref heartbeat after a completed execution", async () => {
+  let renewCalls = 0;
+  const fixture = executionFixture({ service: { async renewExecutionLease() { renewCalls += 1; return true; } } });
+  const adapter = { async execute() {
+    return { submitState: "NOT_STARTED", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+      errorClassification: "NONE", gates: { passed: true }, durationMs: 1 };
+  } };
+  const worker = new JevExecutionWorker({ service: fixture.service, adapterRegistry: adapterRegistry({ linkedin: adapter }), leaseMs: 3_000 });
+  const result = await worker.run("exec-1");
+  assert.equal(result.status, "DRY_RUN_COMPLETE");
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  assert.equal(renewCalls, 0);
+  assert.deepEqual(fixture.calls.map(([name]) => name), ["lease", "readiness", "prepare", "started", "receipt", "release"]);
+});
+
 test("JEV worker reports a failed no-submit dry-run truthfully", async () => {
   const fixture = executionFixture();
   const adapter = {

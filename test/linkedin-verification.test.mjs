@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { LinkedInAdapter, LinkedInPublicationVerifier, LINKEDIN_VERIFICATION_EXPRESSION, linkedinAdapterExpressions } from "../src/linkedin-adapter.mjs";
-import { validateExecutionReceiptV1 } from "../src/execution-contracts.mjs";
+import { validateExecutionReceiptV1, validateSubmitAcceptanceEvidence } from "../src/execution-contracts.mjs";
 
 const content = "Cedar Lantern 7Q4K distinctive validation post";
 const submittedAt = "2026-10-14T13:00:00.000Z";
@@ -268,6 +268,38 @@ function submitControlObservation(overrides = {}) {
   };
 }
 
+function structuredSubmitObservation({ payload = content, visibilityLabels = ["Đăng cho Mọi người"], controls = [{}], composerCount = 1 } = {}) {
+  const expectedHash = createHash("sha256").update(payload).digest("hex");
+  const composerId = "dialog:ShareBox_textEditor:0";
+  const owned = controls.map((overrides, index) => ({
+    role: "button", accessibleName: "Đăng bài", visible: true, connected: true, enabled: true,
+    busy: false, controlId: `post-submit-${index}`, composerId, tagName: "button", ariaLabel: "",
+    boundingBox: { x: 10 + index * 90, y: 20, width: 80, height: 30 }, hitTargetMatched: true,
+    hitTargetRole: "span", belongsToComposer: true, actionable: true, ...overrides
+  }));
+  return {
+    url: "https://www.linkedin.com/sharing/compose", composerCount, composerState: composerCount ? "OPEN" : "UNKNOWN",
+    buttonCount: composerCount === 1 ? owned.length : 0,
+    composers: composerCount === 1 ? [{
+      dialogIndex: 0, dialogVisible: true, composerId, editorCount: 1, editorText: payload,
+      editorComponentKey: "ShareBox_textEditor", labels: visibilityLabels, controls: owned,
+      visibilityBoundToComposer: true
+    }] : [],
+    globalControlCount: owned.length,
+    globalControls: owned,
+    control: composerCount === 1 && owned.length === 1 ? owned[0] : null,
+    expectedHash
+  };
+}
+
+function structuredBrowser(observed, snapshot = '- textbox "Post editor" [ref=editor]\n- button "Đăng bài" [ref=post]') {
+  return {
+    async snapshot() { return snapshot; },
+    async evaluate() { return typeof observed === "function" ? observed() : observed; },
+    async showTab() { return { url: "https://www.linkedin.com/sharing/compose" }; }
+  };
+}
+
 test("pre-click evidence binds the unique visible enabled Post control to the active composer", async () => {
   const adapter = new LinkedInAdapter({
     async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
@@ -283,6 +315,109 @@ test("pre-click evidence binds the unique visible enabled Post control to the ac
   assert.equal(context.preClickControlEvidence.composerMatched, true);
   assert.equal(context.preClickControlEvidence.hitTargetMatched, true);
   assert.match(context.preClickControlEvidence.controlIdentity, /^[a-f0-9]{64}$/);
+  assert.equal(context.gates.submitControlSafe, true);
+});
+
+test("active composer payload, PUBLIC visibility, and its unique Post control are bound structurally", async () => {
+  const adapter = new LinkedInAdapter(structuredBrowser(structuredSubmitObservation()), { verifier: {} });
+  const context = await adapter.verifyPreSubmit({
+    request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+  });
+  assert.equal(context.gates.submitControlSafe, true);
+  assert.equal(context.preClickControlEvidence.ownershipProof.payloadMatched, true);
+  assert.equal(context.preClickControlEvidence.ownershipProof.visibilityMatched, true);
+  assert.equal(context.preClickControlEvidence.ownershipProof.ownedControlCount, 1);
+  assert.equal(context.preClickControlEvidence.ownershipProof.composerId, "dialog:ShareBox_textEditor:0");
+});
+
+test("submit acceptance receipt preserves sanitized active-composer ownership proof", () => {
+  const ownershipProof = {
+    composerId: "dialog:ShareBox_textEditor:0",
+    composerCount: 1,
+    editorCount: 1,
+    editorPayloadHash: "a".repeat(64),
+    expectedPayloadHash: "a".repeat(64),
+    payloadMatched: true,
+    visibility: "PUBLIC",
+    visibilityLabels: ["Đăng cho Mọi người"],
+    visibilityMatched: true,
+    ownedControlCount: 1,
+    globalControlCount: 2,
+    controlBelongsToComposer: true,
+    structuralEvidenceVersion: 1
+  };
+  const evidence = validateSubmitAcceptanceEvidence({
+    clickStatus: "CLICK_EMITTED",
+    clickEmittedAt: "2026-10-17T06:02:26.286Z",
+    clickCommandEvidence: { status: "COMMAND_COMPLETED", observedAt: "2026-10-17T06:02:26.286Z" },
+    controlActivationEvidence: { status: "CONTROL_NOT_OBSERVED", observedAt: "2026-10-17T06:02:31.299Z", signals: [] },
+    preClickControlEvidence: {
+      role: "button", accessibleName: "Đăng bài", controlRef: "e13", controlIdentity: "b".repeat(64),
+      visible: true, connected: true, enabled: true, busy: false, actionable: true,
+      composerState: "OPEN", composerMatched: true, composerCount: 1, buttonCount: 1,
+      hitTargetMatched: true, boundingBox: { x: 1, y: 2, width: 3, height: 4 },
+      url: "https://www.linkedin.com/sharing/compose/", capturedAt: "2026-10-17T06:02:20.952Z", ownershipProof
+    },
+    platformAcceptance: "UNKNOWN", acceptanceSource: "NONE", observedAt: "2026-10-17T06:02:31.299Z",
+    composerState: "OPEN", postButtonState: "ENABLED", confirmationState: "NONE",
+    urlBefore: "https://www.linkedin.com/sharing/compose/", urlAfter: "https://www.linkedin.com/sharing/compose/", candidate: {}
+  });
+  assert.deepEqual(evidence.preClickControlEvidence.ownershipProof, {
+    composerId: "dialog:ShareBox_textEditor:0", composerCount: 1, editorCount: 1,
+    editorPayloadHash: "a".repeat(64), expectedPayloadHash: "a".repeat(64), payloadMatched: true,
+    publicationVisibility: "PUBLIC", visibilityLabels: ["Đăng cho Mọi người"], visibilityMatched: true,
+    ownedControlCount: 1, globalControlCount: 2, controlBelongsToComposer: true, structuralEvidenceVersion: 1
+  });
+});
+
+test("payload hash mismatch fails before submit control authorization", async () => {
+  const observed = structuredSubmitObservation({ payload: "different authorized payload" });
+  const adapter = new LinkedInAdapter(structuredBrowser(observed), { verifier: {} });
+  await assert.rejects(() => adapter.verifyPreSubmit({
+    request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+  }), (error) => error.code === "CONTENT_MISMATCH" && error.preSubmitFailure.gate === "finalSubmitControl");
+});
+
+test("PUBLIC visibility from a different composer fails closed", async () => {
+  const observed = structuredSubmitObservation({ visibilityLabels: ["Đăng cho Kết nối"] });
+  const adapter = new LinkedInAdapter(structuredBrowser(observed), { verifier: {} });
+  await assert.rejects(() => adapter.verifyPreSubmit({
+    request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+  }), (error) => error.code === "TARGET_MISMATCH" && error.preSubmitFailure.gate === "finalSubmitControl");
+});
+
+test("multiple owned Post controls are ambiguous even when the composer payload is valid", async () => {
+  const observed = structuredSubmitObservation({ controls: [{}, {}] });
+  const adapter = new LinkedInAdapter(structuredBrowser(observed, '- textbox "Post editor" [ref=editor]\n- button "Đăng bài" [ref=post]\n- button "Đăng bài" [ref=post-2]'), { verifier: {} });
+  await assert.rejects(() => adapter.verifyPreSubmit({
+    request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+  }), (error) => error.code === "SUBMIT_CONTROL_AMBIGUOUS");
+});
+
+test("hidden or detached owned Post controls remain rejected", async (t) => {
+  for (const [name, overrides] of [["hidden", { visible: false }], ["detached", { connected: false }], ["disabled", { enabled: false }]]) {
+    await t.test(name, async () => {
+      const observed = structuredSubmitObservation({ controls: [overrides] });
+      const adapter = new LinkedInAdapter(structuredBrowser(observed), { verifier: {} });
+      await assert.rejects(() => adapter.verifyPreSubmit({
+        request: { ...request({ withMedia: false }), publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
+        media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+      }), (error) => error.code === "SUBMIT_CONTROL_NOT_ACTIONABLE");
+    });
+  }
+});
+
+test("content audience hints do not affect submit-control ownership", async () => {
+  const observed = structuredSubmitObservation();
+  const adapter = new LinkedInAdapter(structuredBrowser(observed), { verifier: {} });
+  const context = await adapter.verifyPreSubmit({
+    request: { ...request({ withMedia: false }), audience: "builders", publicationVisibility: "PUBLIC" }, pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true }
+  });
   assert.equal(context.gates.submitControlSafe, true);
 });
 
@@ -330,6 +465,33 @@ test("submit control identity change is rejected before durable intent and click
   assert.equal(clicks, 0);
 });
 
+test("immediate click preflight rejects a moved or covered control before durable intent", async (t) => {
+  for (const [name, override] of [["moved", { controlId: "moved-control" }], ["covered", { hitTargetMatched: false }], ["detached", { connected: false }]]) {
+    await t.test(name, async () => {
+      let observations = 0;
+      let intents = 0;
+      let clicks = 0;
+      const browser = {
+        async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+        async evaluate() {
+          observations += 1;
+          return submitControlObservation(observations === 1 ? {} : override);
+        },
+        async showTab() { return { url: "https://www.linkedin.com/feed/" }; },
+        async click() { clicks += 1; }
+      };
+      const adapter = new LinkedInAdapter(browser, { verifier: {} });
+      const context = await adapter.verifyPreSubmit({ request: request(), pageId: "page-1", targetVerified: true,
+        media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
+      await assert.rejects(() => adapter.submit(context, {
+        async beforeSubmitIntent() { intents += 1; }, async onSubmitSent() {}
+      }), /changed|preflight|actionable/i);
+      assert.equal(intents, 0);
+      assert.equal(clicks, 0);
+    });
+  }
+});
+
 test("success confirmation records platform acceptance without claiming publication verification", async () => {
   const { result, postClicks } = await runPostClickAdapter({ ui: {
     url: "https://www.linkedin.com/feed/", composerState: "CLOSED", postButtonState: "DISAPPEARED",
@@ -364,7 +526,7 @@ test("stable activity identity and permalink record strong acceptance evidence",
   assert.equal(result.result.submitAcceptanceEvidence.acceptanceSource, "STABLE_PUBLICATION_IDENTITY");
   assert.equal(result.result.submitAcceptanceEvidence.candidate.postId, "987654321");
   assert.equal(result.result.submitAcceptanceEvidence.candidate.permalink, permalink);
-  assert.equal(result.result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_ACTIVATED");
+  assert.equal(result.result.submitAcceptanceEvidence.controlActivationEvidence.status, "CONTROL_NOT_OBSERVED", "publication identity is acceptance evidence, not control activation");
   assert.equal(result.postClicks, 1);
 });
 
