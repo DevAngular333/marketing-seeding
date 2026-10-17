@@ -21,6 +21,7 @@ JsonStore / schema / audit / writer lease
   │     └─> Product Factory (safe local classification/commands/artifact hash + bounded persistent run lineage)
   │
   ├─> deterministic advisory strategy (reads product readiness, discovery, queue policy and UNKNOWN state)
+  │     ├─> deterministic evidence-grounded content candidates (draft-only)
   │     └─> future outcome-driven learning/NBA (not implemented)
   │
   └─> metrics/interaction/reply/conversion collections and dashboard projections
@@ -33,6 +34,6 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 
 - **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, deterministic discovery persistence/projection, safe product factory execution with bounded persistent run lineage.
 - **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, product factory orchestration.
-- **Implemented/local verified:** deterministic advisory strategy decisions and bounded persistence/dashboard projection; it is not an execution authority.
+- **Implemented/local verified:** deterministic advisory strategy decisions and bounded persistence/dashboard projection; deterministic evidence-grounded draft candidates with campaign target scoping and restart persistence; both are non-authoritative.
 - **Design-only/not implemented:** continuous public crawling, audience matching, outcome-driven learning/NBA, production LLM content, contextual engagement, multi-account registry/recovery, live System-Agentic handoff.
 - **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.

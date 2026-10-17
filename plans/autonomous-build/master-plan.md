@@ -12,7 +12,7 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 4. Add deterministic caller-supplied product intelligence with evidence/claim graph and unsupported-claim quarantine.
 5. Add a deterministic repository classifier and bounded local command/artifact evidence pipeline.
 6. Independently review integration; run focused and complete Node tests.
-7. Add a deterministic advisory strategy foundation that selects bounded next-best-action candidates without creating execution authority.
+7. Add a deterministic advisory strategy foundation and evidence-grounded draft candidate foundation without creating execution authority.
 
 Result: local implementation gates pass. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease.
 

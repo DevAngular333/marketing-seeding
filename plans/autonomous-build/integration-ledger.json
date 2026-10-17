@@ -12,7 +12,13 @@
     "working-tree seam changes: bounded repository inspection, product intelligence/discovery persistence, product factory run lineage, path/redaction fixes and regression tests",
     "a36d7a0 feat: add deterministic strategy foundation",
     "bd94db3 fix: require active target for strategy publish",
-    "09d2c4b fix: quarantine strategy on linked unknown submissions"
+    "09d2c4b fix: quarantine strategy on linked unknown submissions",
+    "6a7a112 feat: add bounded evidence-grounded content candidates",
+    "60ec249 docs: record content foundation verification",
+    "df396e7 fix: scope content targets through campaign bindings",
+    "3ab68ab fix: fail closed on unsafe content inputs",
+    "07c3722 test: align content fail-closed assertions",
+    "70202e6 fix: reject truncated content inputs and credential values"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -22,6 +28,7 @@
     {"name":"full_node_suite","result":"PASS","tests":324,"passed":322,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
     {"name":"syntax_and_diff_check","result":"PASS","nodeCheck":"passed","gitDiffCheck":"passed"},
     {"name":"canonical_runtime_immutability","result":"PASS","schemaVersion":8,"revision":193,"sha256":"327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae"},
-    {"name":"strategy_focused_gate","result":"PASS","tests":35,"passed":35,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/service.test.mjs test/server-lifecycle.test.mjs"}
+    {"name":"strategy_focused_gate","result":"PASS","tests":35,"passed":35,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/service.test.mjs test/server-lifecycle.test.mjs"},
+    {"name":"content_focused_gate","result":"PASS","tests":33,"passed":33,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/service.test.mjs --test-name-pattern=content"}
   ]
 }

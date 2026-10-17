@@ -10,7 +10,7 @@
     {"stage":"Channel discovery","status":"PARTIAL_LOCAL","evidence":"Caller observations can be normalized, policy-classified and scored."},
     {"stage":"Community rules/eligibility","status":"PARTIAL","evidence":"Configured target rules/membership and host policies; no crawler."},
     {"stage":"Campaign planning","status":"PARTIAL_LOCAL_VERIFIED","evidence":"Campaign, schedules, targets and authorization plus deterministic advisory strategy decisions with bounded persistence; no outcome-driven planner."},
-    {"stage":"Channel-specific content","status":"PARTIAL","evidence":"Seeded variants, grounded stories and drafts; no production model/provider."},
+    {"stage":"Channel-specific content","status":"PARTIAL_LOCAL_VERIFIED","evidence":"Seeded variants, grounded stories and deterministic evidence-grounded draft candidates with claim/evidence refs and bounded identity; no production model/provider."},
     {"stage":"Asset preparation","status":"PARTIAL_LOCAL","evidence":"Artifact registration/hash and bounded factory evidence; no media factory."},
     {"stage":"Existing session authentication","status":"PARTIAL","evidence":"ORCA profile/session readiness and identity checks."},
     {"stage":"Autonomous credential login","status":"NOT_IMPLEMENTED","evidence":"Credentials are host-managed; MFA/CAPTCHA/device challenges require human handling."},

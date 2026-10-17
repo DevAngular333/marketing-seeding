@@ -9,6 +9,8 @@
     {"worker_id":"/root/integration_review","role":"independent verifier","status":"ACCEPT","scope":"product-lineage read-only verification attempt 2","evidence":"41 passed, node check and diff check pass; verdict PASS (bounded)"},
     {"worker_id":"/root/strategy_builder","role":"implementation","status":"DONE","scope":"deterministic advisory strategy foundation","commits":"a80160e6, e83ad5a7, 2263600c","evidence":"5 strategy tests, 30 service/lifecycle tests, syntax and diff checks pass; no authority/browser/provider side effects"},
     {"worker_id":"/root/integration_review","role":"independent verifier","status":"ACCEPT","scope":"strategy foundation read-only review","evidence":"UNKNOWN matcher aligns persisted contracts; focused tests 5/5 and service/lifecycle 30/30; no semantic drift"},
+    {"worker_id":"/root/content_foundation","role":"implementation","status":"DONE","scope":"deterministic evidence-grounded draft candidates","commits":"edde2e5, 48178fb, b03f80c, be6d9d0, 66a6c37, 581105b","evidence":"33 focused content/service tests pass after target, credential, raw bounds and no-truncation rework; no authority/browser/provider side effects"},
+    {"worker_id":"/root/integration_review","role":"independent verifier","status":"ACCEPT","scope":"content foundation read-only review","evidence":"33 content/service tests; raw bounds, missing IDs, credential rejection, target scoping and persistence verified; no semantic drift"},
     {"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"integration, review, journal and gates","evidence":"242 integrated focused + 41 lineage focused; 324 full (322/0/2); node check and diff check passed"}
   ]
 }
