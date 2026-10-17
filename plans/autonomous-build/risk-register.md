@@ -12,3 +12,4 @@
 | R8 | Live proof unavailable | P0 | Blocked lane recorded; do not invent grants or mutate UNKNOWN history | OPEN — external hard blocker |
 | R9 | Transport certification is duck-typed | P1 | LinkedIn submit boundary rejects unmarked transport; ORCA implementations enforce validator | ACCEPTED RESIDUAL; no bypass found |
 | R10 | Metrics/learning and multi-platform adapters incomplete | P1 | Explicit readiness classification; only LinkedIn adapter registered for execution | OPEN, downstream roadmap |
+| R11 | Aggregate learning could steer an unrelated post or channel | P1 | Current learning is accepted only as validated explanatory context linked to the current outcome summary; no action rerouting or authority side effect | CONTROLLED locally; per-post/target/channel attribution remains open |

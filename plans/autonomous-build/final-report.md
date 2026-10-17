@@ -14,7 +14,7 @@
 
 ## Outcome
 
-The integration branch now contains local, tested foundations for bounded standing campaign delegation, monotonic kill-switch epoch fencing, final provider-send revalidation, evidence-grounded product intelligence and versioned handoff, bounded product factory execution, deterministic discovery, advisory learning/control-cycle projections, opt-in public HTTP discovery polling, a secret-safe read-only account runtime projection, and a compact read-only Mission Control panel over existing dashboard state. Existing campaign store, authorization/window/grant/lease, JEV/LinkedIn, browser transport and UNKNOWN contracts were reused. No social mutation occurred.
+The integration branch now contains local, tested foundations for bounded standing campaign delegation, monotonic kill-switch epoch fencing, final provider-send revalidation, evidence-grounded product intelligence and versioned handoff, bounded product factory execution, deterministic discovery, learning-aware advisory strategy/control-cycle projections, opt-in public HTTP discovery polling, a secret-safe read-only account runtime projection, and a compact read-only Mission Control panel over existing dashboard state. Existing campaign store, authorization/window/grant/lease, JEV/LinkedIn, browser transport and UNKNOWN contracts were reused. No social mutation occurred.
 
 ## What works now
 
@@ -30,6 +30,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Mission Control overview now also projects control-cycle status, advisory strategy and learning actions/reasons, verified/UNKNOWN publication counts and measured metric coverage. It is explicitly read-only and advisory; it does not grant authority or execute actions.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
 - Strategy fit gate excludes explicit mismatched/unknown audience-channel-locale fit while preserving matched and legacy observations; focused 36/36 and full 381/379/0/2 pass.
+- Strategy consumes only current, valid learning feedback as bounded explanatory context; publish/discovery/wait precedence and UNKNOWN quarantine remain unchanged. Focused 49/49 and full 384/382/0/2 pass.
 
 ## Verification
 
@@ -51,11 +52,11 @@ Canonical counts: 7 campaigns; 10 authorizations (5 expired, 2 superseded, 3 pau
 
 ## Product readiness
 
-This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repository inspection and bounded factory run lineage are persistent locally, product research remains evidence-input driven, the factory lacks project-specific build/render/media capture, discovery has a bounded opt-in HTTP observer but no audience/community search, strategy and learning remain advisory, content has no production model/provider, account runtime is single-bound-profile with read-only health/eligibility projection rather than an account pool, only LinkedIn has an execution adapter, and no live publication is verified.
+This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repository inspection and bounded factory run lineage are persistent locally, product research remains evidence-input driven, the factory lacks project-specific build/render/media capture, discovery has a bounded opt-in HTTP observer but no audience/community search, strategy and learning remain advisory with no per-post/target/channel attribution, content has no production model/provider, account runtime is single-bound-profile with read-only health/eligibility projection rather than an account pool, only LinkedIn has an execution adapter, and no live publication is verified.
 
 ## Git/release state
 
-- Integration branch HEAD is `745ce65` (`feat: gate strategy by discovery fit`); Product Factory project-evidence safety changes and strategy fit gate are committed. Main was not merged, pushed or deployed.
+- Integration branch includes the learning-aware advisory strategy context on top of `3bf46f4`; Product Factory project-evidence safety changes and strategy fit gate are committed. The new milestone is pending its own commit. Main was not merged, pushed or deployed.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 

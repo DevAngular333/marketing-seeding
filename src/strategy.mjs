@@ -7,6 +7,14 @@ const MAX_DECISIONS = 24;
 const MAX_REASONS = 8;
 const MAX_EVIDENCE = 12;
 const MAX_TEXT = 180;
+const LEARNING_REASONS = new Set([
+  "outcome_summary_missing",
+  "submission_unknown_quarantined",
+  "metrics_not_collected",
+  "measured_response_present",
+  "measured_outcome_without_response",
+  "metrics_unknown_or_unsupported"
+]);
 
 function text(value, max = MAX_TEXT) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -34,6 +42,26 @@ function productReady(campaign) {
   const document = intelligence?.document;
   const required = ["WHAT_IS_IT", "WHAT_PROBLEM_DOES_IT_SOLVE", "WHY_IS_IT_BETTER", "WHO_NEEDS_IT"];
   return handoff?.readinessStatus === "READY" && required.every((field) => document?.[field]?.text && document[field].evidenceRefs?.length);
+}
+
+function currentLearningContext(campaign) {
+  const feedback = campaign?.latestLearningFeedback;
+  if (!feedback || feedback.advisory !== true || feedback.authoritySideEffects !== false || feedback.campaignId !== campaign.id) return null;
+  if (!/^learning-[a-f0-9]{24}$/.test(String(feedback.feedbackId || ""))) return null;
+  if (!ACTIONS.has(feedback.action) || !Array.isArray(feedback.reasons) || feedback.reasons.length === 0) return null;
+  if (feedback.reasons.some((reason) => !LEARNING_REASONS.has(reason))) return null;
+
+  const summary = campaign.outcomeSummary || null;
+  const summaryId = summary?.summaryId || null;
+  if (summaryId && !/^outcome-[a-f0-9]{24}$/.test(summaryId)) return null;
+  if ((feedback.outcomeSummaryId || null) !== summaryId) return null;
+
+  return {
+    feedbackId: feedback.feedbackId,
+    outcomeSummaryId: summaryId,
+    observedAction: feedback.action,
+    reasonCodes: [...new Set(feedback.reasons)].sort().slice(0, MAX_REASONS)
+  };
 }
 
 function unknownForCampaign(state, campaignId, posts = []) {
@@ -112,11 +140,13 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
   let candidateId = null;
   let reasonList = [];
   let refs = [];
+  let learning = null;
   if (!productReady(campaign)) {
     reasonList = ["product_intelligence_incomplete"];
   } else if (unknownForCampaign(state, campaignId, posts)) {
     reasonList = ["submission_unknown_quarantined"];
   } else {
+    learning = currentLearningContext(campaign);
     const publishable = [];
     for (const post of posts) {
       if (!["draft", "approved", "queued", "blocked"].includes(post.status) || !post.content?.trim()) continue;
@@ -147,8 +177,14 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
       if (waiting.length) { action = "wait"; score = 20; eligible = false; reasonList = waiting; }
       else reasonList = ["no_safe_action_candidate"];
     }
+    if (learning) {
+      reasonList.push("current_learning_feedback_observed");
+      refs.push(`learning:${learning.feedbackId}`);
+      if (learning.outcomeSummaryId) refs.push(`outcome:${learning.outcomeSummaryId}`);
+    }
   }
   const core = { ...base, action, score, eligible, candidateId, reasons: reasons(reasonList), evidence: evidence(refs) };
+  if (learning) core.learningContext = learning;
   return { ...core, decisionId: `strategy-${digest(core).slice(0, 24)}`, createdAt: now.toISOString(), advisory: true, authoritySideEffects: false };
 }
 

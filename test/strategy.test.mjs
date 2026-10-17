@@ -147,3 +147,62 @@ test("strategy history is bounded, restart-safe and projected read-only", async 
   assert.equal(dashboard.strategy[0].recent.length, 24);
 });
 
+test("strategy preserves publish precedence while exposing current learning context", async () => {
+  const { service, campaign, store } = await fixture("strategy-learning-context-");
+  await store.mutate("fixture", "outcome", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.outcomeSummary = {
+      summaryId: "outcome-111111111111111111111111",
+      publication: { unknown: 0 },
+      metrics: { snapshots: 1, totals: { clicks: 2 }, coverage: { clicks: { measured: 1 } } },
+      evidence: { metricSnapshotIds: ["metric-1"] }
+    };
+  });
+  const learning = await service.deriveLearningFeedback(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
+  assert.equal(learning.action, "engage");
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
+  assert.equal(decision.action, "publish");
+  assert.equal(decision.learningContext.feedbackId, learning.feedbackId);
+  assert.equal(decision.learningContext.outcomeSummaryId, "outcome-111111111111111111111111");
+  assert.equal(decision.reasons.includes("current_learning_feedback_observed"), true);
+  assert.equal(decision.evidence.includes(`learning:${learning.feedbackId}`), true);
+  const state = await service.snapshot();
+  assert.equal(state.executionRequests.length, 0);
+  assert.equal(state.liveExecutionGrants.length, 0);
+});
+
+test("strategy ignores stale or malformed learning feedback without changing fallback", async () => {
+  const { service, campaign, store } = await fixture("strategy-learning-stale-");
+  await store.mutate("fixture", "stale_learning", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.outcomeSummary = { summaryId: "outcome-222222222222222222222222", publication: { unknown: 0 }, metrics: { snapshots: 0 }, evidence: {} };
+    current.latestLearningFeedback = { feedbackId: "learning-333333333333333333333333", campaignId: campaign.id, action: "publish", reasons: ["metrics_not_collected"], outcomeSummaryId: "outcome-111111111111111111111111", advisory: true, authoritySideEffects: false };
+    current.strategyDecisions = [];
+  });
+  const stale = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
+  assert.equal(stale.action, "publish");
+  assert.equal("learningContext" in stale, false);
+  assert.equal(stale.reasons.includes("current_learning_feedback_observed"), false);
+  await store.mutate("fixture", "malformed_learning", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.latestLearningFeedback = { feedbackId: "bad", campaignId: campaign.id, action: "engage", reasons: ["measured_response_present"], outcomeSummaryId: current.outcomeSummary.summaryId, advisory: true, authoritySideEffects: false };
+  });
+  const malformed = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:15:00.000Z" });
+  assert.equal(malformed.action, "publish");
+  assert.equal("learningContext" in malformed, false);
+});
+
+test("authoritative UNKNOWN dominates a learning publish recommendation", async () => {
+  const { service, campaign, post, store } = await fixture("strategy-learning-unknown-");
+  await store.mutate("fixture", "unknown_learning", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.outcomeSummary = { summaryId: "outcome-444444444444444444444444", publication: { unknown: 0 }, metrics: { snapshots: 1, totals: { clicks: 1 }, coverage: { clicks: { measured: 1 } } }, evidence: {} };
+    current.latestLearningFeedback = { feedbackId: "learning-555555555555555555555555", campaignId: campaign.id, action: "publish", reasons: ["measured_outcome_without_response"], outcomeSummaryId: current.outcomeSummary.summaryId, advisory: true, authoritySideEffects: false };
+    state.submissionUncertainties.push({ id: "unknown-learning-1", status: "UNKNOWN", campaignId: campaign.id, jobId: post.id, executionId: "unknown-learning-exec" });
+  });
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
+  assert.equal(decision.action, "do_nothing");
+  assert.deepEqual(decision.reasons, ["submission_unknown_quarantined"]);
+  assert.equal("learningContext" in decision, false);
+});
+

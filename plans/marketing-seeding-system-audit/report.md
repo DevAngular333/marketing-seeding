@@ -6,7 +6,7 @@
 **Branch:** `integration/autonomous-build`  
 **Evidence rule:** source, tests, configuration and read-only runtime evidence outrank README/plan claims. Synthetic and local evidence are never treated as live platform proof.
 
-**Release snapshot:** integration HEAD `745ce65` (`feat: gate strategy by discovery fit`) includes canonical dry-run handoff validation, read-only Mission Control projections, fail-closed Product Factory project evidence and the strategy fit gate. The canonical service remains an older deployed source revision; no deployment was performed.
+**Release snapshot:** integration HEAD `3bf46f4` plus the pending learning-aware advisory strategy context includes canonical dry-run handoff validation, read-only Mission Control projections, fail-closed Product Factory project evidence and the strategy fit gate. The canonical service remains an older deployed source revision; no deployment was performed.
 
 ## 1. What is this system?
 
@@ -38,7 +38,7 @@ This repository is a local marketing distribution runtime that keeps campaign, p
 | Campaign state | IMPLEMENTED, PARTIAL | Schema 8 state, audit, writer lease, execution receipts and dashboard. |
 | Retry/resume | PARTIAL | Pre-submit bounded retry and read-only reconciliation; long-running recovery unproven. |
 | Analytics/reporting | PARTIAL | Metric, interaction, reply and conversion collections/API; canonical runtime has no snapshots. |
-| Learning/repeat | NOT_IMPLEMENTED | No adaptive strategy or next-best-action loop. |
+| Learning/repeat | PARTIAL (ADVISORY) | Outcome summaries and learning feedback are persisted; current strategy records only validated learning context without changing action precedence. | No per-post/target/channel attribution or adaptive authority/next-best-action loop. |
 
 ## 3. Current architecture
 
