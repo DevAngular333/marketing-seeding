@@ -1,12 +1,12 @@
-# Current State (verified 2026-10-17)
+# Current State (verified 2026-10-18)
 
 ## Repository
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration HEAD: `56ea34e` (`feat: add read-only mission control projection`), including the Mission Control panel and release artifacts. Journal snapshot has a follow-up hash-only correction in the working tree.
+- Integration HEAD: `c607e1e` (`feat: expose bounded account runtime eligibility`), including the Mission Control panel, product-understanding derivation and account-runtime readiness projection artifacts.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
-- Working tree contains the Mission Control read-model source/bundle change and release artifacts; no source change has been merged into `main`.
+- Integration branch contains the accepted local source changes and release artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
 
 ## Runtime
@@ -25,6 +25,7 @@
 - Discovery fit metadata now evaluates caller-supplied audience terms, channel and locale hints as bounded `MATCHED`/`MISMATCHED`/`UNKNOWN` advisory evidence through the existing persistence path; it does not create authority or publication work.
 - Product factory runtime can classify/run the registered campaign repository with the bounded allowlist, discover bounded media/document candidates when paths are omitted, return local artifact hashes, persist a bounded 24-run campaign-owned lineage and project recent runs read-only; it reports `externalSideEffects: false` and does not create publication authority.
 - Account runtime now has a deterministic read-only `accountRuntime`/`executionAccounts` dashboard projection with profile fingerprints, bounded readiness/blocker fields and bound-target counts; raw profile IDs, identity URLs, evidence and secret-like fields are excluded. This is an observability seam, not login, credential, selection or failover automation.
+- Account runtime projection now also exposes explicit `SESSION_REUSE` / `MANUAL_AUTH` mode labels, fail-closed `eligibleForExecution`, and deterministic `ineligibilityReasons`; these fields are read-only observability and are not consumed as authority or a selector.
 
 ## Counts
 
@@ -37,9 +38,9 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 ## Tests
 
 - Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; product-factory focused gate 40/40; distribution-handoff/service/server gate 33/33.
-- Full suite after the current integration HEAD: 370 total, 368 passed, 0 failed, 2 skipped; exit 0.
+- Full suite after the current integration HEAD: 374 total, 372 passed, 0 failed, 2 skipped; exit 0.
 - UI typecheck: `cd ui && npx tsc --noEmit` passed; production build: `cd ui && npm run build` passed with only existing Vite config warnings.
-- Account projection focused gate: 3 passed, 0 failed, 0 skipped; independent release verifier: PASS (bounded).
+- Account runtime projection focused gate: 5 passed, 0 failed, 0 skipped; combined projection/service/server gate: 34 passed, 0 failed, 0 skipped; independent verifier: PASS (bounded).
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
 
 ## Live proof

@@ -1,6 +1,6 @@
 # Autonomous Build — Current Release Report
 
-**As of:** 2026-10-17  
+**As of:** 2026-10-18
 **Worktree:** `/Users/nam/Documents/marketing-seeding-integration`  
 **Branch:** `integration/autonomous-build`  
 **Core:** `SYSTEM_AGENTIC_AI` Production Core remains frozen and unchanged.
@@ -26,7 +26,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Discovery can attach bounded caller-supplied audience/channel/locale fit evidence with explicit `MATCHED`/`MISMATCHED`/`UNKNOWN` outcomes; this remains advisory and does not create platform support or execution authority.
 - Product Factory can discover and hash bounded media/document candidates from the registered repository through existing local evidence lineage; explicit paths remain authoritative and no candidate becomes a publication-approved asset automatically.
 - A provider-neutral distribution handoff can be validated and attached idempotently as DRY_RUN metadata with exact content/media/target references; it does not wire SYSTEM_AGENTIC_AI live or create execution authority.
-- Mission Control/API now projects registered account health, bound-target count, readiness state and bounded blocker reason with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. This is observability only and does not select, authenticate or fail over accounts.
+- Mission Control/API now projects registered account health, bound-target count, readiness state, bounded blocker reason, `SESSION_REUSE` / `MANUAL_AUTH` mode and fail-closed eligibility reasons with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. This is observability only and does not select, authenticate or fail over accounts.
 - Mission Control overview now also projects control-cycle status, advisory strategy and learning actions/reasons, verified/UNKNOWN publication counts and measured metric coverage. It is explicitly read-only and advisory; it does not grant authority or execute actions.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
 
@@ -35,10 +35,10 @@ The integration branch now contains local, tested foundations for bounded standi
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
- Full Node suite: 370 total, 368 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: 374 total, 372 passed, 0 failed, 2 skipped; exit 0
  UI typecheck: `cd ui && npx tsc --noEmit` → PASS
  UI production build: `cd ui && npm run build` → PASS (existing Vite config warnings only)
- Account runtime projection: 3 passed, 0 failed, 0 skipped; independent release review PASS (bounded)
+ Account runtime readiness projection: 5 passed, 0 failed, 0 skipped; combined projection/service/server 34 passed; independent release review PASS (bounded)
  Mission Control read model: independent release review PASS (bounded)
 Syntax check: all src/*.mjs passed
 Diff check: git diff --check passed
@@ -49,11 +49,11 @@ Canonical counts: 7 campaigns; 10 authorizations (5 expired, 2 superseded, 3 pau
 
 ## Product readiness
 
-This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repository inspection and bounded factory run lineage are persistent locally, product research remains evidence-input driven, the factory lacks project-specific build/render/media capture, discovery has a bounded opt-in HTTP observer but no audience/community search, strategy and learning remain advisory, content has no production model/provider, account runtime is single-bound-profile with read-only health projection rather than an account pool, only LinkedIn has an execution adapter, and no live publication is verified.
+This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repository inspection and bounded factory run lineage are persistent locally, product research remains evidence-input driven, the factory lacks project-specific build/render/media capture, discovery has a bounded opt-in HTTP observer but no audience/community search, strategy and learning remain advisory, content has no production model/provider, account runtime is single-bound-profile with read-only health/eligibility projection rather than an account pool, only LinkedIn has an execution adapter, and no live publication is verified.
 
 ## Git/release state
 
-- Integration branch HEAD is `56ea34e` (`feat: add read-only mission control projection`), including the Mission Control read-model change and release artifacts; the journal hash-only correction is pending commit.
+- Integration branch HEAD is `c607e1e` (`feat: expose bounded account runtime eligibility`), including the Mission Control read-model change, product-understanding derivation and account-runtime readiness projection artifacts.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 
