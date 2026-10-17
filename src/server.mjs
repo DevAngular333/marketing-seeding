@@ -3,7 +3,7 @@ import path from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { JsonStore } from "./store.mjs";
-import { SeedingService } from "./service.mjs";
+import { SeedingService, pollConfiguredDiscoveries } from "./service.mjs";
 import { appRoot, autoGtmFeedFile, browserAutomationFile, dailyAutomationFile, dailyAutomationReceiptFile, publicRoot, stateFile } from "./paths.mjs";
 import { FixtureWorkerBridge } from "./fixture-worker-bridge.mjs";
 import { readAutoGtmFeed } from "./auto-gtm-feed.mjs";
@@ -120,7 +120,6 @@ function scheduleTrafficCollection(delayMs = trafficIntervalMs) {
 function scheduleControlCycle(delayMs = controlCycleMinutes * 60_000) {
   if (!controlCycleRuntime.enabled || shuttingDown) return;
   if (controlCycleTimer) clearTimeout(controlCycleTimer);
-  if (discoveryTimer) clearTimeout(discoveryTimer);
   const boundedDelay = Math.max(1_000, delayMs);
   controlCycleRuntime.nextRunAt = new Date(Date.now() + boundedDelay).toISOString();
   controlCycleTimer = setTimeout(async () => {
@@ -150,21 +149,10 @@ function scheduleControlCycle(delayMs = controlCycleMinutes * 60_000) {
 async function runDiscoveryCollection(actor = "scheduled-discovery-observer") {
   discoveryRuntime.running = true;
   discoveryRuntime.lastStartedAt = new Date().toISOString();
-  const results = [];
   try {
-    const state = await service.snapshot();
-    for (const campaign of state.campaigns || []) {
-      const urls = Array.isArray(campaign.discoverySources) ? campaign.discoverySources : [];
-      if (!urls.length || shuttingDown) continue;
-      try {
-        const result = await service.observeDiscoveries(campaign.id, { urls }, actor);
-        results.push({ campaignId: campaign.id, requested: result.requested, accepted: result.persisted?.accepted || 0, unknown: (result.observations || []).filter((item) => item.observationStatus === "UNKNOWN").length });
-      } catch (error) {
-        results.push({ campaignId: campaign.id, ok: false, reason: String(error?.code || error?.message || "discovery_error").slice(0, 160) });
-      }
-    }
-    discoveryRuntime.lastSummary = { campaigns: results.length, succeeded: results.filter((item) => item.ok !== false).length, failed: results.filter((item) => item.ok === false).length };
-    return results;
+    const summary = await pollConfiguredDiscoveries(service, { actor, shuttingDown });
+    discoveryRuntime.lastSummary = { campaigns: summary.campaigns, succeeded: summary.succeeded, failed: summary.failed };
+    return summary.results;
   } finally {
     discoveryRuntime.running = false;
     discoveryRuntime.lastCompletedAt = new Date().toISOString();
@@ -523,7 +511,7 @@ const server = http.createServer(async (request, response) => {
         automation: {
           trafficCollector: trafficRuntime,
           controlCycle: controlCycleRuntime,
-        discovery: discoveryRuntime,
+          discovery: discoveryRuntime,
           dailyProduction: await readDailyProductionAutomation(),
           browserTracking: await readBrowserTrafficAutomation(),
           fixtureWorker: fixtureWorker.runtime()

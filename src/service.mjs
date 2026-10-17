@@ -28,6 +28,23 @@ import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
 import { validateDistributionHandoff } from "./distribution-handoff.mjs";
 import { appRoot } from "./paths.mjs";
 
+export async function pollConfiguredDiscoveries(service, { actor = "scheduled-discovery-observer", shuttingDown = false } = {}) {
+  const state = await service.snapshot();
+  const results = [];
+  for (const campaign of state.campaigns || []) {
+    if (shuttingDown) break;
+    const urls = Array.isArray(campaign.discoverySources) ? campaign.discoverySources : [];
+    if (!urls.length) continue;
+    try {
+      const result = await service.observeDiscoveries(campaign.id, { urls }, actor);
+      results.push({ campaignId: campaign.id, requested: result.requested, accepted: result.persisted?.accepted || 0, unknown: (result.observations || []).filter((item) => item.observationStatus === "UNKNOWN").length });
+    } catch (error) {
+      results.push({ campaignId: campaign.id, ok: false, reason: String(error?.code || error?.message || "discovery_error").slice(0, 160) });
+    }
+  }
+  return { campaigns: results.length, succeeded: results.filter((item) => item.ok !== false).length, failed: results.filter((item) => item.ok === false).length, results };
+}
+
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
   "schedule_timestamp_invalid",
   "schedule_outside_authorization_window",

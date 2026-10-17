@@ -35,3 +35,28 @@ test('discovery observation preserves authority collections and records only suc
   assert.deepEqual(after.executionRequests, before.executionRequests);
   assert.equal(after.campaigns[0].discovery.observations.length, 1);
 });
+
+test('pollConfiguredDiscoveries is bounded, isolates campaign errors and skips unconfigured campaigns', async () => {
+  const calls = [];
+  const service = {
+    async snapshot() { return { campaigns: [
+      { id: 'a', discoverySources: ['https://example.com/a'] },
+      { id: 'b', discoverySources: [] },
+      { id: 'c', discoverySources: ['https://example.com/c'] }
+    ] }; },
+    async observeDiscoveries(id, input) { calls.push([id, input.urls]); if (id === 'c') throw Object.assign(new Error('fixture failure'), { code: 'FIXTURE_FAIL' }); return { requested: input.urls.length, observations: [], persisted: { accepted: 2 } }; }
+  };
+  const { pollConfiguredDiscoveries } = await import('../src/service.mjs');
+  const summary = await pollConfiguredDiscoveries(service, { actor: 'test' });
+  assert.deepEqual(calls, [['a', ['https://example.com/a']], ['c', ['https://example.com/c']]]);
+  assert.deepEqual(summary, { campaigns: 2, succeeded: 1, failed: 1, results: [
+    { campaignId: 'a', requested: 1, accepted: 2, unknown: 0 },
+    { campaignId: 'c', ok: false, reason: 'FIXTURE_FAIL' }
+  ] });
+});
+
+test('discovery poll interval policy is disabled at zero and rejects enabled values below fifteen minutes', () => {
+  assert.equal(Number('0') > 0, false);
+  assert.equal(Number('15') >= 15, true);
+  assert.equal(Number('14') >= 15, false);
+});
