@@ -67,9 +67,52 @@ function claim(raw, evidence, unsupported) {
   const id = text(item.id, 160) || `claim-${digest(text(item.text)).slice(0, 12)}`;
   const refs = Array.isArray(item.evidenceRefs) ? item.evidenceRefs.map((ref) => text(ref, 160)).filter(Boolean) : [];
   const hashes = refs.map((ref) => evidence.aliases[ref] || (evidence.records.some((record) => record.hash === ref) ? ref : null)).filter(Boolean);
-  const output = { id, text: text(item.text), evidenceRefs: hashes };
+  const output = { id, field: text(item.field, 80) || null, text: text(item.text), evidenceRefs: hashes };
   if (!output.text || !hashes.length || hashes.length !== refs.length) unsupported.push({ ...output, reason: !output.text ? "empty_claim" : "missing_or_invalid_evidence" });
   return output;
+}
+
+const UNSAFE_INFERENCE = /\b(best|better|fastest|leading|#1|customers?|users?\s+love|benchmark|superior|market|guarantee)\b/i;
+const SENTENCE = /[^.!?\n]+[.!?]?/g;
+
+function sentences(record) {
+  return text(record?.content, 12000).match(SENTENCE)?.map((item) => text(item, 360)).filter((item) => item.length >= 18) || [];
+}
+
+function candidateFrom(record, field, sentence, suffix = "evidence") {
+  if (!record || !sentence || UNSAFE_INFERENCE.test(sentence)) return null;
+  return {
+    id: `derived-${field.toLowerCase()}-${digest(`${field}:${record.hash}:${sentence}`).slice(0, 12)}`,
+    field,
+    text: sentence,
+    evidenceRefs: [record.hash],
+    derivation: "deterministic_local_evidence",
+    source: suffix,
+  };
+}
+
+function deriveCandidates(records, fields) {
+  const available = [...records].sort((a, b) => a.hash.localeCompare(b.hash));
+  const parsedPackage = available.find((record) => record.locator === "package.json");
+  let packageMetadata = null;
+  if (parsedPackage) {
+    try { packageMetadata = JSON.parse(parsedPackage.content); } catch { packageMetadata = null; }
+  }
+  const result = {};
+  const first = (field, predicate, fallback) => {
+    if (fields.has(field)) return;
+    const record = available.find((item) => sentences(item).some(predicate));
+    const sentence = record && sentences(record).find(predicate);
+    result[field] = candidateFrom(record, field, sentence, "repository_evidence") || fallback?.();
+  };
+  if (!fields.has("WHAT_IS_IT") && parsedPackage && typeof packageMetadata?.description === "string") {
+    result.WHAT_IS_IT = candidateFrom(parsedPackage, "WHAT_IS_IT", text(packageMetadata.description, 360), "package_metadata");
+  }
+  if (!result.WHAT_IS_IT) first("WHAT_IS_IT", (s) => /\b(is|provides|platform|tool|runtime|library|framework|service|application)\b/i.test(s));
+  first("WHAT_PROBLEM_DOES_IT_SOLVE", (s) => /\b(solv|help|avoid|reduce|automate|manage|pain|problem|without|instead of)\w*/i.test(s));
+  first("WHY_IS_IT_BETTER", (s) => /\b(deterministic|idempotent|atomic|bounded|verified|evidence|reliable|safe|redact|exactly[- ]once)\b/i.test(s));
+  first("WHO_NEEDS_IT", (s) => /\b(for|teams?|developers?|operators?|marketers?|creators?|businesses?|projects?|organizations?|users?)\b/i.test(s));
+  return result;
 }
 
 /**
@@ -85,6 +128,18 @@ export function buildProductIntelligence(input = {}) {
   for (const item of supported) {
     const field = text(input.claims.find((candidate) => candidate?.id === item.id)?.field, 80);
     if (REQUIRED_FIELDS.includes(field) && !byField.has(field)) byField.set(field, item);
+  }
+  // A caller's explicit field declaration, even when invalid, is quarantined
+  // rather than silently replaced by a heuristic candidate.
+  const declaredFields = new Set((Array.isArray(input.claims) ? input.claims : [])
+    .map((item) => text(item?.field, 80)).filter((field) => REQUIRED_FIELDS.includes(field)));
+  const derived = deriveCandidates(evidence.records, new Set([...byField.keys(), ...declaredFields]));
+  for (const field of REQUIRED_FIELDS) {
+    if (!byField.has(field) && derived[field]) {
+      byField.set(field, derived[field]);
+      supported.push(derived[field]);
+    }
+    if (!byField.has(field) && !declaredFields.has(field)) unsupported.push({ id: `missing-${field.toLowerCase()}`, field, text: "", evidenceRefs: [], reason: "no_safe_evidence" });
   }
   const answer = Object.fromEntries(REQUIRED_FIELDS.map((field) => [field, byField.get(field) || null]));
   const doc = redact({

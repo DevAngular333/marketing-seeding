@@ -46,9 +46,24 @@ test("unsupported or malformed claim references are quarantined", () => {
       { id: "empty", field: "WHO_NEEDS_IT", text: "", evidenceRefs: ["readme"] },
     ],
   });
-  assert.equal(doc.CLAIMS_WE_CAN_PROVE.length, 0);
-  assert.equal(doc.CLAIMS_WE_CANNOT_MAKE.length, 2);
+  assert.equal(doc.CLAIMS_WE_CAN_PROVE.length, 1);
+  assert.equal(doc.CLAIMS_WE_CAN_PROVE[0].derivation, "deterministic_local_evidence");
+  assert.equal(doc.CLAIMS_WE_CANNOT_MAKE.length, 3);
   assert.equal(doc.WHY_IS_IT_BETTER, null);
+});
+
+test("derives bounded fields deterministically and preserves explicit precedence", () => {
+  const input = { productId: "derived", evidence, claims: [
+    { id: "explicit", field: "WHAT_IS_IT", text: "The approved runtime.", evidenceRefs: ["readme"] },
+  ] };
+  const first = buildProductIntelligence(input);
+  const second = buildProductIntelligence(input);
+  assert.equal(serializeProductIntelligence(first), serializeProductIntelligence(second));
+  assert.equal(first.WHAT_IS_IT.id, "explicit");
+  assert.equal(first.WHAT_PROBLEM_DOES_IT_SOLVE, null);
+  assert.equal(first.WHY_IS_IT_BETTER.text, "A deterministic distribution runtime.");
+  assert.deepEqual(first.WHY_IS_IT_BETTER.evidenceRefs, [first.evidence[0].hash]);
+  assert.ok(first.CLAIMS_WE_CANNOT_MAKE.some((item) => item.reason === "no_safe_evidence"));
 });
 
 test("redacts secret-like fields and values from serialized output", () => {
