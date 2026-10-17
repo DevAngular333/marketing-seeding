@@ -18,4 +18,10 @@ test("missing readiness or evidence fails closed", () => {
 });
 test("unsupported channel and policy length fail closed", () => {
   assert.throws(() => deriveContentCandidates({ productIntelligence: pi, story, targets: [{ id: "t", channel: "unknown" }] }), /Unsupported/);
+  assert.throws(() => deriveContentCandidates({ productIntelligence: pi, story: { ...story, callToAction: "x".repeat(600) }, targets: [{ id: "t", channel: "threads" }] }), /500/);
+});
+test("credential-like content fails closed", () => {
+  assert.throws(() => deriveContentCandidates({ productIntelligence: pi, story: { ...story, title: "token: abc123" }, targets: [target] }), /credential\/session/);
+  const unsafe = { ...pi, document: { ...pi.document, CLAIMS_WE_CAN_PROVE: [{ id: "x", text: "password: abc", evidenceRefs: ["a".repeat(64)] }] } };
+  assert.throws(() => deriveContentCandidates({ productIntelligence: unsafe, story: { ...story, claimIds: ["x"] }, targets: [target] }), /credential\/session/);
 });

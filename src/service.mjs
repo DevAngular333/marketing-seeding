@@ -1543,6 +1543,7 @@ export class SeedingService {
 
   async deriveContentCandidates(campaignId, input = {}, actor = "content-drafter") {
     const initial = await this.store.read();
+    if (input.targetIds !== undefined && !Array.isArray(input.targetIds)) throw new Error("targetIds must be an array when supplied");
     const campaign = requireItem(initial.campaigns, campaignId, "Campaign");
     const story = requireItem(initial.stories || [], input.storyId, "Story");
     if (story.campaignId !== campaignId) throw new Error("Story must belong to the campaign");

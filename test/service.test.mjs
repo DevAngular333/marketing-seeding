@@ -87,6 +87,11 @@ test("content candidates scope normal targets through campaign posts and survive
   assert.deepEqual(after.campaigns.find((item) => item.id === campaign.id).contentCandidates, before.campaigns.find((item) => item.id === campaign.id).contentCandidates);
 });
 
+test("content candidate targetIds must be an array when supplied", async () => {
+  const { service, campaign } = await fixture("seeding-content-target-input-test-");
+  await assert.rejects(service.deriveContentCandidates(campaign.id, { storyId: "missing", targetIds: "target" }), /targetIds/);
+});
+
 test("repository inspection builds grounded intelligence and persists safe lineage", async () => {
   const { service, campaign, productRepo } = await fixture("seeding-product-inspection-runtime-test-");
   const result = await service.inspectProductIntelligence(campaign.id, {

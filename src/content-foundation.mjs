@@ -3,7 +3,8 @@ import { CHANNELS } from "./constants.mjs";
 
 const MAX_CANDIDATES = 24;
 const MAX_CONTENT = 3000;
-const SECRET = /(pass(word)?|secret|token|cookie|authorization|credential|api[_-]?key|session)/i;
+const SECRET = /(?:password|passphrase|secret|token|cookie|authorization|credential|api[_-]?key|session(?:[_ -]?token)?)\s*[:=]/i;
+const SECRET_ASSIGNMENT = /(?:password|passphrase|secret|token|cookie|authorization|credential|api[_-]?key|session(?:[_ -]?token)?)\s*[:=]\s*\S+/i;
 function clean(value, max = 1000) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -13,6 +14,9 @@ function stable(value) {
   return JSON.stringify(value);
 }
 function hash(value) { return createHash("sha256").update(stable(value)).digest("hex"); }
+function assertSafe(value, field) {
+  if (SECRET.test(String(value || "")) || SECRET_ASSIGNMENT.test(String(value || ""))) throw new Error(`Content contains credential/session material: ${field}`);
+}
 function sanitizeEvidence(evidence = []) {
   return (Array.isArray(evidence) ? evidence : []).map((item) => ({ id: clean(item?.id, 160), hash: clean(item?.hash, 64), locator: clean(item?.locator, 500) })).filter((item) => item.id && /^[a-f0-9]{64}$/.test(item.hash));
 }
@@ -28,10 +32,13 @@ export function deriveContentCandidates({ productIntelligence, story, targets = 
   const claimMap = new Map();
   for (const claim of claims) {
     const id = clean(claim?.id, 160); const text = clean(claim?.text, 1200);
+    assertSafe(text, `claim:${id}`);
     const refs = Array.isArray(claim?.evidenceRefs) ? claim.evidenceRefs.map((ref) => clean(ref, 64)).filter((ref) => evidenceHashes.has(ref)) : [];
     if (id && text && refs.length) claimMap.set(id, { id, text, evidenceRefs: refs });
   }
   if (!story || !clean(story.id, 160) || !clean(story.title, 300)) throw new Error("Content derivation requires an existing story");
+  if (String(story.title || "").length > 240 || String(story.callToAction || "").length > 300) throw new Error("Story content field exceeds bounded input length");
+  assertSafe(story.title, "story.title"); assertSafe(story.callToAction, "story.callToAction");
   const requestedClaimIds = Array.isArray(story.claimIds) && story.claimIds.length ? story.claimIds.map((id) => clean(id, 160)) : [...claimMap.keys()];
   const selected = requestedClaimIds.map((id) => claimMap.get(id)).filter(Boolean);
   if (!selected.length || selected.length !== requestedClaimIds.length) throw new Error("Content derivation requires supported claims with evidence");
@@ -41,7 +48,8 @@ export function deriveContentCandidates({ productIntelligence, story, targets = 
     const channel = clean(target?.channel, 80).toLowerCase();
     const policy = CHANNELS[channel];
     if (!policy) throw new Error(`Unsupported channel: ${channel}`);
-    const content = clean(`${clean(story.title, 240)} — ${selected.map((claim) => claim.text).join(" ")} ${clean(story.callToAction, 300)}`, MAX_CONTENT);
+    const content = `${clean(story.title, 240)} — ${selected.map((claim) => claim.text).join(" ")} ${clean(story.callToAction, 300)}`.trim();
+    if (content.length > MAX_CONTENT) throw new Error(`Content exceeds ${MAX_CONTENT} characters`);
     if (policy.maxContentChars && content.length > policy.maxContentChars) throw new Error(`Content exceeds ${policy.maxContentChars} characters for ${channel}`);
     const claimIds = selected.map((claim) => claim.id);
     const refs = [...new Set(selected.flatMap((claim) => claim.evidenceRefs))].sort();
