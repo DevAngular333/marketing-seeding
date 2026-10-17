@@ -1,0 +1,112 @@
+import { createHash } from "node:crypto";
+
+const REQUIRED_FIELDS = [
+  "WHAT_IS_IT",
+  "WHAT_PROBLEM_DOES_IT_SOLVE",
+  "WHY_IS_IT_BETTER",
+  "WHO_NEEDS_IT",
+];
+const SECRET_KEY = /(pass(word)?|secret|token|cookie|authorization|credential|api[_-]?key|session)/i;
+const SECRET_VALUE = /(bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9_]{12,})/i;
+
+function stable(value) {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stable(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function digest(value) {
+  return createHash("sha256").update(stable(value)).digest("hex");
+}
+
+function redact(value, key = "") {
+  if (SECRET_KEY.test(key)) return "credential/session material exists";
+  if (typeof value === "string") return SECRET_VALUE.test(value) ? "credential/session material exists" : value;
+  if (Array.isArray(value)) return value.map((item) => redact(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redact(v, k)]));
+  }
+  return value;
+}
+
+function text(value, max = 4000) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+/** Normalize public, caller-supplied evidence without reading files or the network. */
+export function normalizeEvidenceRecords(records = []) {
+  if (!Array.isArray(records)) throw new TypeError("evidence must be an array");
+  const byHash = new Map();
+  const aliases = {};
+  for (const raw of records) {
+    if (!raw || typeof raw !== "object") continue;
+    const candidate = redact({
+      id: text(raw.id, 160),
+      sourceType: text(raw.sourceType || raw.kind || "unknown", 80).toLowerCase(),
+      locator: text(raw.locator || raw.path || raw.url, 1000),
+      content: text(raw.content || raw.text || raw.snippet, 12000),
+      observedAt: text(raw.observedAt || raw.occurredAt, 80),
+    });
+    if (!candidate.content || !candidate.id) continue;
+    // Identity is content/source based so producer aliases do not duplicate evidence.
+    const hash = digest({ sourceType: candidate.sourceType, locator: candidate.locator, content: candidate.content, observedAt: candidate.observedAt });
+    const prior = byHash.get(hash);
+    if (!prior || candidate.id.localeCompare(prior.id) < 0) byHash.set(hash, { ...candidate, hash });
+    aliases[candidate.id] = hash;
+  }
+  return {
+    records: [...byHash.values()].sort((a, b) => a.hash.localeCompare(b.hash)),
+    aliases,
+  };
+}
+
+function claim(raw, evidence, unsupported) {
+  const item = raw && typeof raw === "object" ? raw : {};
+  const id = text(item.id, 160) || `claim-${digest(text(item.text)).slice(0, 12)}`;
+  const refs = Array.isArray(item.evidenceRefs) ? item.evidenceRefs.map((ref) => text(ref, 160)).filter(Boolean) : [];
+  const hashes = refs.map((ref) => evidence.aliases[ref] || (evidence.records.some((record) => record.hash === ref) ? ref : null)).filter(Boolean);
+  const output = { id, text: text(item.text), evidenceRefs: hashes };
+  if (!output.text || !hashes.length || hashes.length !== refs.length) unsupported.push({ ...output, reason: !output.text ? "empty_claim" : "missing_or_invalid_evidence" });
+  return output;
+}
+
+/**
+ * Build deterministic product understanding from evidence and explicit claims.
+ * Claims without valid evidence are retained only in CLAIMS_WE_CANNOT_MAKE.
+ */
+export function buildProductIntelligence(input = {}) {
+  const evidence = normalizeEvidenceRecords(input.evidence || []);
+  const unsupported = [];
+  const claims = Array.isArray(input.claims) ? input.claims.map((item) => claim(item, evidence, unsupported)) : [];
+  const supported = claims.filter((item) => item.text && item.evidenceRefs.length && !unsupported.some((u) => u.id === item.id));
+  const byField = new Map();
+  for (const item of supported) {
+    const field = text(input.claims.find((candidate) => candidate?.id === item.id)?.field, 80);
+    if (REQUIRED_FIELDS.includes(field) && !byField.has(field)) byField.set(field, item);
+  }
+  const answer = Object.fromEntries(REQUIRED_FIELDS.map((field) => [field, byField.get(field) || null]));
+  const doc = redact({
+    schemaVersion: 1,
+    productId: text(input.productId, 160) || null,
+    generatedAt: text(input.generatedAt, 80) || null,
+    evidence: evidence.records,
+    ["WHAT_IS_IT"]: answer.WHAT_IS_IT,
+    ["WHAT_PROBLEM_DOES_IT_SOLVE"]: answer.WHAT_PROBLEM_DOES_IT_SOLVE,
+    ["WHY_IS_IT_BETTER"]: answer.WHY_IS_IT_BETTER,
+    ["WHO_NEEDS_IT"]: answer.WHO_NEEDS_IT,
+    CLAIMS_WE_CAN_PROVE: supported,
+    CLAIMS_WE_CANNOT_MAKE: unsupported,
+  });
+  doc.documentHash = digest(doc);
+  return doc;
+}
+
+export function serializeProductIntelligence(document) {
+  if (!document || typeof document !== "object") throw new TypeError("document is required");
+  return stable(redact(document));
+}
+
+export const productIntelligenceStableStringify = stable;
+export const productIntelligenceHash = digest;
