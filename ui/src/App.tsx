@@ -1054,6 +1054,104 @@ function CommunityOverviewLegacy({ data }: { data: R }) {
   )
 }
 
+function latestMissionRecord(data: R, key: string) {
+  const rows = Array.isArray(data?.[key]) ? data[key] : []
+  return [...rows]
+    .sort((left: R, right: R) =>
+      String(right.updatedAt || right.latest?.generatedAt || "").localeCompare(
+        String(left.updatedAt || left.latest?.generatedAt || ""),
+      ),
+    )
+    .at(0) || null
+}
+
+function advisoryAction(value: unknown) {
+  const labels: Record<string, string> = {
+    publish: "Chuẩn bị đăng",
+    engage: "Tương tác có ngữ cảnh",
+    research: "Nghiên cứu thêm",
+    wait: "Chờ thêm dữ liệu",
+    do_nothing: "Không hành động",
+  }
+  return labels[String(value || "")] || "UNKNOWN"
+}
+
+function missionValue(value: unknown, hasRecord: boolean) {
+  return hasRecord && value !== null && value !== undefined ? String(value) : "UNKNOWN"
+}
+
+function MissionControlPanel({ data }: { data: R }) {
+  const strategy = latestMissionRecord(data, "strategy")?.latest || null
+  const learning = latestMissionRecord(data, "learning")?.latest || null
+  const outcome = latestMissionRecord(data, "outcomes")?.latest || null
+  const cycle = data?.automation?.controlCycle || null
+  const reasons = (record: R | null) =>
+    Array.isArray(record?.reasons) && record.reasons.length
+      ? record.reasons.join(" · ")
+      : "Chưa có lý do được ghi nhận"
+  const measuredFields = outcome?.metrics?.coverage
+    ? Object.entries(outcome.metrics.coverage)
+        .filter(([, value]: [string, any]) => Number(value?.measured || 0) > 0)
+        .map(([field]) => field)
+    : []
+  const cycleStatus = cycle
+    ? cycle.running
+      ? "Đang chạy"
+      : cycle.enabled
+        ? cycle.lastCompletedAt
+          ? "Đã chạy theo lịch"
+          : "Đã bật · chưa chạy"
+        : "Đang tắt"
+    : "Chưa có runtime"
+  return (
+    <section className="panel mission-control-panel full-span">
+      <div className="panel-head">
+        <div>
+          <h2>Mission Control</h2>
+          <p>
+            Quan sát quyết định advisory, coverage và chu kỳ điều khiển từ state
+            hiện tại. Panel này không cấp quyền và không thực hiện hành động.
+          </p>
+        </div>
+        <span className="status completed">Chỉ đọc · advisory</span>
+      </div>
+      <div className="mission-control-grid">
+        <article>
+          <span className="mission-eyebrow">Chu kỳ điều khiển</span>
+          <strong>{cycleStatus}</strong>
+          <small>
+            {cycle?.lastCompletedAt
+              ? `Lần cuối: ${formatDate(cycle.lastCompletedAt)}`
+              : "Chưa có bằng chứng chạy chu kỳ"}
+          </small>
+        </article>
+        <article>
+          <span className="mission-eyebrow">Next best action</span>
+          <strong>{advisoryAction(strategy?.action)}</strong>
+          <small>{reasons(strategy)}</small>
+        </article>
+        <article>
+          <span className="mission-eyebrow">Learning signal</span>
+          <strong>{advisoryAction(learning?.action)}</strong>
+          <small>{reasons(learning)}</small>
+        </article>
+        <article>
+          <span className="mission-eyebrow">Publication / metrics</span>
+          <strong>
+            {missionValue(outcome?.publication?.verified, Boolean(outcome))} verified ·{" "}
+            {missionValue(outcome?.publication?.unknown, Boolean(outcome))} UNKNOWN
+          </strong>
+          <small>
+            {outcome
+              ? `${outcome.metrics?.snapshots ?? "UNKNOWN"} snapshot · ${measuredFields.length ? measuredFields.join(", ") : "chưa có field đo được"}`
+              : "Chưa có outcome summary"}
+          </small>
+        </article>
+      </div>
+    </section>
+  )
+}
+
 function Overview({
   data,
   select,
@@ -1074,6 +1172,7 @@ function Overview({
         </span>
       </div>
       <div className="dashboard-grid">
+        <MissionControlPanel data={data} />
         <TrafficChart data={data} />
         <TrafficSourcesPanel data={data} />
         <ReadinessPanel data={data} />

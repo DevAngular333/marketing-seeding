@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "83403d1",
+  "checkpointCommit": "9fa74d1",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -23,7 +23,8 @@
     "e470f32 feat: add dry-run distribution handoff validation",
     "b06ca32 feat: project safe account runtime dashboard state",
     "working-tree hardening: bounded account blocker/readiness projection",
-    "83403d1 feat: expose safe account runtime health"
+    "83403d1 feat: expose safe account runtime health",
+    "pending: Mission Control read-model source, tracked bundle and journal artifacts"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -45,6 +46,9 @@
     ,{"name":"distribution_handoff_regression","result":"PASS_BOUNDED","tests":33,"passed":33,"failed":0,"skipped":0,"command":"node --test test/distribution-handoff.test.mjs test/service.test.mjs test/server.test.mjs"},
     {"name":"account_runtime_projection","result":"PASS_BOUNDED","tests":3,"passed":3,"failed":0,"skipped":0,"command":"node --test test/account-runtime-projection.test.mjs","notes":"Read-only dashboard projection; profile fingerprint/redaction, blocker priority, restart equality, no canonical mutation"},
     {"name":"full_node_suite_after_account_projection","result":"PASS","tests":367,"passed":365,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"account_runtime_projection_independent_release_review","result":"PASS_BOUNDED","tests":3,"passed":3,"failed":0,"skipped":0,"report":"plans/autonomous-build/reports/verify-20261017-account-runtime-projection-release.md"}
+    {"name":"account_runtime_projection_independent_release_review","result":"PASS_BOUNDED","tests":3,"passed":3,"failed":0,"skipped":0,"report":"plans/autonomous-build/reports/verify-20261017-account-runtime-projection-release.md"},
+    {"name":"mission_control_read_model","result":"PASS_BOUNDED","notes":"Read-only dashboard projection; UI typecheck/build pass; independent review PASS; no canonical state or external mutation"},
+    {"name":"full_node_suite_after_mission_control","result":"PASS","tests":370,"passed":368,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
+    {"name":"ui_typecheck_and_build","result":"PASS","command":"cd ui && npx tsc --noEmit && npm run build","notes":"Existing Vite config warnings only"}
   ]
 }

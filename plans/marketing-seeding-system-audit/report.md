@@ -6,6 +6,8 @@
 **Branch:** `integration/autonomous-build`  
 **Evidence rule:** source, tests, configuration and read-only runtime evidence outrank README/plan claims. Synthetic and local evidence are never treated as live platform proof.
 
+**Release snapshot:** the integration branch includes canonical dry-run handoff hardening and a pending read-only Mission Control UI slice on top of `9fa74d1`; the canonical service remains an older deployed source revision.
+
 ## 1. What is this system?
 
 This repository is a local marketing distribution runtime that keeps campaign, product, content, target, publication and outcome state in an auditable JSON store. A user supplies a product repository, campaign objective, target/account configuration and policy scope; the service can inspect bounded repository evidence, create grounded artifacts, stories and channel drafts, evaluate campaign authorization, and project state in a local dashboard. Its strongest implemented path is bounded execution governance: exact account/profile/target/content/visibility binding, quotas, cadence, concurrency, readiness, leases, one-time windows, single-use grants, durable submit intent, and UNKNOWN quarantine. The LinkedIn path connects JEV to a LinkedIn adapter, ORCA browser commands, semantic post-action evidence and a read-only publication verifier. Product intelligence and discovery foundations exist on the integration branch, but discovery accepts caller-supplied observations and claims remain explicit rather than autonomously researched or generated. Product factory runs are persisted as bounded campaign lineage, while the factory remains a local syntax/check runner rather than a general build/render/media system. The dashboard is a Mission Control projection, while normal operations still depend on configured policy, existing browser sessions and human handling of mandatory security challenges. This is more than a generic browser bot because campaign governance, persistence, content/artifact graph and verification contracts are first-class; it is not yet a proven unattended multi-channel Distribution OS.
@@ -193,7 +195,7 @@ The canonical health endpoint was read-only and reported PID 64620, source commi
 
 ### SYNTHETIC / LOCAL
 
-- 361 Node tests: 359 pass, 0 fail, 2 skip.
+- 370 Node tests: 368 pass, 0 fail, 2 skip.
 - Focused discovery/service/server gate: 50 pass, 0 fail, 0 skip.
 - 242 focused transport/governance/JEV/LinkedIn/intelligence/factory/discovery/service tests: 242 pass, 0 fail, 0 skip.
 - Local browser fixture: 10/10 reversible control activation trials, 100% rate under policy (minimum 10, ≥95%, zero wrong-target, zero silent fallback).

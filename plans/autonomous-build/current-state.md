@@ -4,9 +4,9 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration HEAD: `83403d1` (`feat: expose safe account runtime health`); the branch contains the bounded account runtime dashboard projection and journal updates described below.
+- Integration release baseline: `9fa74d1` (`feat: accept canonical dry-run handoff envelopes`); the pending working tree adds the read-only Mission Control panel and its release artifacts. The final release commit is recorded after integration.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
-- Working tree contains only the account-runtime audit/projection plan artifacts; no source change has been merged into `main`.
+- Working tree contains the Mission Control read-model source/bundle change and release artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
 
 ## Runtime
@@ -37,10 +37,19 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 ## Tests
 
 - Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; product-factory focused gate 40/40; distribution-handoff/service/server gate 33/33.
-- Full suite: 367 total, 365 passed, 0 failed, 2 skipped; exit 0.
+- Full suite after the current integration HEAD: 370 total, 368 passed, 0 failed, 2 skipped; exit 0.
+- UI typecheck: `cd ui && npx tsc --noEmit` passed; production build: `cd ui && npm run build` passed with only existing Vite config warnings.
 - Account projection focused gate: 3 passed, 0 failed, 0 skipped; independent release verifier: PASS (bounded).
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
 
 ## Live proof
 
 `LIVE_PROOF_BLOCKED`: no fresh exact LIVE campaign authorization, one-time window, execution-scoped grant, lease, or explicit harmless test content/session input exists. ORCA is unavailable in this shell. No browser mutation or social mutation occurred.
+
+## Mission Control read-model milestone
+
+- Added one compact read-only advisory panel over the existing `/api/dashboard`
+  response. It shows control-cycle status, advisory strategy/learning actions,
+  publication verified/UNKNOWN counts and measured metric coverage.
+- No route, store, approval step, execution control, browser action or runtime
+  write was added. See `plans/autonomous-build/mission-control-read-model/`.
