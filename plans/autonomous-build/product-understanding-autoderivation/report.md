@@ -1,6 +1,6 @@
 # Product Understanding Auto-Derivation
 
-**Status:** DONE_WITH_CONCERNS  
+**Status:** DONE_WITH_CONCERNS
 **Branch:** `feat/autonomous-build-product-understanding`
 
 ## Outcome
