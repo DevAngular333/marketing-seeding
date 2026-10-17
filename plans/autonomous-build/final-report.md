@@ -10,7 +10,7 @@
 - **No live real website publish was attempted.** Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant or lease. ORCA is unavailable in this shell. This is an external authorization/input blocker.
 - No fresh execution ID, durable submit intent, autonomous final click, semantic activation, platform acceptance, permalink, post ID or real `PUBLISHED` receipt exists.
 - Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10; this does not certify LinkedIn.
-- Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory candidate evidence added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch is at `7d1dae4` with the strategy fit gate and audit/journal artifacts in the working tree pending commit.
+- Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory candidate evidence added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch is at `745ce65`; the canonical service has not been redeployed.
 
 ## Outcome
 
@@ -55,7 +55,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 ## Git/release state
 
-- Integration branch HEAD is `7d1dae4` (`fix: fail closed on unsafe product factory manifests`); Product Factory project-evidence safety changes are committed. The strategy fit gate, audit refresh and journal entries are the current uncommitted release delta pending review and commit.
+- Integration branch HEAD is `745ce65` (`feat: gate strategy by discovery fit`); Product Factory project-evidence safety changes and strategy fit gate are committed. Main was not merged, pushed or deployed.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 

@@ -6,7 +6,7 @@
 **Branch:** `integration/autonomous-build`  
 **Evidence rule:** source, tests, configuration and read-only runtime evidence outrank README/plan claims. Synthetic and local evidence are never treated as live platform proof.
 
-**Release snapshot:** integration HEAD `7d1dae4` (`fix: fail closed on unsafe product factory manifests`) includes canonical dry-run handoff validation, read-only Mission Control projections and fail-closed Product Factory project evidence. The canonical service remains an older deployed source revision; no deployment was performed.
+**Release snapshot:** integration HEAD `745ce65` (`feat: gate strategy by discovery fit`) includes canonical dry-run handoff validation, read-only Mission Control projections, fail-closed Product Factory project evidence and the strategy fit gate. The canonical service remains an older deployed source revision; no deployment was performed.
 
 ## 1. What is this system?
 

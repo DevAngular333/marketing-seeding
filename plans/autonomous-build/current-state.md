@@ -4,7 +4,7 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration HEAD: `7d1dae4` (`fix: fail closed on unsafe product factory manifests`); the Product Factory project-evidence safety seam is committed. The branch includes the Mission Control account/session section, product-understanding derivation, account-runtime readiness projection and canonical DRY_RUN handoff artifacts.
+- Integration HEAD: `745ce65` (`feat: gate strategy by discovery fit`); the Product Factory project-evidence safety seam and strategy fit gate are committed. The branch includes the Mission Control account/session section, product-understanding derivation, account-runtime readiness projection and canonical DRY_RUN handoff artifacts.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
 - Integration branch contains the accepted local source changes and release artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
@@ -40,7 +40,7 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 ## Tests
 
 - Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; Product Factory project-evidence/runtime/service gate 45/45; distribution-handoff/service/server gate 33/33.
-- Full suite rerun at HEAD `7d1dae4` after strategy fit gate: 381 total, 379 passed, 0 failed, 2 skipped; exit 0.
+- Full suite rerun at HEAD `745ce65` after strategy fit gate: 381 total, 379 passed, 0 failed, 2 skipped; exit 0.
 - UI typecheck: `cd ui && npx tsc --noEmit` passed; production build: `cd ui && npm run build` passed with only existing Vite config warnings.
 - Account runtime projection focused gate: 5 passed, 0 failed, 0 skipped; combined projection/service/server gate: 34 passed, 0 failed, 0 skipped; independent verifier: PASS (bounded).
 - Mission Control account/session UI: TypeScript check and production build passed; independent read-only verifier PASS (bounded).

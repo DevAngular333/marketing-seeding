@@ -1,6 +1,6 @@
 # Current gaps and technical debt
 
-Evidence date: 2026-10-18 at integration HEAD `7d1dae4`. Severity reflects the effect on the requested humanless distribution objective.
+Evidence date: 2026-10-18 at integration HEAD `745ce65`. Severity reflects the effect on the requested humanless distribution objective.
 
 ## P0
 
