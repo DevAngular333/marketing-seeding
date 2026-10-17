@@ -66,6 +66,20 @@ test("derives bounded fields deterministically and preserves explicit precedence
   assert.ok(first.CLAIMS_WE_CANNOT_MAKE.some((item) => item.reason === "no_safe_evidence"));
 });
 
+test("ranks field-specific evidence instead of reusing the first generic sentence", () => {
+  const doc = buildProductIntelligence({
+    productId: "ranked",
+    evidence: [
+      { id: "package", sourceType: "package", locator: "package.json", content: '{"description":"A deterministic distribution runtime."}' },
+      { id: "readme", sourceType: "README", locator: "README.md", content: "A deterministic distribution runtime. It helps teams manage evidence without blind retries. It is safe, verified and bounded. For operators and developers." },
+    ],
+  });
+  assert.equal(doc.WHAT_IS_IT.text, "A deterministic distribution runtime.");
+  assert.equal(doc.WHAT_PROBLEM_DOES_IT_SOLVE.text, "It helps teams manage evidence without blind retries.");
+  assert.equal(doc.WHY_IS_IT_BETTER.text, "It is safe, verified and bounded.");
+  assert.equal(doc.WHO_NEEDS_IT.text, "For operators and developers.");
+});
+
 test("redacts secret-like fields and values from serialized output", () => {
   const doc = buildProductIntelligence({
     evidence: [{ id: "secret", sourceType: "fixture", locator: "token.txt", content: "Bearer abcdefghijklmnop" }],

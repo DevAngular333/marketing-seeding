@@ -99,19 +99,27 @@ function deriveCandidates(records, fields) {
     try { packageMetadata = JSON.parse(parsedPackage.content); } catch { packageMetadata = null; }
   }
   const result = {};
-  const first = (field, predicate, fallback) => {
+  const first = (field, predicate, markers, fallback) => {
     if (fields.has(field)) return;
-    const record = available.find((item) => sentences(item).some(predicate));
-    const sentence = record && sentences(record).find(predicate);
-    result[field] = candidateFrom(record, field, sentence, "repository_evidence") || fallback?.();
+    const candidates = [];
+    for (const record of available) {
+      for (const sentence of sentences(record)) {
+        if (!predicate(sentence)) continue;
+        const score = markers.reduce((total, marker) => total + (marker.test(sentence) ? 1 : 0), 0);
+        const candidate = candidateFrom(record, field, sentence, "repository_evidence");
+        if (candidate) candidates.push({ record, sentence, candidate, score });
+      }
+    }
+    candidates.sort((left, right) => right.score - left.score || left.record.hash.localeCompare(right.record.hash) || left.sentence.localeCompare(right.sentence));
+    result[field] = candidates[0]?.candidate || fallback?.();
   };
   if (!fields.has("WHAT_IS_IT") && parsedPackage && typeof packageMetadata?.description === "string") {
     result.WHAT_IS_IT = candidateFrom(parsedPackage, "WHAT_IS_IT", text(packageMetadata.description, 360), "package_metadata");
   }
-  if (!result.WHAT_IS_IT) first("WHAT_IS_IT", (s) => /\b(is|provides|platform|tool|runtime|library|framework|service|application)\b/i.test(s));
-  first("WHAT_PROBLEM_DOES_IT_SOLVE", (s) => /\b(solv|help|avoid|reduce|automate|manage|pain|problem|without|instead of)\w*/i.test(s));
-  first("WHY_IS_IT_BETTER", (s) => /\b(deterministic|idempotent|atomic|bounded|verified|evidence|reliable|safe|redact|exactly[- ]once)\b/i.test(s));
-  first("WHO_NEEDS_IT", (s) => /\b(for|teams?|developers?|operators?|marketers?|creators?|businesses?|projects?|organizations?|users?)\b/i.test(s));
+  if (!result.WHAT_IS_IT) first("WHAT_IS_IT", (s) => /\b(is|provides|platform|tool|runtime|library|framework|service|application)\b/i.test(s), [/(?:is|provides|platform|tool|runtime|library|framework|service|application)/i]);
+  first("WHAT_PROBLEM_DOES_IT_SOLVE", (s) => /\b(solv|help|avoid|reduce|automate|manage|pain|problem|without|instead of)\w*/i.test(s), [/(?:solv|help|avoid|reduce|automate)/i, /(?:manage|pain|problem|without|instead of)/i]);
+  first("WHY_IS_IT_BETTER", (s) => /\b(deterministic|idempotent|atomic|bounded|verified|evidence|reliable|safe|redact|exactly[- ]once)\b/i.test(s), [/(?:idempotent|atomic|verified|reliable|safe|redact|exactly[- ]once)/i, /(?:deterministic|bounded|evidence)/i]);
+  first("WHO_NEEDS_IT", (s) => /\b(for|teams?|developers?|operators?|marketers?|creators?|businesses?|projects?|organizations?|users?)\b/i.test(s), [/(?:developers?|operators?|marketers?|creators?|businesses?|organizations?)/i, /(?:for|teams?|projects?|users?)/i]);
   return result;
 }
 
