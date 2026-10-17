@@ -10,6 +10,12 @@ An additive automation endpoint is available at
 `POST /api/campaigns/:campaignId/control-cycle`. It uses the existing
 automation authentication and does not alter execution dispatch routes.
 
+The server also has an opt-in scheduler controlled by
+`SEEDING_CONTROL_CYCLE_ENABLED=true` and `SEEDING_CONTROL_CYCLE_MINUTES>=15`.
+It is disabled by default, reports read-only runtime status through `/health`
+and the dashboard, and invokes only the advisory service cycle for each
+campaign.
+
 ## Evidence
 
 - Focused tests: 2 passed, 0 failed.

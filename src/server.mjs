@@ -40,6 +40,8 @@ const controlToken = String(process.env.SEEDING_CONTROL_TOKEN || "").trim();
 const sourceCommit = String(process.env.SEEDING_BUILD_COMMIT || "");
 const sourceDirty = process.env.SEEDING_BUILD_DIRTY === "true";
 const trafficPollMinutes = Number(process.env.SEEDING_TRAFFIC_POLL_MINUTES || 0);
+const controlCycleEnabled = process.env.SEEDING_CONTROL_CYCLE_ENABLED === "true";
+const controlCycleMinutes = Number(process.env.SEEDING_CONTROL_CYCLE_MINUTES || 0);
 if (operatorToken.length < 32) {
   throw new Error("SEEDING_OPERATOR_TOKEN must contain at least 32 characters");
 }
@@ -49,6 +51,9 @@ if (automationToken.length < 32) {
 if (automationToken === operatorToken) throw new Error("Operator and automation tokens must be different");
 if (!Number.isFinite(trafficPollMinutes) || trafficPollMinutes < 0 || (trafficPollMinutes > 0 && trafficPollMinutes < 15)) {
   throw new Error("SEEDING_TRAFFIC_POLL_MINUTES must be 0 (disabled) or at least 15");
+}
+if (controlCycleEnabled && (!Number.isFinite(controlCycleMinutes) || controlCycleMinutes < 15)) {
+  throw new Error("SEEDING_CONTROL_CYCLE_MINUTES must be at least 15 when enabled");
 }
 const store = new JsonStore(stateFile, { requireLease: true });
 await store.acquireWriterLease();
@@ -84,8 +89,10 @@ const trafficRuntime = {
   nextRunAt: null,
   lastSummary: null
 };
+const controlCycleRuntime = { enabled: controlCycleEnabled, intervalMinutes: controlCycleEnabled ? controlCycleMinutes : null, running: false, lastStartedAt: null, lastCompletedAt: null, nextRunAt: null, lastSummary: null };
 const fixtureWorker = new FixtureWorkerBridge({ service });
 let trafficTimer = null;
+let controlCycleTimer = null;
 let campaignQueueTimer = null;
 let jevExecutionTimer = null;
 let jevExecutionRunning = false;
@@ -102,6 +109,35 @@ function scheduleTrafficCollection(delayMs = trafficIntervalMs) {
     runTrafficCollection("scheduled-official-collector").catch(() => undefined);
   }, boundedDelay);
   trafficTimer.unref();
+}
+
+function scheduleControlCycle(delayMs = controlCycleMinutes * 60_000) {
+  if (!controlCycleRuntime.enabled || shuttingDown) return;
+  if (controlCycleTimer) clearTimeout(controlCycleTimer);
+  const boundedDelay = Math.max(1_000, delayMs);
+  controlCycleRuntime.nextRunAt = new Date(Date.now() + boundedDelay).toISOString();
+  controlCycleTimer = setTimeout(async () => {
+    if (controlCycleRuntime.running || shuttingDown) return scheduleControlCycle();
+    controlCycleRuntime.running = true;
+    controlCycleRuntime.lastStartedAt = new Date().toISOString();
+    try {
+      const state = await service.snapshot();
+      const results = [];
+      for (const campaign of state.campaigns || []) {
+        if (shuttingDown) break;
+        try { results.push(await service.runCampaignControlCycle(campaign.id, {}, "scheduled-control-cycle")); }
+        catch (error) { results.push({ campaignId: campaign.id, ok: false, reason: error.code || error.message }); }
+      }
+      controlCycleRuntime.lastSummary = { campaigns: results.length, succeeded: results.filter((item) => item?.advisory === true).length, failed: results.filter((item) => item?.ok === false).length };
+    } catch (error) {
+      controlCycleRuntime.lastSummary = { campaigns: 0, succeeded: 0, failed: 1, reason: error.code || "control_cycle_error" };
+    } finally {
+      controlCycleRuntime.running = false;
+      controlCycleRuntime.lastCompletedAt = new Date().toISOString();
+      scheduleControlCycle();
+    }
+  }, boundedDelay);
+  controlCycleTimer.unref();
 }
 
 function scheduleCampaignQueueEvaluation(delayMs = 30_000) {
@@ -350,6 +386,7 @@ const server = http.createServer(async (request, response) => {
         ok: true, service: "global-seeding", stateFile,
         runtime: runtimeMetadata({ pid: process.pid, sourceCommit, sourceDirty, state }),
         trafficCollector: trafficRuntime,
+        controlCycle: controlCycleRuntime,
         dailyProduction: await readDailyProductionAutomation(),
         browserTracking: await readBrowserTrafficAutomation(),
         fixtureWorker: fixtureWorker.runtime()
@@ -438,6 +475,7 @@ const server = http.createServer(async (request, response) => {
         autoGtm: await readAutoGtmFeed(autoGtmFeedFile),
         automation: {
           trafficCollector: trafficRuntime,
+          controlCycle: controlCycleRuntime,
           dailyProduction: await readDailyProductionAutomation(),
           browserTracking: await readBrowserTrafficAutomation(),
           fixtureWorker: fixtureWorker.runtime()
@@ -674,6 +712,7 @@ server.listen(port, host, () => {
   fixtureWorker.start();
   scheduleCampaignQueueEvaluation();
   scheduleJevExecution();
+  scheduleControlCycle();
 });
 
 if (trafficPollMinutes > 0) {
@@ -687,12 +726,13 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   if (trafficTimer) clearTimeout(trafficTimer);
+  if (controlCycleTimer) clearTimeout(controlCycleTimer);
   if (campaignQueueTimer) clearTimeout(campaignQueueTimer);
   if (jevExecutionTimer) clearTimeout(jevExecutionTimer);
   fixtureWorker.stop();
   server.close(() => {
     void (async () => {
-      while (trafficRuntime.running || campaignQueueRunning || jevExecutionRunning || fixtureWorker.running) {
+      while (trafficRuntime.running || controlCycleRuntime.running || campaignQueueRunning || jevExecutionRunning || fixtureWorker.running) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
       await store.releaseWriterLease();
