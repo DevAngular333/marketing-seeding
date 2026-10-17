@@ -21,15 +21,16 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 13. Add a compact read-only Mission Control projection over existing control-cycle, strategy, learning and outcome fields; do not add an approval or execution path.
 14. Add explicit read-only account session/auth mode, eligibility and ineligibility reasons to Mission Control without adding login, selection, failover or authority semantics.
 15. Add a fail-closed learning-aware advisory strategy context: current outcome/learning identifiers and allowlisted reasons are visible to strategy/Mission Control without changing action precedence or creating authority.
+16. Add a bounded explicit-link-only per-post outcome attribution projection to the existing outcome summary; keep UNKNOWN dominance, canonical publication evidence requirements, campaign-only conversions unassigned and all learning/strategy behavior advisory.
 
-Result: local implementation gates pass (384 total, 382 passed, 0 failed, 2 skipped); the learning-aware strategy gate is 49/49 and the strategy fit gate is 36/36; UI typecheck and production build also pass. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
+Result: local implementation gates pass (388 total, 386 passed, 0 failed, 2 skipped); the outcome attribution gate is 42/42, the learning-aware strategy gate is 49/49 and the strategy fit gate is 36/36; UI typecheck and production build also pass. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 
 ## Later waves (dependency order)
 
 1. **Unblock controlled live M1** only when a fresh authorized account/profile/target/content/session and harmless post policy are supplied; execute once through existing JEV/LinkedIn path, independently verify, then freeze the proven contract.
 2. Versioned upstream System-Agentic → marketing domain handoff; the downstream DRY_RUN validator/persistence seam exists locally, but upstream live producer/consumer wiring remains.
 3. Expand Product Factory into project-specific build/run/render/media workflow only after a separately audited sandbox; current manifest probe intentionally supports syntax checks only and candidate discovery remains evidence-only.
-4. Extend the local deterministic discovery and advisory strategy foundations into continuous authorized observation, audience/channel/community eligibility, per-post outcome attribution, outcome-driven NBA and grounded content generation; current fit metadata and learning context remain advisory/caller-evidence driven.
+4. Extend the local deterministic discovery and advisory strategy foundations into continuous authorized observation, audience/channel/community eligibility, outcome-driven NBA and grounded content generation; per-post attribution now exists as advisory evidence, while authority rerouting remains unimplemented.
 5. Add contextual engagement, account/session registry/recovery, metrics learning, restart/24-7 hardening and deeper Mission Control projections; the current account view exposes session/auth mode and eligibility read-only but does not select, fail over or execute accounts; certify platforms incrementally.
 
 ## Frozen seams

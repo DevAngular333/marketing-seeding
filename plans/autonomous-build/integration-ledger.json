@@ -62,6 +62,11 @@
     {"name":"strategy_fit_gate","result":"PASS_BOUNDED","tests":36,"passed":36,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/service.test.mjs test/server.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-strategy-fit-gate.md"},
     {"name":"full_node_suite_after_strategy_fit_gate","result":"PASS","tests":381,"passed":379,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
     {"name":"outcome_learning_strategy_context","result":"PASS_BOUNDED","tests":49,"passed":49,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/outcome.test.mjs test/service.test.mjs test/server.test.mjs","report":"plans/autonomous-build/outcome-learning-strategy/report.md"},
-    {"name":"full_node_suite_after_outcome_learning_strategy","result":"PASS","tests":384,"passed":382,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"}
+    {"name":"full_node_suite_after_outcome_learning_strategy","result":"PASS","tests":384,"passed":382,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
+    {"name":"outcome_attribution_focused","result":"PASS_BOUNDED","tests":42,"passed":42,"failed":0,"skipped":0,"command":"node --test test/outcome.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/service.test.mjs"},
+    {"name":"outcome_attribution_independent_review","result":"ACCEPT","report":"plans/autonomous-build/reports/verify-20261018-outcome-attribution.md","notes":"Explicit-link-only attribution, VERIFIED requires canonical identity evidence, UNKNOWN dominates, stable bounded metrics and evidence, campaign-only conversions unassigned"},
+    {"name":"full_node_suite_after_outcome_attribution","result":"PASS","tests":388,"passed":386,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
+    {"name":"outcome_attribution_syntax_diff","result":"PASS","command":"node --check src/outcome.mjs && git diff --check"},
+    {"name":"canonical_runtime_immutability_after_outcome_attribution","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
   ]
 }
