@@ -10,19 +10,26 @@ import { validateDistributionHandoff } from "../src/distribution-handoff.mjs";
 
 async function fixture() {
   const dir = await mkdtemp(path.join(os.tmpdir(), "handoff-")); const repo = path.join(dir, "repo"); await mkdir(repo); await writeFile(path.join(repo, "README.md"), "evidence");
-  const service = new SeedingService(new JsonStore(path.join(dir, "state.json"))); await service.init();
+  const stateFile = path.join(dir, "state.json");
+  const service = new SeedingService(new JsonStore(stateFile)); await service.init();
   const campaign = await service.createCampaign({ name: "C", objective: "O", productRepo: repo });
   const target = await service.createTarget({ channel: "threads", name: "T", url: "https://threads.net/x", accountId: "a", status: "active" });
   const content = "Grounded content"; const candidate = { contentId: "content-1", contentIdentity: "identity-1", targetId: target.id, content };
   await service.store.mutate("fixture", "candidate_seeded", state => { const row = state.campaigns.find(c => c.id === campaign.id); row.contentCandidates = [candidate]; return row; });
-  return { service, campaign, target, candidate, content };
+  return { service, stateFile, campaign, target, candidate, content };
 }
 function input(f, extra = {}) { return { mode: "DRY_RUN", campaignId: f.campaign.id, productId: f.campaign.id, content: { contentId: f.candidate.contentId, contentIdentity: f.candidate.contentIdentity, sha256: createHash("sha256").update(f.content).digest("hex") }, platform: { targetId: f.target.id }, ...extra }; }
 
 test("valid dry-run handoff persists idempotently and never dispatches", async () => {
-  const f = await fixture(); const first = await f.service.attachDistributionHandoff(f.campaign.id, input(f)); const second = await f.service.attachDistributionHandoff(f.campaign.id, input(f));
+  const f = await fixture(); const before = await f.service.snapshot(); const first = await f.service.attachDistributionHandoff(f.campaign.id, input(f)); const second = await f.service.attachDistributionHandoff(f.campaign.id, input(f));
   assert.equal(first.result.liveDispatch, false); assert.equal(first.result.publicationAttempts, 0); assert.equal(first.result.canonicalStateTouched, true); assert.equal(first.handoff.handoffHash, second.handoff.handoffHash);
-  const dash = await f.service.dashboard(); assert.equal(dash.distributionHandoffs.length, 1);
+  const after = await f.service.snapshot();
+  assert.equal(after.posts.length, before.posts.length);
+  assert.equal(after.executionRequests.length, before.executionRequests.length);
+  assert.equal(after.campaignAuthorizations.length, before.campaignAuthorizations.length);
+  const restarted = new SeedingService(new JsonStore(f.stateFile)); await restarted.init();
+  const dash = await restarted.dashboard(); assert.equal(dash.distributionHandoffs.length, 1);
+  assert.equal(dash.distributionHandoffs[0].handoffHash, first.handoff.handoffHash);
 });
 test("LIVE and cross-reference or integrity failures fail closed", async () => {
   const f = await fixture(); await assert.rejects(f.service.attachDistributionHandoff(f.campaign.id, input(f, { mode: "LIVE" })), /only explicit DRY_RUN/);

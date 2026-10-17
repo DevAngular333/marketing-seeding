@@ -10,7 +10,7 @@
 - **No live real website publish was attempted.** Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant or lease. ORCA is unavailable in this shell. This is an external authorization/input blocker.
 - No fresh execution ID, durable submit intent, autonomous final click, semantic activation, platform acceptance, permalink, post ID or real `PUBLISHED` receipt exists.
 - Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10; this does not certify LinkedIn.
-- Product intelligence, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory candidate evidence added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194.
+- Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory candidate evidence added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194.
 
 ## Outcome
 
@@ -25,6 +25,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Discovery normalizes, deduplicates, policy-classifies and scores observations; the opt-in public HTTP observer and 15-minute scheduler persist only bounded successful observations, isolate campaign errors, and do not create publish authority.
 - Discovery can attach bounded caller-supplied audience/channel/locale fit evidence with explicit `MATCHED`/`MISMATCHED`/`UNKNOWN` outcomes; this remains advisory and does not create platform support or execution authority.
 - Product Factory can discover and hash bounded media/document candidates from the registered repository through existing local evidence lineage; explicit paths remain authoritative and no candidate becomes a publication-approved asset automatically.
+- A provider-neutral distribution handoff can be validated and attached idempotently as DRY_RUN metadata with exact content/media/target references; it does not wire SYSTEM_AGENTIC_AI live or create execution authority.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
 
 ## Verification

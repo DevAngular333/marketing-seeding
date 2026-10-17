@@ -28,13 +28,13 @@ JsonStore / schema / audit / writer lease
   └─> metrics/interaction/reply/conversion collections and dashboard projections
 
 SYSTEM_AGENTIC_AI Core (frozen, read-only)
-  └─> future versioned handoff boundary (not implemented in this wave)
+  └─> downstream DRY_RUN distribution-handoff validator/persistence seam (local only; upstream producer not wired)
 ```
 
 ## Dependency status
 
-- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, deterministic discovery persistence/projection, bounded caller-supplied audience/channel/locale fit metadata, safe product factory execution with bounded candidate discovery and persistent run lineage.
+- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, downstream DRY_RUN distribution-handoff validation/persistence, deterministic discovery persistence/projection, bounded caller-supplied audience/channel/locale fit metadata, safe product factory execution with bounded candidate discovery and persistent run lineage.
 - **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, project-specific product factory orchestration and artifact lifecycle.
 - **Implemented/local verified:** deterministic advisory strategy decisions, evidence-grounded draft candidates, outcome summaries, advisory learning feedback, opt-in control-cycle scheduling, and bounded public HTTP discovery polling with campaign error isolation; all are non-authoritative.
-- **Design-only/not implemented:** autonomous audience search, platform search/community-rule crawler, outcome-driven authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery, live System-Agentic handoff. Caller-supplied fit is implemented as advisory evidence only.
+- **Design-only/not implemented:** upstream live System-Agentic handoff producer/consumer, autonomous audience search, platform search/community-rule crawler, outcome-driven authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery. Caller-supplied fit is implemented as advisory evidence only.
 - **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.

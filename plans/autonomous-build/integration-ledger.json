@@ -19,7 +19,8 @@
     "3ab68ab fix: fail closed on unsafe content inputs",
     "07c3722 test: align content fail-closed assertions",
     "70202e6 fix: reject truncated content inputs and credential values",
-    "working-tree seam: bounded deterministic audience/channel/locale fit metadata through existing discovery persistence"
+    "working-tree seam: bounded deterministic audience/channel/locale fit metadata through existing discovery persistence",
+    "e470f32 feat: add dry-run distribution handoff validation"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -38,5 +39,6 @@
     {"name":"product_factory_artifact_evidence","result":"PASS_BOUNDED","tests":40,"passed":40,"failed":0,"skipped":0,"command":"node --test test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs"},
     {"name":"product_factory_independent_review","result":"ACCEPT","tests":12,"passed":12,"failed":0,"skipped":0,"notes":"No authority/browser/social/UNKNOWN semantic changes"},
     {"name":"full_node_suite_after_factory_evidence","result":"PASS","tests":364,"passed":362,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"}
+    ,{"name":"distribution_handoff_regression","result":"PASS_BOUNDED","tests":33,"passed":33,"failed":0,"skipped":0,"command":"node --test test/distribution-handoff.test.mjs test/service.test.mjs test/server.test.mjs"}
   ]
 }
