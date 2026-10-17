@@ -10,7 +10,7 @@
 - **No live real website publish was attempted.** Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant or lease. ORCA is unavailable in this shell. This is an external authorization/input blocker.
 - No fresh execution ID, durable submit intent, autonomous final click, semantic activation, platform acceptance, permalink, post ID or real `PUBLISHED` receipt exists.
 - Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10; this does not certify LinkedIn.
-- Product intelligence, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory lineage added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194.
+- Product intelligence, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory candidate evidence added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194.
 
 ## Outcome
 
@@ -24,6 +24,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Product factory classifies a repository, executes only the narrow allowlisted plan with bounds and optional artifact hashes, persists a bounded campaign-owned run lineage and has no external side effect.
 - Discovery normalizes, deduplicates, policy-classifies and scores observations; the opt-in public HTTP observer and 15-minute scheduler persist only bounded successful observations, isolate campaign errors, and do not create publish authority.
 - Discovery can attach bounded caller-supplied audience/channel/locale fit evidence with explicit `MATCHED`/`MISMATCHED`/`UNKNOWN` outcomes; this remains advisory and does not create platform support or execution authority.
+- Product Factory can discover and hash bounded media/document candidates from the registered repository through existing local evidence lineage; explicit paths remain authoritative and no candidate becomes a publication-approved asset automatically.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
 
 ## Verification
@@ -31,7 +32,7 @@ The integration branch now contains local, tested foundations for bounded standi
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
-Full Node suite: 362 total, 360 passed, 0 failed, 2 skipped; exit 0
+Full Node suite: 364 total, 362 passed, 0 failed, 2 skipped; exit 0
 Syntax check: all src/*.mjs passed
 Diff check: git diff --check passed
 Canonical runtime: schema 8, revision 194, SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6

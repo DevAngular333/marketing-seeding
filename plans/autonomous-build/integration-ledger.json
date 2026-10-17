@@ -34,6 +34,9 @@
     {"name":"strategy_focused_gate","result":"PASS","tests":35,"passed":35,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/service.test.mjs test/server-lifecycle.test.mjs"},
     {"name":"content_focused_gate","result":"PASS","tests":33,"passed":33,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/service.test.mjs --test-name-pattern=content"},
     {"name":"audience_channel_fit_review","result":"PASS_BOUNDED","tests":39,"passed":39,"failed":0,"skipped":0,"command":"node --test test/discovery.test.mjs test/discovery-scheduler.test.mjs test/service.test.mjs"},
-    {"name":"canonical_runtime_immutability_recheck","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
+    {"name":"canonical_runtime_immutability_recheck","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4},
+    {"name":"product_factory_artifact_evidence","result":"PASS_BOUNDED","tests":40,"passed":40,"failed":0,"skipped":0,"command":"node --test test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs"},
+    {"name":"product_factory_independent_review","result":"ACCEPT","tests":12,"passed":12,"failed":0,"skipped":0,"notes":"No authority/browser/social/UNKNOWN semantic changes"},
+    {"name":"full_node_suite_after_factory_evidence","result":"PASS","tests":364,"passed":362,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"}
   ]
 }

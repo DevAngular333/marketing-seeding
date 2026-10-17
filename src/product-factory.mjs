@@ -7,6 +7,15 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT = 32_000;
 const ALLOWED_BINARIES = new Set(['node', 'python', 'python3', 'npm', 'pnpm', 'echo']);
 const SECRET_RE = /(authorization|cookie|token|secret|password|api[_-]?key|session)[=:]\s*[^\s]+/gi;
+const DEFAULT_DISCOVERY = Object.freeze({ maxFiles: 32, maxBytes: 16 * 1024 * 1024 });
+const ARTIFACT_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.mp4', '.webm', '.mov',
+  '.pdf', '.zip', '.glb', '.gltf', '.blend', '.stl', '.step', '.stp', '.obj'
+]);
+const IGNORED_DIRECTORIES = new Set([
+  '.git', '.hg', '.svn', 'node_modules', 'dist', 'build', 'coverage', '.next',
+  '.cache', '.venv', 'venv', '__pycache__', '.pytest_cache'
+]);
 
 const redact = (value) => String(value ?? '').replace(SECRET_RE, '$1=[REDACTED]');
 const within = (root, candidate) => {
@@ -99,4 +108,43 @@ export async function collectArtifactEvidence(repositoryPath, artifactPaths, com
   return { version: 1, repositoryPath: root, artifacts, externalSideEffects: false };
 }
 
-export { redact };
+/**
+ * Find bounded, read-only artifact candidates under a repository. Candidates
+ * are hints for evidence collection, never publication assets or authority.
+ */
+export async function discoverArtifactCandidates(repositoryPath, options = {}) {
+  const root = await fs.realpath(path.resolve(repositoryPath));
+  const maxFiles = Math.min(DEFAULT_DISCOVERY.maxFiles, Math.max(1, Number(options.maxFiles) || DEFAULT_DISCOVERY.maxFiles));
+  const maxBytes = Math.min(DEFAULT_DISCOVERY.maxBytes, Math.max(1, Number(options.maxBytes) || DEFAULT_DISCOVERY.maxBytes));
+  const candidates = [];
+  let totalBytes = 0;
+  async function walk(directory, depth = 0) {
+    if (candidates.length >= maxFiles || totalBytes >= maxBytes || depth > 8) return;
+    let entries;
+    try { entries = await fs.readdir(directory, { withFileTypes: true }); } catch { return; }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (candidates.length >= maxFiles || totalBytes >= maxBytes) break;
+      if (entry.name.startsWith('.') && entry.name !== '.well-known') continue;
+      const candidate = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIRECTORIES.has(entry.name)) await walk(candidate, depth + 1);
+        continue;
+      }
+      if (!entry.isFile() || !ARTIFACT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
+      let resolved;
+      try { resolved = await fs.realpath(candidate); } catch { continue; }
+      if (!within(root, resolved)) continue;
+      let stat;
+      try { stat = await fs.stat(resolved); } catch { continue; }
+      if (!stat.isFile() || stat.size > maxBytes - totalBytes) continue;
+      const relativePath = path.relative(root, resolved).replaceAll(path.sep, '/');
+      candidates.push({ path: relativePath, bytes: stat.size, extension: path.extname(relativePath).toLowerCase() });
+      totalBytes += stat.size;
+    }
+  }
+  await walk(root);
+  return { version: 1, repositoryPath: root, candidates, limits: { maxFiles, maxBytes }, totalBytes, externalSideEffects: false };
+}
+
+export { redact, ARTIFACT_EXTENSIONS };

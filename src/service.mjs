@@ -19,7 +19,7 @@ import { buildProductIntelligence, serializeProductIntelligence } from "./produc
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
 import { observePublicUrls } from "./discovery-observer.mjs";
-import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence } from "./product-factory.mjs";
+import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { deriveContentCandidates } from "./content-foundation.mjs";
@@ -621,7 +621,9 @@ export class SeedingService {
         timeoutMs: Math.min(120_000, Math.max(100, Number(input.timeoutMs) || 30_000)),
         maxOutput: 32_000
       });
-      const artifactPaths = Array.isArray(input.artifactPaths) ? input.artifactPaths.slice(0, 32) : [];
+      const explicitArtifactPaths = Array.isArray(input.artifactPaths) ? input.artifactPaths.slice(0, 32) : null;
+      const discovery = explicitArtifactPaths === null ? await discoverArtifactCandidates(productRepo, { maxFiles: 32, maxBytes: 16 * 1024 * 1024 }) : null;
+      const artifactPaths = explicitArtifactPaths === null ? discovery.candidates.map((item) => item.path) : explicitArtifactPaths;
       const artifacts = await collectArtifactEvidence(productRepo, artifactPaths, execution.results.map((item) => item.purpose));
       run = {
         id: runId,
@@ -631,6 +633,7 @@ export class SeedingService {
         classification,
         plan,
         execution,
+        artifactDiscovery: discovery,
         artifacts,
         status: execution.status,
         externalSideEffects: false,

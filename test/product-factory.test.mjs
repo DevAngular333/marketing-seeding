@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, redact } from '../src/product-factory.mjs';
+import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, redact } from '../src/product-factory.mjs';
 
 async function fixture(files = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'product-factory-'));
@@ -54,6 +54,27 @@ test('artifact evidence rejects symlink escape', async () => {
   const outside = await fixture({ 'outside.txt': 'outside' });
   await fs.symlink(path.join(outside, 'outside.txt'), path.join(root, 'dist', 'link.txt'));
   await assert.rejects(() => collectArtifactEvidence(root, ['dist/link.txt']), /escapes/);
+});
+
+test('discovers bounded artifact candidates deterministically and skips generated directories', async () => {
+  const root = await fixture({
+    'media/demo.mp4': 'video',
+    'media/cover.png': 'image',
+    'node_modules/ignored.mp4': 'ignored',
+    'dist/generated.zip': 'ignored'
+  });
+  const first = await discoverArtifactCandidates(root);
+  const second = await discoverArtifactCandidates(root);
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.candidates.map((item) => item.path), ['media/cover.png', 'media/demo.mp4']);
+  assert.equal(first.externalSideEffects, false);
+});
+
+test('artifact discovery bounds count and bytes', async () => {
+  const root = await fixture({ 'a.bin': 'not-media', 'a.mp4': '1234', 'b.mp4': '5678' });
+  const result = await discoverArtifactCandidates(root, { maxFiles: 1, maxBytes: 4 });
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.totalBytes, 4);
 });
 
 test('python validation plan is syntax-only and does not create cache files', async () => {

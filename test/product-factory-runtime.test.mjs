@@ -9,6 +9,8 @@ import { SeedingService } from "../src/service.mjs";
 test("runProductFactory executes local evidence only and persists bounded run lineage", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "factory-runtime-"));
   await fs.writeFile(path.join(root, "package.json"), "{}\n");
+  await fs.mkdir(path.join(root, "media"));
+  await fs.writeFile(path.join(root, "media", "demo.mp4"), "fixture-video");
   const stateFile = path.join(root, "state.json");
   const store = new JsonStore(stateFile);
   const service = new SeedingService(store);
@@ -26,6 +28,8 @@ test("runProductFactory executes local evidence only and persists bounded run li
   assert.equal(saved.productFactoryRuns.length, 1);
   assert.equal(saved.productFactoryRuns[0].id, result.id);
   assert.equal(saved.productFactoryRuns[0].externalSideEffects, false);
+  assert.deepEqual(saved.productFactoryRuns[0].artifactDiscovery.candidates.map((item) => item.path), ["media/demo.mp4"]);
+  assert.equal(saved.productFactoryRuns[0].artifacts.artifacts[0].sha256.length, 64);
 });
 
 test("runProductFactory rejects unknown campaign", async () => {
