@@ -24,4 +24,10 @@ test("credential-like content fails closed", () => {
   assert.throws(() => deriveContentCandidates({ productIntelligence: pi, story: { ...story, title: "token: abc123" }, targets: [target] }), /credential\/session/);
   const unsafe = { ...pi, document: { ...pi.document, CLAIMS_WE_CAN_PROVE: [{ id: "x", text: "password: abc", evidenceRefs: ["a".repeat(64)] }] } };
   assert.throws(() => deriveContentCandidates({ productIntelligence: unsafe, story: { ...story, claimIds: ["x"] }, targets: [target] }), /credential\/session/);
+  assert.throws(() => deriveContentCandidates({ productIntelligence: pi, story: { ...story, title: "Bearer abc123456" }, targets: [target] }), /credential\/session/);
+});
+test("oversized or missing identifiers fail closed without truncation", () => {
+  assert.throws(() => deriveContentCandidates({ productIntelligence: { ...pi, document: { ...pi.document, CLAIMS_WE_CAN_PROVE: [{ id: "x".repeat(161), text: "claim", evidenceRefs: ["a".repeat(64)] }] } }, story, targets: [target] }), /claim id/);
+  assert.throws(() => deriveContentCandidates({ productIntelligence: { ...pi, document: { ...pi.document, CLAIMS_WE_CAN_PROVE: [{ id: "x", text: "claim".repeat(250), evidenceRefs: ["a".repeat(64)] }] } }, story, targets: [target] }), /claim text/);
+  assert.throws(() => deriveContentCandidates({ productIntelligence: pi, story, targets: [{ channel: "linkedin" }] }), /target id/);
 });
