@@ -9,7 +9,10 @@
     "a72d231 feat: add safe product factory foundation",
     "30de649 feat: add versioned product intelligence handoff",
     "f4527af feat: add deterministic discovery foundation",
-    "working-tree seam changes: bounded repository inspection, product intelligence/discovery persistence, product factory run lineage, path/redaction fixes and regression tests"
+    "working-tree seam changes: bounded repository inspection, product intelligence/discovery persistence, product factory run lineage, path/redaction fixes and regression tests",
+    "a36d7a0 feat: add deterministic strategy foundation",
+    "bd94db3 fix: require active target for strategy publish",
+    "09d2c4b fix: quarantine strategy on linked unknown submissions"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -18,6 +21,7 @@
     {"name":"product_lineage_focused_tests","result":"PASS","tests":41,"passed":41,"failed":0,"skipped":0,"command":"node --test test/product-repository-inspection.test.mjs test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs"},
     {"name":"full_node_suite","result":"PASS","tests":324,"passed":322,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
     {"name":"syntax_and_diff_check","result":"PASS","nodeCheck":"passed","gitDiffCheck":"passed"},
-    {"name":"canonical_runtime_immutability","result":"PASS","schemaVersion":8,"revision":193,"sha256":"327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae"}
+    {"name":"canonical_runtime_immutability","result":"PASS","schemaVersion":8,"revision":193,"sha256":"327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae"},
+    {"name":"strategy_focused_gate","result":"PASS","tests":35,"passed":35,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/service.test.mjs test/server-lifecycle.test.mjs"}
   ]
 }

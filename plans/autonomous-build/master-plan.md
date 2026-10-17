@@ -12,6 +12,7 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 4. Add deterministic caller-supplied product intelligence with evidence/claim graph and unsupported-claim quarantine.
 5. Add a deterministic repository classifier and bounded local command/artifact evidence pipeline.
 6. Independently review integration; run focused and complete Node tests.
+7. Add a deterministic advisory strategy foundation that selects bounded next-best-action candidates without creating execution authority.
 
 Result: local implementation gates pass. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease.
 
@@ -20,7 +21,7 @@ Result: local implementation gates pass. No social action/live publish took plac
 1. **Unblock controlled live M1** only when a fresh authorized account/profile/target/content/session and harmless post policy are supplied; execute once through existing JEV/LinkedIn path, independently verify, then freeze the proven contract.
 2. Versioned upstream System-Agentic → marketing domain handoff; the local product intelligence handoff and campaign/dashboard projection now exist, but upstream live wiring remains.
 3. Expand Product Factory into project-specific safe build/run/render/media workflow with persistent artifacts.
-4. Extend the local deterministic discovery foundation into continuous authorized observation, audience/channel/community eligibility, strategy/NBA and grounded content generation.
+4. Extend the local deterministic discovery and advisory strategy foundations into continuous authorized observation, audience/channel/community eligibility, outcome-driven NBA and grounded content generation.
 5. Add contextual engagement, account/session registry/recovery, metrics learning, restart/24-7 hardening and Mission Control projections; certify platforms incrementally.
 
 ## Frozen seams

@@ -9,7 +9,7 @@
     {"stage":"Audience discovery","status":"NOT_IMPLEMENTED","evidence":"No autonomous audience search or matching engine."},
     {"stage":"Channel discovery","status":"PARTIAL_LOCAL","evidence":"Caller observations can be normalized, policy-classified and scored."},
     {"stage":"Community rules/eligibility","status":"PARTIAL","evidence":"Configured target rules/membership and host policies; no crawler."},
-    {"stage":"Campaign planning","status":"PARTIAL","evidence":"Campaign, schedules, targets and authorization exist; no strategy planner."},
+    {"stage":"Campaign planning","status":"PARTIAL_LOCAL_VERIFIED","evidence":"Campaign, schedules, targets and authorization plus deterministic advisory strategy decisions with bounded persistence; no outcome-driven planner."},
     {"stage":"Channel-specific content","status":"PARTIAL","evidence":"Seeded variants, grounded stories and drafts; no production model/provider."},
     {"stage":"Asset preparation","status":"PARTIAL_LOCAL","evidence":"Artifact registration/hash and bounded factory evidence; no media factory."},
     {"stage":"Existing session authentication","status":"PARTIAL","evidence":"ORCA profile/session readiness and identity checks."},
@@ -22,6 +22,6 @@
     {"stage":"Campaign state/persistence","status":"IMPLEMENTED_PARTIAL","evidence":"Schema 8 JSON store, audit, lease, execution state; no verified publication in canonical state."},
     {"stage":"Retry/resume","status":"PARTIAL","evidence":"Pre-submit bounded retry and read-only UNKNOWN reconciliation; long-running recovery unproven."},
     {"stage":"Analytics/reporting","status":"PARTIAL","evidence":"Metric/interactions/conversions collections and dashboard projections; canonical runtime empty."},
-    {"stage":"Learning/strategy update","status":"NOT_IMPLEMENTED","evidence":"No adaptive strategy state or feedback planner."}
+    {"stage":"Learning/strategy update","status":"PARTIAL","evidence":"Advisory deterministic strategy history exists; no adaptive metric feedback or learning loop."}
   ]
 }
