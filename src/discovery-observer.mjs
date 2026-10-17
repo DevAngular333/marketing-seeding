@@ -1,30 +1,119 @@
 import dns from "node:dns/promises";
+import http from "node:http";
+import https from "node:https";
 import net from "node:net";
+import { Readable } from "node:stream";
 
 const DEFAULTS = Object.freeze({ maxUrls: 20, maxBytes: 256_000, maxText: 12_000, maxRedirects: 3, timeoutMs: 8_000 });
 const PUBLIC_TYPES = new Set(["text/html", "text/plain", "application/xhtml+xml"]);
 
 function privateAddress(address) {
-  const normalized = String(address).toLowerCase().replace(/^::ffff:/, "");
-  if (net.isIP(normalized) === 4) {
-    const [a, b] = normalized.split(".").map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
+  const normalized = String(address).toLowerCase();
+  const family = net.isIP(normalized);
+  if (family === 4 || family === 6 && normalized.startsWith("::ffff:")) {
+    const ipv4 = family === 4 ? normalized : normalized.slice("::ffff:".length);
+    if (net.isIP(ipv4) !== 4) return true;
+    const parts = ipv4.split(".").map(Number);
+    const value = (BigInt(parts[0]) << 24n) | (BigInt(parts[1]) << 16n) | (BigInt(parts[2]) << 8n) | BigInt(parts[3]);
+    const inRange = (network, prefix) => {
+      const [a, b, c, d] = network.split(".").map(Number);
+      const base = (BigInt(a) << 24n) | (BigInt(b) << 16n) | (BigInt(c) << 8n) | BigInt(d);
+      return (value >> BigInt(32 - prefix)) === (base >> BigInt(32 - prefix));
+    };
+    // IANA special-purpose, private, link-local, documentation, benchmark,
+    // multicast and reserved-for-future-use IPv4 ranges.
+    return [
+      ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8],
+      ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24],
+      ["192.88.99.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15],
+      ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4]
+    ].some(([network, prefix]) => inRange(network, prefix));
   }
-  if (net.isIP(normalized) === 6) {
-    return normalized === "::1" || normalized === "::" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("ff");
-  }
-  return true;
+  if (family !== 6 || normalized.includes("%")) return true;
+  const words = normalized.split("::");
+  if (words.length > 2) return true;
+  const left = words[0] ? words[0].split(":") : [];
+  const right = words.length === 2 && words[1] ? words[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if (words.length === 1 && missing !== 0 || words.length === 2 && missing < 1) return true;
+  const full = [...left, ...Array(missing).fill("0"), ...right];
+  if (full.length !== 8 || full.some((part) => !/^[0-9a-f]{1,4}$/.test(part))) return true;
+  const value = full.reduce((result, part) => (result << 16n) | BigInt(`0x${part}`), 0n);
+  const inRange = (network, prefix) => {
+    const base = network.split(":").reduce((result, part) => (result << 16n) | BigInt(`0x${part || "0"}`), 0n);
+    return (value >> BigInt(128 - prefix)) === (base >> BigInt(128 - prefix));
+  };
+  // Only global-unicast space is eligible. Exclude documentation, benchmarking,
+  // 6to4 transition and reserved-for-example ranges.
+  return !inRange("2000:0:0:0:0:0:0:0", 3) || inRange("2001:db8:0:0:0:0:0:0", 32) ||
+    inRange("2001:2:0:0:0:0:0:0", 48) || inRange("2002:0:0:0:0:0:0:0", 16) ||
+    inRange("3fff:0:0:0:0:0:0:0", 20);
 }
 
-export async function validatePublicUrl(raw, { lookup = dns.lookup } = {}) {
+function normalizedHostname(url) {
+  return url.hostname.replace(/^\[|\]$/g, "");
+}
+
+async function resolveWithTimeout(lookup, hostname, timeoutMs) {
+  let timer;
+  const lookupPromise = Promise.resolve().then(() => lookup(hostname, { all: true, verbatim: true }));
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("DNS lookup timeout")), timeoutMs);
+  });
+  try {
+    return await Promise.race([lookupPromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolvePublicUrl(raw, { lookup = dns.lookup, timeoutMs = DEFAULTS.timeoutMs } = {}) {
   let url;
   try { url = new URL(String(raw)); } catch { throw new Error("invalid URL"); }
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("unsupported URL scheme");
   if (url.username || url.password) throw new Error("URL credentials are not allowed");
-  if (!url.hostname) throw new Error("URL hostname is required");
-  const addresses = net.isIP(url.hostname) ? [{ address: url.hostname }] : await lookup(url.hostname, { all: true, verbatim: true });
+  const hostname = normalizedHostname(url);
+  if (!hostname) throw new Error("URL hostname is required");
+  const boundedTimeout = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULTS.timeoutMs;
+  const addresses = net.isIP(hostname) ? [{ address: hostname, family: net.isIP(hostname) }] : await resolveWithTimeout(lookup, hostname, boundedTimeout);
   if (!addresses.length || addresses.some((entry) => privateAddress(entry.address))) throw new Error("private or reserved destination is not allowed");
-  return url;
+  return { url, address: addresses[0] };
+}
+
+export async function validatePublicUrl(raw, options = {}) {
+  return (await resolvePublicUrl(raw, options)).url;
+}
+
+function pinnedFetch(url, address, { signal, timeoutMs = DEFAULTS.timeoutMs } = {}) {
+  const requester = url.protocol === "https:" ? https : http;
+  const hostname = normalizedHostname(url);
+  return new Promise((resolve, reject) => {
+    const request = requester.request({
+      protocol: url.protocol,
+      hostname,
+      port: url.port || undefined,
+      method: "GET",
+      path: `${url.pathname}${url.search}`,
+      agent: false,
+      headers: { accept: "text/html, text/plain, application/xhtml+xml;q=0.9", "user-agent": "marketing-seeding-discovery/1.0" },
+      lookup: (_hostname, options, callback) => {
+        if (typeof options === "function") callback = options;
+        callback(null, address.address, address.family || net.isIP(address.address));
+      },
+      signal
+    }, (response) => {
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(response.headers)) {
+        if (value === undefined) continue;
+        for (const item of Array.isArray(value) ? value : [value]) headers.append(name, String(item));
+      }
+      const status = response.statusCode || 0;
+      resolve({ status, ok: status >= 200 && status < 300, headers, body: Readable.toWeb(response) });
+    });
+    request.once("error", reject);
+    request.setTimeout(timeoutMs, () => request.destroy(new Error("request timeout")));
+    request.end();
+  });
 }
 
 function redact(value) {
@@ -44,14 +133,49 @@ export function extractObservation(body, contentType, { maxText = DEFAULTS.maxTe
   return { title: clip(extracted.title), text: clip(extracted.text) };
 }
 
-async function readBounded(response, maxBytes) {
+function abortError() {
+  const error = new Error("timeout");
+  error.name = "AbortError";
+  return error;
+}
+
+async function readChunk(reader, signal) {
+  if (!signal) return reader.read();
+  if (signal.aborted) {
+    await reader.cancel();
+    throw abortError();
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      reject(abortError());
+      reader.cancel().catch(() => undefined);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    reader.read().then((result) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      resolve(result);
+    }, (error) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      reject(error);
+    });
+  });
+}
+
+async function readBounded(response, maxBytes, signal) {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) throw new Error("response exceeds byte bound");
   const reader = response.body?.getReader();
   if (!reader) return "";
   const chunks = []; let total = 0;
   while (true) {
-    const { done, value } = await reader.read();
+    const { done, value } = await readChunk(reader, signal);
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) { await reader.cancel(); throw new Error("response exceeds byte bound"); }
@@ -64,30 +188,42 @@ export async function observePublicUrls(urls, options = {}) {
   const config = { ...DEFAULTS, ...options };
   const requested = Array.isArray(urls) ? urls.slice(0, config.maxUrls) : [];
   const results = [];
-  const fetchImpl = config.fetchImpl || globalThis.fetch;
   for (const raw of requested) {
     let current = String(raw); let redirects = 0; let finalUrl = null;
     try {
       while (true) {
-        const url = await validatePublicUrl(current, config);
+        const resolved = await resolvePublicUrl(current, config);
+        const { url } = resolved;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), config.timeoutMs);
-        let response;
-        try { response = await fetchImpl(url, { redirect: "manual", signal: controller.signal }); } finally { clearTimeout(timer); }
-        if ([301, 302, 303, 307, 308].includes(response.status)) {
-          if (redirects >= config.maxRedirects) throw new Error("redirect limit exceeded");
-          const location = response.headers.get("location");
-          if (!location) throw new Error("redirect location missing");
-          current = new URL(location, url).toString(); redirects += 1; continue;
+        try {
+          const response = config.fetchImpl
+            ? await config.fetchImpl(url, { redirect: "manual", signal: controller.signal })
+            : await pinnedFetch(url, resolved.address, { signal: controller.signal, timeoutMs: config.timeoutMs });
+          if ([301, 302, 303, 307, 308].includes(response.status)) {
+            if (redirects >= config.maxRedirects) throw new Error("redirect limit exceeded");
+            const location = response.headers.get("location");
+            if (!location) throw new Error("redirect location missing");
+            await response.body?.cancel().catch(() => undefined);
+            current = new URL(location, url).toString(); redirects += 1; continue;
+          }
+          finalUrl = url.toString();
+          if (!response.ok) {
+            await response.body?.cancel().catch(() => undefined);
+            throw new Error(`HTTP_${response.status}`);
+          }
+          const contentType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+          if (!PUBLIC_TYPES.has(contentType)) {
+            await response.body?.cancel().catch(() => undefined);
+            throw new Error("unsupported content type");
+          }
+          const body = await readBounded(response, config.maxBytes, controller.signal);
+          const extracted = extractObservation(body, contentType, config);
+          results.push({ url: finalUrl, title: extracted.title, text: extracted.text, source: "public-http-observer", observedAt: new Date().toISOString(), fetch: { status: response.status, contentType, redirects } });
+          break;
+        } finally {
+          clearTimeout(timer);
         }
-        finalUrl = url.toString();
-        if (!response.ok) throw new Error(`HTTP_${response.status}`);
-        const contentType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-        if (!PUBLIC_TYPES.has(contentType)) throw new Error("unsupported content type");
-        const body = await readBounded(response, config.maxBytes);
-        const extracted = extractObservation(body, contentType, config);
-        results.push({ url: finalUrl, title: extracted.title, text: extracted.text, source: "public-http-observer", observedAt: new Date().toISOString(), fetch: { status: response.status, contentType, redirects } });
-        break;
       }
     } catch (error) {
       results.push({ url: finalUrl || String(raw), title: "", text: "", source: "public-http-observer", observedAt: new Date().toISOString(), fetch: { status: "UNKNOWN", reason: redact(error?.name === "AbortError" ? "timeout" : error?.message || "unavailable"), redirects }, observationStatus: "UNKNOWN" });

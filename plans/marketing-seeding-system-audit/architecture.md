@@ -103,7 +103,7 @@ Any uncertainty after the durable intent is represented as `SUBMIT_RESULT_UNKNOW
 
 ## Current runtime boundary
 
-The inspected canonical runtime is schema 8, revision 193, SHA-256 `327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae`. It has seven active campaigns but no active campaign authorization, window, grant or execution lease. It has four immutable UNKNOWN submissions and zero published posts. Therefore this topology is an implementation map, not proof that the real website path has completed.
+The inspected canonical runtime is schema 8, revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`. It has seven active campaigns but no active campaign authorization, window, grant or execution lease. It has four immutable UNKNOWN submissions and zero published posts. Traffic, control-cycle, discovery, browser-tracking and fixture timers are disabled. Therefore this topology is an implementation map, not proof that the real website path has completed.
 
 ## Core/domain boundary
 

@@ -15,7 +15,7 @@
       "resolved_at": null,
       "resume_point": "Fresh exact authorized LinkedIn campaign/account/profile/session input and policy permitting one harmless live test",
       "external_dependency": "Authorized campaign objective/content, account/profile, target and policy permitting one harmless live test",
-      "last_checked_at": "2026-10-17T00:00:00Z"
+      "last_checked_at": "2026-10-17T13:27:00Z"
     },
     {
       "blocker_id": "ORCA-TRANSPORT-LIVE-CERT-001",
@@ -31,7 +31,7 @@
       "resolved_at": null,
       "resume_point": "A permitted read-only/reversible ORCA calibration session with positive structural activation evidence and unchanged canonical runtime.",
       "external_dependency": "ORCA runtime/session available in a controlled browser lane",
-      "last_checked_at": "2026-10-17T00:00:00Z"
+      "last_checked_at": "2026-10-17T13:27:00Z"
     }
   ]
 }

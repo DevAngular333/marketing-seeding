@@ -3,7 +3,8 @@
 ## Unverified first
 
 - No live network polling was performed.
-- Full suite and canonical runtime invariants require integrator rerun after this follow-up.
+- The repository `.env.example` now documents `SEEDING_DISCOVERY_POLL_MINUTES=0`; the earlier configuration concern is resolved.
+- Full suite and canonical runtime invariants were rerun after the follow-up; see the observer-hardening verification report for the independent read-only check.
 - Scheduler wall-clock firing was not exercised; pure polling seam is covered with injected fixtures.
 
 ## Outcome
@@ -21,7 +22,7 @@ Implemented an opt-in, bounded campaign discovery poller on the existing `Seedin
 
 ## Tests
 
-Focused `test/discovery-scheduler.test.mjs` covers source sanitization, authority immutability, bounded polling, skipped campaigns, error isolation, and interval policy. Synthetic fixtures only.
+Focused scheduler tests cover source sanitization, authority immutability, bounded polling, skipped campaigns, error isolation, and interval policy. Synthetic fixtures only. Post-hardening observer subset: 17 passed, 0 failed; full suite: 361 total, 359 passed, 0 failed, 2 skipped.
 
 ## No-side-effect statement
 

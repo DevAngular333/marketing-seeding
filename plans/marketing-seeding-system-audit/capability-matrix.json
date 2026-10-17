@@ -7,7 +7,7 @@
     {"stage":"Product understanding","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"Evidence-grounded WHAT/PROBLEM/BETTER/AUDIENCE document and hash-linked claims."},
     {"stage":"Evidence/claim verification","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"Stable evidence hashes and unsupported claim quarantine."},
     {"stage":"Audience discovery","status":"NOT_IMPLEMENTED","evidence":"No autonomous audience search or matching engine."},
-    {"stage":"Channel discovery","status":"PARTIAL_LOCAL","evidence":"Caller observations can be normalized, policy-classified and scored."},
+    {"stage":"Channel discovery","status":"PARTIAL_LOCAL","evidence":"Bounded public HTTP observer and opt-in 15-minute polling feed normalized, policy-classified and scored observations; sources remain caller-configured."},
     {"stage":"Community rules/eligibility","status":"PARTIAL","evidence":"Configured target rules/membership and host policies; no crawler."},
     {"stage":"Campaign planning","status":"PARTIAL_LOCAL_VERIFIED","evidence":"Campaign, schedules, targets and authorization plus deterministic advisory strategy decisions with bounded persistence; no outcome-driven planner."},
     {"stage":"Channel-specific content","status":"PARTIAL_LOCAL_VERIFIED","evidence":"Seeded variants, grounded stories and deterministic evidence-grounded draft candidates with claim/evidence refs and bounded identity; no production model/provider."},
@@ -22,6 +22,6 @@
     {"stage":"Campaign state/persistence","status":"IMPLEMENTED_PARTIAL","evidence":"Schema 8 JSON store, audit, lease, execution state; no verified publication in canonical state."},
     {"stage":"Retry/resume","status":"PARTIAL","evidence":"Pre-submit bounded retry and read-only UNKNOWN reconciliation; long-running recovery unproven."},
     {"stage":"Analytics/reporting","status":"PARTIAL","evidence":"Metric/interactions/conversions collections and dashboard projections; canonical runtime empty."},
-    {"stage":"Learning/strategy update","status":"PARTIAL","evidence":"Advisory deterministic strategy history exists; no adaptive metric feedback or learning loop."}
+    {"stage":"Learning/strategy update","status":"PARTIAL_LOCAL","evidence":"Advisory deterministic strategy history, outcome summaries, learning feedback and opt-in control cycle exist; no autonomous authority or outcome-driven provider planner."}
   ]
 }

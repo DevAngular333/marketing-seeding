@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { observePublicUrls, validatePublicUrl, extractObservation } from "../src/discovery-observer.mjs";
+import { observePublicUrls, validatePublicUrl, extractObservation, privateAddress } from "../src/discovery-observer.mjs";
 
 const publicLookup = async () => [{ address: "93.184.216.34" }];
 const response = (body, { status = 200, type = "text/html" } = {}) => new Response(body, { status, headers: { "content-type": type } });
@@ -10,6 +10,17 @@ test("observer rejects unsafe schemes, credentials, and private destinations", a
   await assert.rejects(validatePublicUrl("https://user:pass@example.com", { lookup: publicLookup }), /credentials/);
   await assert.rejects(validatePublicUrl("http://127.0.0.1/x", { lookup: publicLookup }), /private/);
   assert.equal((await validatePublicUrl("https://example.com", { lookup: publicLookup })).hostname, "example.com");
+});
+
+test("observer rejects carrier-grade NAT and reserved documentation ranges", () => {
+  for (const address of ["100.64.0.1", "192.0.2.1", "198.18.0.1", "198.51.100.1", "203.0.113.1", "2001:db8::1", "2001:2::1"]) {
+    assert.equal(privateAddress(address), true, address);
+  }
+  assert.equal(privateAddress("93.184.216.34"), false);
+});
+
+test("observer bounds DNS resolution before any fetch", async () => {
+  await assert.rejects(validatePublicUrl("https://slow.example", { lookup: () => new Promise(() => {}), timeoutMs: 5 }), /DNS lookup timeout/);
 });
 
 test("observer extracts bounded redacted HTML and follows bounded public redirects", async () => {
@@ -24,6 +35,7 @@ test("observer extracts bounded redacted HTML and follows bounded public redirec
   assert.equal(extractObservation("<title>x</title><p>y</p>", "text/html").text, "x y");
 });
 
+
 test("observer classifies timeout, unsupported content and byte overflow as UNKNOWN", async () => {
   const fetchImpl = async (url, options) => {
     if (String(url).includes("timeout")) return await new Promise((_, reject) => options.signal.addEventListener("abort", () => { const e = new Error("aborted"); e.name = "AbortError"; reject(e); }));
@@ -34,6 +46,13 @@ test("observer classifies timeout, unsupported content and byte overflow as UNKN
   assert.equal(result.observations.length, 3);
   assert.ok(result.observations.every((item) => item.observationStatus === "UNKNOWN"));
   assert.match(result.observations[1].fetch.reason, /content type/);
+});
+
+test("observer timeout covers a response body that never produces a chunk", async () => {
+  const fetchImpl = async () => new Response(new ReadableStream({ start() {} }), { status: 200, headers: { "content-type": "text/plain" } });
+  const result = await observePublicUrls(["https://example.com/hanging-body"], { fetchImpl, lookup: publicLookup, timeoutMs: 5 });
+  assert.equal(result.observations[0].observationStatus, "UNKNOWN");
+  assert.match(result.observations[0].fetch.reason, /timeout/);
 });
 
 test("observer bounds URL count and redirects", async () => {

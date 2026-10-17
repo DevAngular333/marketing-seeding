@@ -16,7 +16,7 @@
     {"area":"Idempotency","status":"READY_LOCAL","evidence":"Publication keys, durable intent, grants, leases and UNKNOWN quarantine tests.","blocker":"Real provider behavior unproven."},
     {"area":"Safety","status":"READY_LOCAL","evidence":"Exact bindings, kill epoch, preflight, four evidence layers and no blind retry tests.","blocker":"Live transport certification absent."},
     {"area":"Observability","status":"PARTIAL","evidence":"Audit, execution IDs, receipts, flow graph and dashboard projections.","blocker":"No live publication timeline."},
-    {"area":"Tests","status":"READY_LOCAL","evidence":"324 total; 322 passed; 0 failed; 2 skipped; integrated focused 242/242 and product-lineage focused 41/41.","blocker":null},
+    {"area":"Tests","status":"READY_LOCAL","evidence":"361 total; 359 passed; 0 failed; 2 skipped; focused discovery/service/server gate 50/50; observer-hardening subset 17/17.","blocker":null},
     {"area":"Secrets/privacy","status":"PARTIAL","evidence":"Loopback bearer auth, redaction and runtime state outside Git.","blocker":"Host-managed browser/session material lacks a full broker."},
     {"area":"Multi-account","status":"PARTIAL","evidence":"Exact single account/profile binding and collision prevention.","blocker":"No account pool/selector/recovery."},
     {"area":"Operator UX","status":"PARTIAL","evidence":"Existing dashboard and read-only health/evidence views.","blocker":"Dashboard does not yet expose full autonomous reasoning/strategy loop."}

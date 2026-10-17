@@ -130,7 +130,7 @@ Opening a URL or having a metrics collector does not constitute platform support
 
 Content is mixed: hardcoded seeded R19 copy and deterministic templates exist; caller/AI-drafter can create grounded stories and channel variants; model/provider routing is absent in `src/`. Evidence grounding is real for supplied repository files and claim references. CTA, audience, language and channel length/visibility guards are stored/validated. Duplicate-content protection exists. There is no production LLM content generation, fatigue model, anti-spam classifier or adaptive content loop.
 
-Discovery currently means known target/policy registry plus caller-supplied observations. It does not search the web/platforms, infer audience fit, match language/geography, crawl rules or discover new channels. Strategy is represented by campaign objectives, schedules, channel drafts and readiness/rules state; no explainable next-best-action planner exists.
+Discovery currently means known target/policy registry plus bounded observations. The integration branch adds a public HTTP observer and opt-in 15-minute campaign polling with SSRF/redirect/byte/text/time bounds, but it still does not search platform APIs, infer audience fit, match language/geography, crawl rules or discover new channels. Strategy and learning now have deterministic advisory projections and an opt-in control cycle; they do not create authority or execute actions.
 
 ## 10. Publication verification and observability
 
@@ -189,12 +189,12 @@ No single autonomy score represents the whole system.
 
 No new live real website execution was performed in this audit. No final Post click, comment, Like, Follow, Connect, message, login/logout, credential change, publication or external campaign mutation occurred.
 
-The canonical health endpoint was read-only and reported PID 64620, source commit `b4fa42b…`, schema 8, revision 193. Canonical SHA-256 before/after inspection was `327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae`.
+The canonical health endpoint was read-only and reported PID 64620, source commit `b4fa42b…`, schema 8, revision 194. Canonical SHA-256 at inspection was `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`.
 
 ### SYNTHETIC / LOCAL
 
-- 324 Node tests: 322 pass, 0 fail, 2 skip.
-- Product-lineage focused tests: 41 pass, 0 fail, 0 skip.
+- 361 Node tests: 359 pass, 0 fail, 2 skip.
+- Focused discovery/service/server gate: 50 pass, 0 fail, 0 skip.
 - 242 focused transport/governance/JEV/LinkedIn/intelligence/factory/discovery/service tests: 242 pass, 0 fail, 0 skip.
 - Local browser fixture: 10/10 reversible control activation trials, 100% rate under policy (minimum 10, ≥95%, zero wrong-target, zero silent fallback).
 - Local tests cover command completion without activation, activation without acceptance, acceptance without verifiable publication, verified publication contracts, stale/moving/covered/wrong-composer controls, wrong account/profile, timeout after intent, duplicate dispatch, UNKNOWN immutability and no second final click.
@@ -225,7 +225,7 @@ See [readiness.json](./readiness.json) and [gaps.md](./gaps.md). The material bl
 
 1. No fresh exact live authority means no safe real LinkedIn acceptance gate can run.
 2. Real ORCA transport activation and irreversible submit reliability are not certified.
-3. Autonomous product research, continuous discovery, strategy/NBA, production content, multi-account runtime, learning and multi-platform publishing remain partial or absent.
+3. Autonomous product research, platform audience/community discovery, production content, multi-account runtime, outcome-driven learning and multi-platform publishing remain partial or absent.
 
 ## 17. Final verdict
 
