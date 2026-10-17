@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
+import { EventEmitter } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
-import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, redact } from '../src/product-factory.mjs';
+import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, deriveProjectEvidencePlan, executeStagedFactoryProbe, redact } from '../src/product-factory.mjs';
 
 async function fixture(files = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'product-factory-'));
@@ -31,15 +32,27 @@ test('plan is deterministic and runner executes without shell', async () => {
 test('rejects traversal and disallowed commands', async () => {
   const root = await fixture();
   await assert.rejects(() => executeFactoryPlan({ repositoryPath: root, steps: [{ argv: ['sh', '-c', 'echo bad'], cwd: root }] }), /disallowed/);
+  await assert.rejects(() => executeFactoryPlan({ repositoryPath: root, steps: [{ argv: ['node', 'script.mjs'], cwd: root }] }), /disallowed/);
+  await assert.rejects(() => executeFactoryPlan({ repositoryPath: root, steps: [{ argv: ['node', '--check', 'missing.mjs'], cwd: root }] }), /does not exist/);
   await assert.rejects(() => executeFactoryPlan({ repositoryPath: root, steps: [{ argv: ['echo', 'x'], cwd: path.join(root, '..') }] }), /escapes/);
 });
 
-test('records timeout and failure', async () => {
-  const root = await fixture({ 'hang.mjs': 'setTimeout(() => {}, 1000);', 'fail.mjs': 'process.exit(3);' });
-  const timeout = await executeFactoryPlan({ repositoryPath: root, steps: [{ argv: ['node', 'hang.mjs'], cwd: root }] }, { timeoutMs: 20 });
-  assert.equal(timeout.results[0].status, 'TIMEOUT');
-  const failure = await executeFactoryPlan({ repositoryPath: root, steps: [{ argv: ['node', 'fail.mjs'], cwd: root }] });
+test('records timeout and failure for the bounded runner', async () => {
+  const root = await fixture({ 'bad.mjs': 'export = ;' });
+  const failure = await executeFactoryPlan({ repositoryPath: root, steps: [{ argv: ['node', '--check', 'bad.mjs'], cwd: root }] });
   assert.equal(failure.results[0].status, 'FAILED');
+  const timeout = await executeFactoryPlan({ repositoryPath: root, steps: [{ argv: ['echo', 'static-artifact-ready'], cwd: root }] }, {
+    timeoutMs: 20,
+    spawnImpl(binary, args, options) {
+      const child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => {};
+      setTimeout(() => child.emit('close', null, 'SIGTERM'), 50);
+      return child;
+    }
+  });
+  assert.equal(timeout.results[0].status, 'TIMEOUT');
 });
 
 test('hashes artifacts and redacts secret-like output', async () => {
@@ -83,4 +96,55 @@ test('python validation plan is syntax-only and does not create cache files', as
   const result = await executeFactoryPlan(plan);
   assert.equal(result.status, 'SUCCEEDED');
   assert.deepEqual((await fs.readdir(root)).sort(), ['main.py', 'pyproject.toml']);
+});
+
+test('derives deterministic safe manifest plan and rejects shell commands', async () => {
+  const root = await fixture({ 'package.json': JSON.stringify({ scripts: { build: 'node --check build.mjs', render: 'npm install && echo nope' } }), 'build.mjs': 'console.log("ok")' });
+  const plan = await deriveProjectEvidencePlan(root);
+  assert.deepEqual(plan, await deriveProjectEvidencePlan(root));
+  assert.equal(plan.status, 'ELIGIBLE');
+  assert.deepEqual(plan.steps[0].argv, ['node', '--check', 'build.mjs']);
+  assert.deepEqual(plan.rejected, [{ key: 'render', reason: 'unsafe_or_unallowlisted_command' }]);
+});
+
+test('staged probe isolates source and reports bounded artifacts', async () => {
+  const root = await fixture({ 'package.json': JSON.stringify({ scripts: { build: 'node --check build.mjs' } }), 'build.mjs': 'console.log("syntax only")', 'media/out.png': 'fixture' });
+  const result = await executeStagedFactoryProbe(root, { artifactPaths: ['media/out.png'] });
+  assert.equal(result.execution.status, 'SUCCEEDED');
+  assert.equal(result.execution.externalSideEffects, false);
+  assert.equal(result.artifacts.artifacts[0].bytes, 7);
+  assert.equal(await fs.readFile(path.join(root, 'media', 'out.png'), 'utf8'), 'fixture');
+});
+
+test('manifest execution fails closed for scripts, interpreters, package managers and unsafe paths', async () => {
+  const root = await fixture({ 'package.json': JSON.stringify({ scripts: {
+    build: 'node build.mjs',
+    test: 'node -e "process.exit(1)"',
+    render: 'python script.py',
+    validate: 'npm run build'
+  } }), 'build.mjs': 'console.log("unsafe")', 'script.py': 'print("unsafe")' });
+  const plan = await deriveProjectEvidencePlan(root);
+  assert.equal(plan.status, 'NOT_EXECUTED_UNSAFE');
+  assert.deepEqual(plan.steps, []);
+  assert.deepEqual(plan.rejected.map((item) => item.key), ['build', 'render', 'test', 'validate']);
+});
+
+test('manifest accepts only a relative JavaScript syntax check and rejects traversal or absolute paths', async () => {
+  const root = await fixture({ 'package.json': JSON.stringify({ scripts: {
+    build: 'node --check src/build.mjs',
+    test: 'node --check ../outside.mjs',
+    render: 'node --check /tmp/render.mjs',
+    validate: 'node --check src/build.ts'
+  } }), 'src/build.mjs': 'export const ok = true;' });
+  const plan = await deriveProjectEvidencePlan(root);
+  assert.equal(plan.status, 'ELIGIBLE');
+  assert.deepEqual(plan.steps.map((step) => step.argv), [['node', '--check', 'src/build.mjs']]);
+  assert.deepEqual(plan.rejected.map((item) => item.key), ['render', 'test', 'validate']);
+});
+
+test('missing manifest truthfully remains unexecuted', async () => {
+  const root = await fixture({ 'README.md': 'fixture' });
+  const result = await executeStagedFactoryProbe(root);
+  assert.equal(result.plan.status, 'NOT_EXECUTED_UNSAFE');
+  assert.equal(result.execution.status, 'NOT_EXECUTED_UNSAFE');
 });

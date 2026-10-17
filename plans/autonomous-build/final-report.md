@@ -21,7 +21,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Exact campaign/account/profile/target/content/visibility authorization with quotas, cadence, concurrency, idempotency, readiness and kill-switch fencing.
 - Standing campaign authorization can derive bounded one-time execution controls without routine per-post approval, subject to existing operator-created campaign authority.
 - Product intelligence emits evidence/claim hashes, supported/unsupported claims and a versioned handoff; integration branch persists/projects it read-only.
-- Product factory classifies a repository, executes only the narrow allowlisted plan with bounds and optional artifact hashes, persists a bounded campaign-owned run lineage and has no external side effect.
+- Product factory classifies a repository, executes only the strict fail-closed `node --check` manifest plan in temporary staging with bounds and optional artifact hashes, persists a bounded campaign-owned run lineage and has no external side effect. Arbitrary project scripts and build/render commands remain explicitly unexecuted.
 - Discovery normalizes, deduplicates, policy-classifies and scores observations; the opt-in public HTTP observer and 15-minute scheduler persist only bounded successful observations, isolate campaign errors, and do not create publish authority.
 - Discovery can attach bounded caller-supplied audience/channel/locale fit evidence with explicit `MATCHED`/`MISMATCHED`/`UNKNOWN` outcomes; this remains advisory and does not create platform support or execution authority.
 - Product Factory can discover and hash bounded media/document candidates from the registered repository through existing local evidence lineage; explicit paths remain authoritative and no candidate becomes a publication-approved asset automatically.
@@ -35,7 +35,8 @@ The integration branch now contains local, tested foundations for bounded standi
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
- Full Node suite: 374 total, 372 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: 379 total, 377 passed, 0 failed, 2 skipped; exit 0
+ Product Factory project-evidence/runtime/service gate: 45 passed, 0 failed, 0 skipped; independent safety review PASS (bounded)
  UI typecheck: `cd ui && npx tsc --noEmit` → PASS
  UI production build: `cd ui && npm run build` → PASS (existing Vite config warnings only)
  Account runtime readiness projection: 5 passed, 0 failed, 0 skipped; combined projection/service/server 34 passed; independent release review PASS (bounded)
@@ -53,7 +54,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 ## Git/release state
 
-- Integration branch HEAD is `6dcebf9` (`feat: expose account readiness in mission control`), including the Mission Control account/session section, product-understanding derivation and account-runtime readiness projection artifacts.
+- Integration branch baseline HEAD is `260113a` (`docs: record account readiness mission control`); current working tree adds the Product Factory project-evidence safety milestone and its reports.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 

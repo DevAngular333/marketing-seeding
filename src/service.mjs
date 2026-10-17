@@ -19,7 +19,7 @@ import { buildProductIntelligence, serializeProductIntelligence } from "./produc
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
 import { observePublicUrls } from "./discovery-observer.mjs";
-import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates } from "./product-factory.mjs";
+import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { deriveContentCandidates } from "./content-foundation.mjs";
@@ -702,21 +702,25 @@ export class SeedingService {
     try {
       const classification = await classifyRepository(productRepo);
       const plan = createFactoryPlan(classification);
-      const execution = await executeFactoryPlan(plan, {
-        timeoutMs: Math.min(120_000, Math.max(100, Number(input.timeoutMs) || 30_000)),
-        maxOutput: 32_000
-      });
       const explicitArtifactPaths = Array.isArray(input.artifactPaths) ? input.artifactPaths.slice(0, 32) : null;
       const discovery = explicitArtifactPaths === null ? await discoverArtifactCandidates(productRepo, { maxFiles: 32, maxBytes: 16 * 1024 * 1024 }) : null;
-      const artifactPaths = explicitArtifactPaths === null ? discovery.candidates.map((item) => item.path) : explicitArtifactPaths;
-      const artifacts = await collectArtifactEvidence(productRepo, artifactPaths, execution.results.map((item) => item.purpose));
+      const artifactPaths = explicitArtifactPaths === null ? (discovery?.candidates || []).map((item) => item.path) : explicitArtifactPaths;
+      const probe = await executeStagedFactoryProbe(productRepo, {
+        timeoutMs: Math.min(120_000, Math.max(100, Number(input.timeoutMs) || 30_000)),
+        maxOutput: 32_000,
+        artifactPaths
+      });
+      const execution = probe.execution;
+      const artifacts = probe.plan.status === "ELIGIBLE"
+        ? probe.artifacts
+        : await collectArtifactEvidence(productRepo, artifactPaths, []);
       run = {
         id: runId,
         campaignId,
         actor: String(actor || "automation"),
         repositoryPath: productRepo,
         classification,
-        plan,
+        plan: { ...plan, projectEvidence: probe.plan },
         execution,
         artifactDiscovery: discovery,
         artifacts,

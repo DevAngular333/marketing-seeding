@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT = 32_000;
-const ALLOWED_BINARIES = new Set(['node', 'python', 'python3', 'npm', 'pnpm', 'echo']);
 const SECRET_RE = /(authorization|cookie|token|secret|password|api[_-]?key|session)[=:]\s*[^\s]+/gi;
 const DEFAULT_DISCOVERY = Object.freeze({ maxFiles: 32, maxBytes: 16 * 1024 * 1024 });
 const ARTIFACT_EXTENSIONS = new Set([
@@ -16,6 +16,10 @@ const IGNORED_DIRECTORIES = new Set([
   '.git', '.hg', '.svn', 'node_modules', 'dist', 'build', 'coverage', '.next',
   '.cache', '.venv', 'venv', '__pycache__', '.pytest_cache'
 ]);
+const SAFE_MANIFEST_KEYS = new Set(['build', 'test', 'render', 'validate']);
+const SAFE_MANIFEST_SOURCE_EXTENSIONS = new Set(['.js', '.mjs']);
+const INTERNAL_PYTHON_SYNTAX_SCRIPT = "import pathlib\nfor p in pathlib.Path('.').rglob('*.py'):\n compile(p.read_text(), str(p), 'exec')";
+const INTERNAL_STATIC_VALIDATION_ARGV = Object.freeze(['echo', 'static-artifact-ready']);
 
 const redact = (value) => String(value ?? '').replace(SECRET_RE, '$1=[REDACTED]');
 const within = (root, candidate) => {
@@ -44,35 +48,124 @@ export function createFactoryPlan(classification) {
   if (classification.kind === 'node') {
     steps = [command(['node', '--check', 'src/server.mjs'], 'syntax-check')];
   } else if (classification.kind === 'python') {
-    const syntaxCheck = "import pathlib\nfor p in pathlib.Path('.').rglob('*.py'):\n compile(p.read_text(), str(p), 'exec')";
-    steps = [command(['python3', '-B', '-c', syntaxCheck], 'syntax-check')];
+    steps = [command(['python3', '-B', '-c', INTERNAL_PYTHON_SYNTAX_SCRIPT], 'syntax-check')];
   } else if (classification.kind === 'static') {
-    steps = [{ argv: ['echo', 'static-artifact-ready'], purpose: 'static-validation', cwd: root }];
+    steps = [{ argv: [...INTERNAL_STATIC_VALIDATION_ARGV], purpose: 'static-validation', cwd: root }];
   } else steps = [];
   return { version: 1, repositoryPath: root, kind: classification.kind, steps };
+}
+
+function splitArgv(script) {
+  if (typeof script !== 'string' || !script.trim() || /[;&|`$<>\\\n\r]/.test(script)) return null;
+  const argv = script.trim().split(/\s+/);
+  if (argv.length !== 3 || argv[0] !== 'node' || argv[1] !== '--check') return null;
+  if (argv.some((arg) => arg.length > 240)) return null;
+  const source = argv[2].replaceAll('\\', '/');
+  if (!source || source.startsWith('/') || source.split('/').includes('..') || !SAFE_MANIFEST_SOURCE_EXTENSIONS.has(path.extname(source).toLowerCase())) return null;
+  argv[2] = source;
+  return argv;
+}
+
+/** Derive only explicitly allowlisted, shell-free manifest commands. */
+export async function deriveProjectEvidencePlan(repositoryPath) {
+  const root = await fs.realpath(path.resolve(repositoryPath));
+  let metadata;
+  try {
+    const parsed = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
+    metadata = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch { metadata = null; }
+  const steps = [];
+  const rejected = [];
+  const scripts = metadata?.scripts && typeof metadata.scripts === 'object' && !Array.isArray(metadata.scripts) ? metadata.scripts : {};
+  for (const key of [...SAFE_MANIFEST_KEYS].sort()) {
+    if (!(key in scripts)) continue;
+    const argv = splitArgv(scripts[key]);
+    if (!argv) { rejected.push({ key, reason: 'unsafe_or_unallowlisted_command' }); continue; }
+    const sourcePath = path.resolve(root, argv[2]);
+    let resolved;
+    try { resolved = await fs.realpath(sourcePath); } catch { rejected.push({ key, reason: 'missing_or_unsafe_source' }); continue; }
+    if (!within(root, resolved) || !(await fs.stat(resolved)).isFile()) { rejected.push({ key, reason: 'missing_or_unsafe_source' }); continue; }
+    steps.push({ argv, purpose: `manifest:${key}`, cwd: root });
+  }
+  return { version: 1, repositoryPath: root, kind: metadata ? 'node' : 'unknown', status: steps.length ? 'ELIGIBLE' : 'NOT_EXECUTED_UNSAFE', steps, rejected };
+}
+
+async function copyToStaging(root, artifactPaths = []) {
+  const staging = await fs.mkdtemp(path.join('/tmp', `product-factory-${randomUUID()}-`));
+  const preserved = new Set((artifactPaths || [])
+    .filter((value) => typeof value === 'string' && !path.isAbsolute(value))
+    .map((value) => path.resolve(root, value))
+    .filter((value) => within(root, value)));
+  await fs.cp(root, staging, {
+    recursive: true,
+    dereference: false,
+    filter: async (source) => {
+      const relative = path.relative(root, source);
+      const ignored = relative && [...IGNORED_DIRECTORIES].some((name) => relative === name || relative.startsWith(`${name}${path.sep}`));
+      const retainedForArtifact = [...preserved].some((candidate) => candidate === source || candidate.startsWith(`${source}${path.sep}`));
+      if (ignored && !retainedForArtifact) return false;
+      const stat = await fs.lstat(source);
+      return !stat.isSymbolicLink();
+    }
+  });
+  return staging;
+}
+
+/** Execute a derived project probe only in a temporary copy and clean it up. */
+export async function executeStagedFactoryProbe(repositoryPath, options = {}) {
+  const root = await fs.realpath(path.resolve(repositoryPath));
+  const plan = await deriveProjectEvidencePlan(root);
+  if (plan.status !== 'ELIGIBLE') return { plan, execution: { version: 1, repositoryPath: root, status: 'NOT_EXECUTED_UNSAFE', results: [], externalSideEffects: false }, artifacts: { version: 1, repositoryPath: root, artifacts: [], externalSideEffects: false } };
+  const paths = Array.isArray(options.artifactPaths) ? options.artifactPaths.slice(0, 32) : [];
+  const staging = await copyToStaging(root, paths);
+  try {
+    const stagedPlan = { ...plan, repositoryPath: staging, steps: plan.steps.map((step) => ({ ...step, cwd: staging })) };
+    const execution = await executeFactoryPlan(stagedPlan, options);
+    const artifacts = await collectArtifactEvidence(staging, paths, execution.results.map((item) => item.purpose));
+    return { plan, execution: { ...execution, repositoryPath: root }, artifacts: { ...artifacts, repositoryPath: root } };
+  } finally {
+    await fs.rm(staging, { recursive: true, force: true });
+  }
 }
 
 async function validateCommand(step, root) {
   if (!step || !Array.isArray(step.argv) || step.argv.length === 0 || step.argv.some((v) => typeof v !== 'string')) throw new Error('command must be a non-empty argv array');
   const [binary, ...args] = step.argv;
-  if (!ALLOWED_BINARIES.has(binary) || binary.includes('/') || binary.includes('\\')) throw new Error(`disallowed command: ${binary}`);
+  if (binary.includes('/') || binary.includes('\\')) throw new Error(`disallowed command: ${binary}`);
   if (args.some((arg) => /[;&|`$<>]/.test(arg))) throw new Error('shell metacharacters are not allowed');
   const requestedCwd = path.resolve(step.cwd || root);
   let cwd;
   try { cwd = await fs.realpath(requestedCwd); } catch { throw new Error('command cwd does not exist'); }
   if (!within(root, cwd)) throw new Error('command cwd escapes repository');
-  return { binary, args, cwd };
+
+  if (binary === 'node' && args[0] === '--check' && args.length === 2) {
+    const source = args[1].replaceAll('\\', '/');
+    if (!source || source.startsWith('/') || source.split('/').includes('..') || !SAFE_MANIFEST_SOURCE_EXTENSIONS.has(path.extname(source).toLowerCase())) throw new Error('node syntax-check source is not a safe relative JavaScript path');
+    const sourcePath = path.resolve(cwd, source);
+    if (!within(root, sourcePath)) throw new Error('node syntax-check source escapes repository');
+    let resolved;
+    try { resolved = await fs.realpath(sourcePath); } catch { throw new Error('node syntax-check source does not exist'); }
+    if (!within(root, resolved)) throw new Error('node syntax-check source escapes repository');
+    const stat = await fs.stat(resolved);
+    if (!stat.isFile()) throw new Error('node syntax-check source is not a file');
+    return { binary, args: ['--check', path.relative(cwd, resolved).replaceAll(path.sep, '/')], cwd };
+  }
+
+  if (binary === 'python3' && args.length === 3 && args[0] === '-B' && args[1] === '-c' && args[2] === INTERNAL_PYTHON_SYNTAX_SCRIPT) return { binary, args, cwd };
+  if (binary === INTERNAL_STATIC_VALIDATION_ARGV[0] && args.length === 1 && args[0] === INTERNAL_STATIC_VALIDATION_ARGV[1]) return { binary, args, cwd };
+  throw new Error(`disallowed command: ${binary}`);
 }
 
 export async function executeFactoryPlan(plan, options = {}) {
   const root = await fs.realpath(path.resolve(plan.repositoryPath));
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxOutput = options.maxOutput ?? DEFAULT_MAX_OUTPUT;
+  const spawnProcess = options.spawnImpl ?? spawn;
   const results = [];
   for (const step of plan.steps || []) {
     const { binary, args, cwd } = await validateCommand(step, root);
     const result = await new Promise((resolve) => {
-      const child = spawn(binary, args, { cwd, shell: false, env: { PATH: process.env.PATH || '' } });
+      const child = spawnProcess(binary, args, { cwd, shell: false, env: { PATH: process.env.PATH || '' } });
       let stdout = '', stderr = '', timedOut = false;
       const append = (target, chunk) => target.length < maxOutput ? (target + chunk.toString()).slice(0, maxOutput) : target;
       child.stdout.on('data', (c) => { stdout = append(stdout, c); });
