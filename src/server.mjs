@@ -518,6 +518,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.attachProductIntelligence(match[1], await readJson(request), actor));
     }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/content-candidates$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 201, await service.deriveContentCandidates(match[1], await readJson(request), actor));
+    }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/product-intelligence\/inspect$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.inspectProductIntelligence(match[1], await readJson(request), actor));

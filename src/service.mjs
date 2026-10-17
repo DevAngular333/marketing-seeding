@@ -21,6 +21,7 @@ import { processDiscoveries } from "./discovery.mjs";
 import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
+import { deriveContentCandidates } from "./content-foundation.mjs";
 import { appRoot } from "./paths.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
@@ -1538,6 +1539,25 @@ export class SeedingService {
     }
     const latestState = await this.store.read();
     return result.result.map((post) => latestState.posts.find((item) => item.id === post.id) || post);
+  }
+
+  async deriveContentCandidates(campaignId, input = {}, actor = "content-drafter") {
+    const initial = await this.store.read();
+    const campaign = requireItem(initial.campaigns, campaignId, "Campaign");
+    const story = requireItem(initial.stories || [], input.storyId, "Story");
+    if (story.campaignId !== campaignId) throw new Error("Story must belong to the campaign");
+    const targets = (initial.targets || []).filter((target) => target.campaignId === campaignId && (!input.targetIds || input.targetIds.includes(target.id)));
+    const candidates = deriveContentCandidates({ productIntelligence: campaign.productIntelligence, story, targets });
+    const result = await this.store.mutate(actor, "content_candidates_derived", (state) => {
+      const current = requireItem(state.campaigns, campaignId, "Campaign");
+      current.contentCandidates ||= [];
+      const byIdentity = new Map(current.contentCandidates.map((item) => [item.contentIdentity, item]));
+      for (const candidate of candidates) byIdentity.set(candidate.contentIdentity, candidate);
+      current.contentCandidates = [...byIdentity.values()].slice(-24);
+      current.updatedAt = nowIso();
+      return current.contentCandidates.filter((item) => candidates.some((candidate) => candidate.contentIdentity === item.contentIdentity));
+    });
+    return result.result;
   }
 
   async queueAuthorizedCampaignJobs(campaignId, actor = "scheduler") {
