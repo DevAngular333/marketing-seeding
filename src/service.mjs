@@ -24,6 +24,7 @@ import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { deriveContentCandidates } from "./content-foundation.mjs";
 import { appendLearningFeedback, deriveLearningFeedback } from "./learning.mjs";
 import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
+import { validateDistributionHandoff } from "./distribution-handoff.mjs";
 import { appRoot } from "./paths.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
@@ -534,6 +535,32 @@ export class SeedingService {
 
   async init() {
     return this.store.init();
+  }
+
+  /** Validate and persist a provider-neutral, DRY_RUN distribution handoff. */
+  async attachDistributionHandoff(campaignId, input = {}, actor = "system-agentic") {
+    const state = await this.store.read();
+    const validation = validateDistributionHandoff(input, { state, campaignId });
+    if (!validation.ok) {
+      const error = new Error(`Invalid distribution handoff: ${validation.errors.join(", ")}`);
+      error.code = "INVALID_DISTRIBUTION_HANDOFF";
+      error.errors = validation.errors;
+      throw error;
+    }
+    const result = await this.store.mutate(actor, "distribution_handoff_attached", (nextState) => {
+      const campaign = requireItem(nextState.campaigns, campaignId, "Campaign");
+      campaign.distributionHandoffs ||= [];
+      const existing = campaign.distributionHandoffs.find((item) => item.handoffHash === validation.handoff.handoffHash);
+      if (existing) return existing;
+      const row = { ...validation.handoff, attachedAt: nowIso(), attachedBy: String(actor || "system-agentic") };
+      campaign.distributionHandoffs = [...campaign.distributionHandoffs, row].slice(-24);
+      campaign.updatedAt = nowIso();
+      return row;
+    });
+    return {
+      handoff: result.result,
+      result: { ...validation.result, canonicalStateTouched: true, canonicalMetadataPersisted: true, liveDispatch: false, publicationAttempts: 0 }
+    };
   }
 
   async snapshot() {
@@ -3573,6 +3600,7 @@ export class SeedingService {
       campaigns: state.campaigns,
       outcomes: state.campaigns.filter((campaign) => campaign.outcomeSummary).map((campaign) => ({ campaignId: campaign.id, latest: campaign.outcomeSummary, recent: (campaign.outcomeSummaries || []).slice(-24), updatedAt: campaign.outcomeUpdatedAt || null })),
       learning: state.campaigns.filter((campaign) => campaign.latestLearningFeedback).map((campaign) => ({ campaignId: campaign.id, latest: campaign.latestLearningFeedback, recent: (campaign.learningFeedback || []).slice(-24), updatedAt: campaign.learningUpdatedAt || null })),
+      distributionHandoffs: state.campaigns.flatMap((campaign) => (campaign.distributionHandoffs || []).map((handoff) => ({ campaignId: campaign.id, ...handoff }))),
       productIntelligence: state.campaigns
         .filter((campaign) => campaign.productIntelligence)
         .map((campaign) => ({

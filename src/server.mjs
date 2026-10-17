@@ -261,6 +261,7 @@ function automationCanMutate(method, pathname) {
   if (/^\/api\/campaigns\/[^/]+\/readiness-check$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/product-factory$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/product-intelligence\/inspect$/.test(pathname)) return true;
+  if (/^\/api\/campaigns\/[^/]+\/distribution-handoff$/.test(pathname)) return true;
   if (/^\/api\/posts\/[^/]+\/execution-request$/.test(pathname)) return true;
   if (/^\/api\/execution-requests\/[^/]+\/receipt$/.test(pathname)) return true;
   return [
@@ -442,6 +443,11 @@ const server = http.createServer(async (request, response) => {
         }
       });
     }
+    let handoffMatch = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/distribution-handoffs$/);
+    if (request.method === "GET" && handoffMatch) {
+      const dashboard = await service.dashboard();
+      return sendJson(response, 200, { campaignId: handoffMatch[1], handoffs: dashboard.distributionHandoffs.filter((item) => item.campaignId === handoffMatch[1]) });
+    }
     if (request.method === "GET" && url.pathname === "/api/leads") {
       return sendJson(response, 200, await readAutoGtmFeed(autoGtmFeedFile));
     }
@@ -527,6 +533,10 @@ const server = http.createServer(async (request, response) => {
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/product-intelligence$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.attachProductIntelligence(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/distribution-handoff$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.attachDistributionHandoff(match[1], await readJson(request), actor));
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/content-candidates$/);
     if (request.method === "POST" && match) {
