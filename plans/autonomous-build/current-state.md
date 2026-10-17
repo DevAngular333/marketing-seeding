@@ -4,7 +4,7 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration release baseline: `9fa74d1` (`feat: accept canonical dry-run handoff envelopes`); the pending working tree adds the read-only Mission Control panel and its release artifacts. The final release commit is recorded after integration.
+- Integration HEAD: `56ea34e` (`feat: add read-only mission control projection`), including the Mission Control panel and release artifacts. Journal snapshot has a follow-up hash-only correction in the working tree.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
 - Working tree contains the Mission Control read-model source/bundle change and release artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.

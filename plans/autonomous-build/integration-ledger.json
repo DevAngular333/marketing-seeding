@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "9fa74d1",
+  "checkpointCommit": "56ea34e",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -24,7 +24,7 @@
     "b06ca32 feat: project safe account runtime dashboard state",
     "working-tree hardening: bounded account blocker/readiness projection",
     "83403d1 feat: expose safe account runtime health",
-    "pending: Mission Control read-model source, tracked bundle and journal artifacts"
+    "56ea34e feat: add read-only mission control projection"
   ],
   "rejectedCommits": [],
   "gates": [

@@ -53,7 +53,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 ## Git/release state
 
-- Integration branch release baseline is `9fa74d1` (`feat: accept canonical dry-run handoff envelopes`) plus the pending Mission Control read-model change and release journal. The final commit hash is recorded after integration.
+- Integration branch HEAD is `56ea34e` (`feat: add read-only mission control projection`), including the Mission Control read-model change and release artifacts; the journal hash-only correction is pending commit.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 

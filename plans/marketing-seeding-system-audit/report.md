@@ -6,7 +6,7 @@
 **Branch:** `integration/autonomous-build`  
 **Evidence rule:** source, tests, configuration and read-only runtime evidence outrank README/plan claims. Synthetic and local evidence are never treated as live platform proof.
 
-**Release snapshot:** the integration branch includes canonical dry-run handoff hardening and a pending read-only Mission Control UI slice on top of `9fa74d1`; the canonical service remains an older deployed source revision.
+**Release snapshot:** integration HEAD `56ea34e` includes canonical dry-run handoff hardening and the read-only Mission Control UI slice; the canonical service remains an older deployed source revision. The journal contains a hash-only snapshot correction after that commit.
 
 ## 1. What is this system?
 
