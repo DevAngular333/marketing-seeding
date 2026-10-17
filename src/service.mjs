@@ -18,6 +18,7 @@ import { deriveStandingExecutionControlPlan } from "./standing-campaign-delegati
 import { buildProductIntelligence, serializeProductIntelligence } from "./product-intelligence.mjs";
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
+import { observePublicUrls } from "./discovery-observer.mjs";
 import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
@@ -1313,6 +1314,19 @@ export class SeedingService {
       return { campaignId, accepted: processed.length, total: current.discovery.observations.length, observations: processed };
     });
     return result.result;
+  }
+
+  /** Observe explicit public URLs, then persist only normalized observations. */
+  async observeDiscoveries(campaignId, input = {}, actor = "discovery-collector") {
+    const result = await observePublicUrls(input.urls, input.options || {});
+    const observations = result.observations.filter((item) => item.observationStatus !== "UNKNOWN");
+    const persisted = observations.length ? await this.recordDiscoveries(campaignId, {
+      observations,
+      policies: input.policies,
+      keywords: input.keywords,
+      blockedKeywords: input.blockedKeywords
+    }, actor) : { campaignId, accepted: 0, total: null, observations: [] };
+    return { ...result, persisted };
   }
 
   async authorizeCampaign(campaignId, input, actor = "operator") {
