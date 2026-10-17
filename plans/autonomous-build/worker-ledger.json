@@ -4,7 +4,9 @@
     {"worker_id":"/root/integration_review","role":"independent static reviewer","status":"ACCEPT","scope":"read-only final diff review","evidence":"No blocking findings; git diff check clean"},
     {"worker_id":"/root/kill_switch_tests","role":"test/QA","status":"DONE","scope":"kill-switch and control-fence regressions","evidence":"50 focused tests reported passed; no source changes"},
     {"worker_id":"/root/product_intelligence","role":"implementation","status":"DONE_WITH_CONCERNS","scope":"product intelligence/evidence graph","commit":"2428606","evidence":"4 focused tests passed; caller-supplied local evidence only"},
-    {"worker_id":"/root/product_factory","role":"implementation","status":"DONE_WITH_CONCERNS","scope":"safe local product factory","commit":"a72d231","evidence":"5 focused tests passed; persistent factory/media pipeline out of scope"},
-    {"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"integration, review, journal and gates","evidence":"242 focused; 315 full (313/0/2); node check and diff check passed"}
+    {"worker_id":"/root/product_factory","role":"implementation","status":"DONE_WITH_CONCERNS","scope":"safe local product factory","commit":"a72d231","evidence":"5 focused tests passed; persistent artifact lineage/media pipeline out of scope"},
+    {"worker_id":"/root/product_intelligence","role":"implementation","status":"DONE_WITH_CONCERNS","scope":"bounded repository inspection and product-intelligence integration","evidence":"product-lineage focused and service tests pass; claims remain explicit/caller supplied"},
+    {"worker_id":"/root/integration_review","role":"independent verifier","status":"ACCEPT","scope":"product-lineage read-only verification attempt 2","evidence":"41 passed, node check and diff check pass; verdict PASS (bounded)"},
+    {"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"integration, review, journal and gates","evidence":"242 integrated focused + 41 lineage focused; 324 full (322/0/2); node check and diff check passed"}
   ]
 }

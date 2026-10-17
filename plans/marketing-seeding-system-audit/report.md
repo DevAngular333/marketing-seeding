@@ -8,7 +8,7 @@
 
 ## 1. What is this system?
 
-This repository is a local marketing distribution runtime that keeps campaign, product, content, target, publication and outcome state in an auditable JSON store. A user supplies a product repository, campaign objective, target/account configuration and policy scope; the service can create grounded artifacts, stories and channel drafts, evaluate campaign authorization, and project state in a local dashboard. Its strongest implemented path is bounded execution governance: exact account/profile/target/content/visibility binding, quotas, cadence, concurrency, readiness, leases, one-time windows, single-use grants, durable submit intent, and UNKNOWN quarantine. The LinkedIn path connects JEV to a LinkedIn adapter, ORCA browser commands, semantic post-action evidence and a read-only publication verifier. Product intelligence and discovery foundations now exist on the integration branch, but they accept caller-supplied evidence/observations rather than autonomously researching the world. Product factory runtime is a bounded local syntax/check runner, not a general build/render/media system. The dashboard is a Mission Control projection, while normal operations still depend on configured policy, existing browser sessions and human handling of mandatory security challenges. This is more than a generic browser bot because campaign governance, persistence, content/artifact graph and verification contracts are first-class; it is not yet a proven unattended multi-channel Distribution OS.
+This repository is a local marketing distribution runtime that keeps campaign, product, content, target, publication and outcome state in an auditable JSON store. A user supplies a product repository, campaign objective, target/account configuration and policy scope; the service can inspect bounded repository evidence, create grounded artifacts, stories and channel drafts, evaluate campaign authorization, and project state in a local dashboard. Its strongest implemented path is bounded execution governance: exact account/profile/target/content/visibility binding, quotas, cadence, concurrency, readiness, leases, one-time windows, single-use grants, durable submit intent, and UNKNOWN quarantine. The LinkedIn path connects JEV to a LinkedIn adapter, ORCA browser commands, semantic post-action evidence and a read-only publication verifier. Product intelligence and discovery foundations exist on the integration branch, but discovery accepts caller-supplied observations and claims remain explicit rather than autonomously researched or generated. Product factory runs are persisted as bounded campaign lineage, while the factory remains a local syntax/check runner rather than a general build/render/media system. The dashboard is a Mission Control projection, while normal operations still depend on configured policy, existing browser sessions and human handling of mandatory security challenges. This is more than a generic browser bot because campaign governance, persistence, content/artifact graph and verification contracts are first-class; it is not yet a proven unattended multi-channel Distribution OS.
 
 **CURRENT_SYSTEM_CLASSIFICATION:** `MARKETING_AUTOMATION_TOOL`, `BROWSER_AUTOMATION_SYSTEM`, `CAMPAIGN_ORCHESTRATOR`, `AUTONOMOUS_DISTRIBUTION_RUNTIME` (bounded/local), `MARKETING_AGENT` (partial).  
 **Not classified as:** `AUTONOMOUS_DISTRIBUTION_OS` in the production/live sense, because live publish and the observe → learn loop are unproven or absent.
@@ -18,14 +18,14 @@ This repository is a local marketing distribution runtime that keeps campaign, p
 | Stage | Status | Evidence |
 |---|---|---|
 | Product/repo input | PARTIAL | Campaigns require a real `productRepo`; no upstream ProductRun contract is wired. |
-| Product understanding | IMPLEMENTED, LOCAL VERIFIED | `src/product-intelligence.mjs` emits WHAT/PROBLEM/BETTER/AUDIENCE with evidence links. Caller supplies claims/evidence. |
+| Product understanding | IMPLEMENTED, LOCAL VERIFIED | `src/product-repository-inspection.mjs` supplies bounded repository evidence to `src/product-intelligence.mjs`, which emits WHAT/PROBLEM/BETTER/AUDIENCE with evidence links. Claims remain explicit. |
 | Evidence/claim verification | IMPLEMENTED, LOCAL VERIFIED | Stable hashes and unsupported claim quarantine. |
 | Audience discovery | NOT_IMPLEMENTED | No autonomous audience search or matching. |
 | Channel discovery | PARTIAL, LOCAL VERIFIED | `src/discovery.mjs` normalizes caller observations, deduplicates and scores by explicit keywords/policy. |
 | Community rules | PARTIAL | Configured target rules/membership gates exist; no rule crawler. |
 | Campaign planning | PARTIAL | Campaigns, schedules, targets, quotas and authorization exist; no outcome-driven strategy planner. |
 | Channel-specific content | PARTIAL | Seeded variants, grounded stories and length/visibility guards; no production LLM/provider. |
-| Asset preparation | PARTIAL, LOCAL VERIFIED | Artifact SHA-256 registration and bounded factory evidence; no generic media capture. |
+| Asset preparation | PARTIAL, LOCAL VERIFIED | Artifact SHA-256 registration, bounded factory evidence and persistent capped run lineage; no generic media capture. |
 | Existing session/auth | PARTIAL | Exact ORCA profile/session readiness and identity checks. |
 | Autonomous credential login | NOT_IMPLEMENTED | Credentials are host-managed; MFA/CAPTCHA/security challenges fail closed. |
 | Browser execution | PARTIAL, LOCAL VERIFIED | JEV → LinkedIn → ORCA code and synthetic execution tests. |
@@ -193,11 +193,12 @@ The canonical health endpoint was read-only and reported PID 64620, source commi
 
 ### SYNTHETIC / LOCAL
 
-- 315 Node tests: 313 pass, 0 fail, 2 skip.
+- 324 Node tests: 322 pass, 0 fail, 2 skip.
+- Product-lineage focused tests: 41 pass, 0 fail, 0 skip.
 - 242 focused transport/governance/JEV/LinkedIn/intelligence/factory/discovery/service tests: 242 pass, 0 fail, 0 skip.
 - Local browser fixture: 10/10 reversible control activation trials, 100% rate under policy (minimum 10, ≥95%, zero wrong-target, zero silent fallback).
 - Local tests cover command completion without activation, activation without acceptance, acceptance without verifiable publication, verified publication contracts, stale/moving/covered/wrong-composer controls, wrong account/profile, timeout after intent, duplicate dispatch, UNKNOWN immutability and no second final click.
-- Product factory local Node fixture executed an allowlisted syntax check with `externalSideEffects: false` and `persisted: false`.
+- Product factory local Node fixture executed an allowlisted syntax check with `externalSideEffects: false`; the run and bounded history survive a new store instance.
 - Product intelligence and discovery persistence/projection tests run on temporary state only.
 
 Synthetic evidence does not prove a LinkedIn post.

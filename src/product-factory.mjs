@@ -15,7 +15,7 @@ const within = (root, candidate) => {
 };
 
 export async function classifyRepository(repositoryPath) {
-  const root = path.resolve(repositoryPath);
+  const root = await fs.realpath(path.resolve(repositoryPath));
   const stat = await fs.stat(root);
   if (!stat.isDirectory()) throw new Error('repository path must be a directory');
   const entries = new Set(await fs.readdir(root));
@@ -35,30 +35,33 @@ export function createFactoryPlan(classification) {
   if (classification.kind === 'node') {
     steps = [command(['node', '--check', 'src/server.mjs'], 'syntax-check')];
   } else if (classification.kind === 'python') {
-    steps = [command(['python3', '-m', 'compileall', '-q', '.'], 'syntax-check')];
+    const syntaxCheck = "import pathlib\nfor p in pathlib.Path('.').rglob('*.py'):\n compile(p.read_text(), str(p), 'exec')";
+    steps = [command(['python3', '-B', '-c', syntaxCheck], 'syntax-check')];
   } else if (classification.kind === 'static') {
     steps = [{ argv: ['echo', 'static-artifact-ready'], purpose: 'static-validation', cwd: root }];
   } else steps = [];
   return { version: 1, repositoryPath: root, kind: classification.kind, steps };
 }
 
-function validateCommand(step, root) {
+async function validateCommand(step, root) {
   if (!step || !Array.isArray(step.argv) || step.argv.length === 0 || step.argv.some((v) => typeof v !== 'string')) throw new Error('command must be a non-empty argv array');
   const [binary, ...args] = step.argv;
   if (!ALLOWED_BINARIES.has(binary) || binary.includes('/') || binary.includes('\\')) throw new Error(`disallowed command: ${binary}`);
   if (args.some((arg) => /[;&|`$<>]/.test(arg))) throw new Error('shell metacharacters are not allowed');
-  const cwd = path.resolve(step.cwd || root);
+  const requestedCwd = path.resolve(step.cwd || root);
+  let cwd;
+  try { cwd = await fs.realpath(requestedCwd); } catch { throw new Error('command cwd does not exist'); }
   if (!within(root, cwd)) throw new Error('command cwd escapes repository');
   return { binary, args, cwd };
 }
 
 export async function executeFactoryPlan(plan, options = {}) {
-  const root = path.resolve(plan.repositoryPath);
+  const root = await fs.realpath(path.resolve(plan.repositoryPath));
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxOutput = options.maxOutput ?? DEFAULT_MAX_OUTPUT;
   const results = [];
   for (const step of plan.steps || []) {
-    const { binary, args, cwd } = validateCommand(step, root);
+    const { binary, args, cwd } = await validateCommand(step, root);
     const result = await new Promise((resolve) => {
       const child = spawn(binary, args, { cwd, shell: false, env: { PATH: process.env.PATH || '' } });
       let stdout = '', stderr = '', timedOut = false;
@@ -79,16 +82,19 @@ export async function executeFactoryPlan(plan, options = {}) {
 }
 
 export async function collectArtifactEvidence(repositoryPath, artifactPaths, commandRef = null) {
-  const root = path.resolve(repositoryPath);
+  const root = await fs.realpath(path.resolve(repositoryPath));
   const artifacts = [];
   for (const relativePath of artifactPaths || []) {
     if (typeof relativePath !== 'string' || path.isAbsolute(relativePath)) throw new Error('artifact path must be relative');
     const absolute = path.resolve(root, relativePath);
     if (!within(root, absolute)) throw new Error('artifact path escapes repository');
-    const stat = await fs.stat(absolute);
+    let resolved;
+    try { resolved = await fs.realpath(absolute); } catch { throw new Error(`artifact path does not exist: ${relativePath}`); }
+    if (!within(root, resolved)) throw new Error('artifact path escapes repository');
+    const stat = await fs.stat(resolved);
     if (!stat.isFile()) continue;
-    const data = await fs.readFile(absolute);
-    artifacts.push({ path: relativePath.replaceAll(path.sep, '/'), type: path.extname(relativePath).slice(1) || 'file', bytes: data.length, sha256: createHash('sha256').update(data).digest('hex'), commandRef });
+    const data = await fs.readFile(resolved);
+    artifacts.push({ path: path.relative(root, resolved).replaceAll(path.sep, '/'), type: path.extname(relativePath).slice(1) || 'file', bytes: data.length, sha256: createHash('sha256').update(data).digest('hex'), commandRef });
   }
   return { version: 1, repositoryPath: root, artifacts, externalSideEffects: false };
 }

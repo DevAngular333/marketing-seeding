@@ -48,3 +48,18 @@ test('hashes artifacts and redacts secret-like output', async () => {
   assert.equal(evidence.artifacts[0].sha256.length, 64); assert.equal(evidence.artifacts[0].commandRef, 'step-1');
   assert.match(redact('token=abc123 password=hunter2'), /token=\[REDACTED\].*password=\[REDACTED\]/);
 });
+
+test('artifact evidence rejects symlink escape', async () => {
+  const root = await fixture({ 'dist/out.txt': 'inside' });
+  const outside = await fixture({ 'outside.txt': 'outside' });
+  await fs.symlink(path.join(outside, 'outside.txt'), path.join(root, 'dist', 'link.txt'));
+  await assert.rejects(() => collectArtifactEvidence(root, ['dist/link.txt']), /escapes/);
+});
+
+test('python validation plan is syntax-only and does not create cache files', async () => {
+  const root = await fixture({ 'pyproject.toml': '', 'main.py': 'print("ok")\n' });
+  const plan = createFactoryPlan(await classifyRepository(root));
+  const result = await executeFactoryPlan(plan);
+  assert.equal(result.status, 'SUCCEEDED');
+  assert.deepEqual((await fs.readdir(root)).sort(), ['main.py', 'pyproject.toml']);
+});

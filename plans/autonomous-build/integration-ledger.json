@@ -9,13 +9,14 @@
     "a72d231 feat: add safe product factory foundation",
     "30de649 feat: add versioned product intelligence handoff",
     "f4527af feat: add deterministic discovery foundation",
-    "working-tree seam changes: product intelligence/discovery persistence, product factory runtime, redaction and regression tests"
+    "working-tree seam changes: bounded repository inspection, product intelligence/discovery persistence, product factory run lineage, path/redaction fixes and regression tests"
   ],
   "rejectedCommits": [],
   "gates": [
     {"name":"independent_static_review","result":"ACCEPT","notes":"No blocking findings; bounded residual is duck-typed transport contract"},
     {"name":"focused_integrated_tests","result":"PASS","tests":242,"passed":242,"failed":0,"skipped":0,"command":"node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs test/campaign-authorization.test.mjs test/standing-campaign-delegation.test.mjs test/one-time-execution-window.test.mjs test/live-execution-grant.test.mjs test/readiness-execution.test.mjs test/independent-audit.test.mjs test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/discovery.test.mjs test/service.test.mjs"},
-    {"name":"full_node_suite","result":"PASS","tests":315,"passed":313,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
+    {"name":"product_lineage_focused_tests","result":"PASS","tests":41,"passed":41,"failed":0,"skipped":0,"command":"node --test test/product-repository-inspection.test.mjs test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs"},
+    {"name":"full_node_suite","result":"PASS","tests":324,"passed":322,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
     {"name":"syntax_and_diff_check","result":"PASS","nodeCheck":"passed","gitDiffCheck":"passed"},
     {"name":"canonical_runtime_immutability","result":"PASS","schemaVersion":8,"revision":193,"sha256":"327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae"}
   ]

@@ -15,10 +15,11 @@ import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 import { activeExecutionForPost, recordSubmissionUnknown, unresolvedSubmission, UNKNOWN_POST_STATUS } from "./submission-uncertainty.mjs";
 import { deriveStandingExecutionControlPlan } from "./standing-campaign-delegation.mjs";
-import { serializeProductIntelligence } from "./product-intelligence.mjs";
+import { buildProductIntelligence, serializeProductIntelligence } from "./product-intelligence.mjs";
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
 import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence } from "./product-factory.mjs";
+import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appRoot } from "./paths.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
@@ -50,6 +51,7 @@ const TARGET_READINESS_STATES = new Set(["ready", "checking", "warming_up", "blo
 const PRODUCT_TRACKS = new Set(["3d", "vibe-code", "svg-animation"]);
 const COMMUNITY_MEMBERSHIP_STATES = new Set(["joined", "pending", "rejected", "blocked", "not_applicable", "unknown"]);
 const COMMUNITY_POST_STATES = new Set(["allowed", "manual_review", "blocked", "unknown", "not_applicable"]);
+const MAX_PRODUCT_FACTORY_RUNS = 24;
 const PRODUCT_REPOS = Object.freeze({
   "design-os-3d-blender": "3d",
   "design-os-code2flow": "vibe-code",
@@ -539,15 +541,91 @@ export class SeedingService {
     const state = await this.store.read();
     const campaign = requireItem(state.campaigns, campaignId, "Campaign");
     const productRepo = await requireProductRepo(campaign.productRepo);
-    const classification = await classifyRepository(productRepo);
-    const plan = createFactoryPlan(classification);
-    const execution = await executeFactoryPlan(plan, {
-      timeoutMs: Math.min(120_000, Math.max(100, Number(input.timeoutMs) || 30_000)),
-      maxOutput: 32_000
+    const runId = randomUUID();
+    const startedAt = nowIso();
+    let run;
+    try {
+      const classification = await classifyRepository(productRepo);
+      const plan = createFactoryPlan(classification);
+      const execution = await executeFactoryPlan(plan, {
+        timeoutMs: Math.min(120_000, Math.max(100, Number(input.timeoutMs) || 30_000)),
+        maxOutput: 32_000
+      });
+      const artifactPaths = Array.isArray(input.artifactPaths) ? input.artifactPaths.slice(0, 32) : [];
+      const artifacts = await collectArtifactEvidence(productRepo, artifactPaths, execution.results.map((item) => item.purpose));
+      run = {
+        id: runId,
+        campaignId,
+        actor: String(actor || "automation"),
+        repositoryPath: productRepo,
+        classification,
+        plan,
+        execution,
+        artifacts,
+        status: execution.status,
+        externalSideEffects: false,
+        startedAt,
+        completedAt: nowIso()
+      };
+    } catch (error) {
+      run = {
+        id: runId,
+        campaignId,
+        actor: String(actor || "automation"),
+        repositoryPath: productRepo,
+        status: "FAILED",
+        error: String(error?.message || error).slice(0, 500),
+        externalSideEffects: false,
+        startedAt,
+        completedAt: nowIso()
+      };
+      await this.store.mutate(actor, "product_factory_run_recorded", (nextState) => {
+        const current = requireItem(nextState.campaigns, campaignId, "Campaign");
+        current.productFactoryRuns = [...(current.productFactoryRuns || []), run].slice(-MAX_PRODUCT_FACTORY_RUNS);
+        current.updatedAt = nowIso();
+        return run;
+      });
+      throw error;
+    }
+    const result = await this.store.mutate(actor, "product_factory_run_recorded", (nextState) => {
+      const current = requireItem(nextState.campaigns, campaignId, "Campaign");
+      current.productFactoryRuns = [...(current.productFactoryRuns || []), run].slice(-MAX_PRODUCT_FACTORY_RUNS);
+      current.updatedAt = nowIso();
+      return run;
     });
-    const artifactPaths = Array.isArray(input.artifactPaths) ? input.artifactPaths.slice(0, 32) : [];
-    const artifacts = await collectArtifactEvidence(productRepo, artifactPaths, execution.results.map((item) => item.purpose));
-    return { campaignId, actor, classification, plan, execution, artifacts, externalSideEffects: false, persisted: false };
+    return { ...result.result, persisted: true };
+  }
+
+  /** Inspect the registered repository, build grounded understanding, and persist its handoff. */
+  async inspectProductIntelligence(campaignId, input = {}, actor = "product-intelligence") {
+    const initialState = await this.store.read();
+    const campaign = requireItem(initialState.campaigns, campaignId, "Campaign");
+    const productRepo = await requireProductRepo(campaign.productRepo);
+    const inspection = await inspectRepositoryEvidence(productRepo, input);
+    const document = buildProductIntelligence({
+      productId: String(input.productId || campaign.id),
+      generatedAt: nowIso(),
+      evidence: inspection.records.map(({ id, sourceType, locator, content }) => ({ id, sourceType, locator, content })),
+      claims: Array.isArray(input.claims) ? input.claims : []
+    });
+    const requiredFields = ["WHAT_IS_IT", "WHAT_PROBLEM_DOES_IT_SOLVE", "WHY_IS_IT_BETTER", "WHO_NEEDS_IT"];
+    const complete = requiredFields.every((field) => document[field]) && document.CLAIMS_WE_CANNOT_MAKE.length === 0;
+    const attached = await this.attachProductIntelligence(campaignId, {
+      document,
+      sourceRepository: productRepo,
+      readinessStatus: input.readinessStatus || (complete ? "READY" : "INCOMPLETE"),
+      repositoryInspection: {
+        schemaVersion: inspection.schemaVersion,
+        inspectionHash: inspection.inspectionHash,
+        repository: inspection.repository,
+        allowlist: inspection.allowlist,
+        limits: inspection.limits,
+        records: inspection.records.map(({ id, locator, sha256, bytes }) => ({ id, locator, sha256, bytes })),
+        skipped: inspection.skipped,
+        totalBytes: inspection.totalBytes
+      }
+    }, actor);
+    return { campaignId, inspection, productIntelligence: attached, persisted: true, externalSideEffects: false };
   }
 
   #assertOperatorControlActor(actor) {
@@ -1080,6 +1158,7 @@ export class SeedingService {
       current.productIntelligence = {
         document,
         handoff,
+        repositoryInspection: summarizeRepositoryInspection(input.repositoryInspection),
         attachedAt: nowIso(),
         attachedBy: String(actor || "product-intelligence")
       };
@@ -3415,6 +3494,7 @@ export class SeedingService {
           campaignId: campaign.id,
           handoff: campaign.productIntelligence.handoff,
           document: campaign.productIntelligence.document,
+          repositoryInspection: campaign.productIntelligence.repositoryInspection || null,
           attachedAt: campaign.productIntelligence.attachedAt,
           attachedBy: campaign.productIntelligence.attachedBy
         })),
@@ -3443,6 +3523,7 @@ export class SeedingService {
       recentCollectorRuns: newest(state.collectorRuns, "at"),
       recentArtifacts: newest(state.artifacts, "createdAt"),
       recentStories: newest(state.stories, "createdAt"),
+      recentProductFactoryRuns: newest(state.campaigns.flatMap((campaign) => (campaign.productFactoryRuns || []).map((run) => ({ ...run, campaignId: campaign.id }))), "completedAt"),
       recentPublicationAttempts: newest(state.publicationAttempts, "preparedAt"),
       fixtureAutomation: {
         mode: "local-fixture",

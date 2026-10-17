@@ -260,6 +260,7 @@ function automationCanMutate(method, pathname) {
   if (/^\/api\/campaigns\/[^/]+\/queue-ready-jobs$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/readiness-check$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/product-factory$/.test(pathname)) return true;
+  if (/^\/api\/campaigns\/[^/]+\/product-intelligence\/inspect$/.test(pathname)) return true;
   if (/^\/api\/posts\/[^/]+\/execution-request$/.test(pathname)) return true;
   if (/^\/api\/execution-requests\/[^/]+\/receipt$/.test(pathname)) return true;
   return [
@@ -512,6 +513,10 @@ const server = http.createServer(async (request, response) => {
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/product-intelligence$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.attachProductIntelligence(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/product-intelligence\/inspect$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 201, await service.inspectProductIntelligence(match[1], await readJson(request), actor));
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/discoveries$/);
     if (request.method === "POST" && match) {

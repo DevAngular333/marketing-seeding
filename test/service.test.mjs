@@ -63,6 +63,28 @@ test("product intelligence handoff is persisted on the campaign and projected re
   assert.equal(dashboard.productIntelligence[0].handoff.readinessStatus, "INCOMPLETE");
 });
 
+test("repository inspection builds grounded intelligence and persists safe lineage", async () => {
+  const { service, campaign, productRepo } = await fixture("seeding-product-inspection-runtime-test-");
+  const result = await service.inspectProductIntelligence(campaign.id, {
+    allowlist: ["README.md"],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["repo:README.md"] }]
+  }, "automation");
+  assert.equal(result.persisted, true);
+  assert.equal(result.externalSideEffects, false);
+  assert.equal(result.productIntelligence.document.WHAT_IS_IT.id, "what");
+  assert.equal(result.productIntelligence.repositoryInspection.records.length, 1);
+  assert.equal(result.productIntelligence.repositoryInspection.records[0].locator, "README.md");
+  const state = await service.snapshot();
+  const saved = state.campaigns.find((item) => item.id === campaign.id).productIntelligence;
+  assert.equal(saved.repositoryInspection.inspectionHash, result.inspection.inspectionHash);
+  assert.equal(saved.repositoryInspection.records[0].sha256, result.inspection.records[0].sha256);
+  assert.equal(saved.repositoryInspection.records[0].content, undefined);
+  const dashboard = await service.dashboard();
+  assert.equal(dashboard.productIntelligence[0].repositoryInspection.inspectionHash, result.inspection.inspectionHash);
+  assert.equal(dashboard.productIntelligence[0].repositoryInspection.records[0].content, undefined);
+  assert.equal(path.resolve(result.inspection.repository), path.resolve(productRepo));
+});
+
 test("discovery observations are normalized, scored, persisted and never become publish authority", async () => {
   const { service, campaign, post } = await fixture("seeding-discovery-runtime-test-");
   const result = await service.recordDiscoveries(campaign.id, {

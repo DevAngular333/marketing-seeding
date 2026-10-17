@@ -20,8 +20,8 @@ Evidence date: 2026-10-17. Severity reflects the effect on the requested humanle
 
 ## P1
 
-- Product understanding accepts caller-supplied evidence and claims; it does not inspect a repository and derive answers autonomously.
-- Product factory is a bounded syntax/check runner. It does not persist factory runs, build project-specific demos, capture screenshots/GIF/video, or verify generated media.
+- Product understanding now has a bounded repository inspection path, but the resulting claims remain explicit/caller supplied; it does not autonomously research or generate claims with a model.
+- Product factory persists bounded run lineage and hashes, but remains a syntax/check runner. It does not build project-specific demos, capture screenshots/GIF/video, or verify generated media.
 - Discovery accepts caller-supplied observations. There is no continuous public crawler, audience matcher, channel searcher or community-rule crawler.
 - Strategy and next-best-action selection are not implemented. Schedules and deterministic drafts do not form a feedback-driven strategy engine.
 - Content is seeded/template/caller supplied. There is no production LLM provider, platform-context model routing, content-fatigue loop or claim-safe generation service.
@@ -55,7 +55,7 @@ Evidence date: 2026-10-17. Severity reflects the effect on the requested humanle
 | Monolithic service | `src/service.mjs` contains campaign, content, metrics, dashboard and runtime methods | Coupling and slower change review |
 | Legacy/manual documentation | `README.md`, `docs/OPERATOR-RUNBOOK.md` versus JEV source | Operator misunderstanding of verified capability |
 | Caller-driven intelligence/discovery | `src/product-intelligence.mjs`, `src/discovery.mjs` | No autonomous research or ranking quality proof |
-| Factory runtime not persisted | `runProductFactory()` returns `persisted: false` | No durable artifact lineage from factory run |
+| Factory runtime is bounded | `runProductFactory()` persists only a capped run history | No generic build/render/media artifact workflow |
 | Registry versus metrics split | adapter registry only registers LinkedIn; `integrations.mjs` has read-only metric collectors | Platform readiness can be confused with metric availability |
 | No model/provider boundary in domain runtime | no LLM provider module in `src/` | Content and strategy cannot autonomously adapt |
 | Canonical runtime/source skew | `/health` reports source commit `b4fa42b…`; integration branch is later | New local capability is not live until a controlled release |

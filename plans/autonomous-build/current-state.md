@@ -4,7 +4,7 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration HEAD before release commit: `f4527af` (`feat: add deterministic discovery foundation`); the release commit adds the accepted runtime seam, tests and journal updates below.
+- Integration HEAD: `4e5b7d2` (`docs: finalize autonomous build release ledger`); the current working tree adds the accepted product-lineage seam and its tests before the next release commit.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
 - Working tree contains the accepted integration seam changes listed in `git status`; the release commit is recorded after the final gate.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
@@ -20,8 +20,9 @@
 ## Local capability additions
 
 - Product intelligence handoff is versioned, hash-validated, sanitized, persisted on campaigns and projected read-only by `/api/dashboard`.
+- Repository inspection can now read a bounded allowlist of safe repository files, redact credential-like material, produce stable evidence hashes and persist metadata-only inspection lineage with the handoff.
 - Discovery observations are caller-supplied only; they are normalized, deduplicated, policy-classified, scored, persisted on campaigns and projected read-only by `/api/dashboard`.
-- Product factory runtime can classify/run the registered campaign repository with the bounded allowlist and return local artifact evidence; it reports `externalSideEffects: false` and does not create publication authority.
+- Product factory runtime can classify/run the registered campaign repository with the bounded allowlist, return local artifact evidence, persist a bounded 24-run campaign-owned lineage and project recent runs read-only; it reports `externalSideEffects: false` and does not create publication authority.
 
 ## Counts
 
@@ -34,7 +35,8 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 ## Tests
 
 - Focused integrated gate: 242 passed, 0 failed, 0 skipped.
-- Full suite: 315 total, 313 passed, 0 failed, 2 skipped; exit 0.
+- Product-lineage focused gate: 41 passed, 0 failed, 0 skipped.
+- Full suite: 324 total, 322 passed, 0 failed, 2 skipped; exit 0.
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
 
 ## Live proof

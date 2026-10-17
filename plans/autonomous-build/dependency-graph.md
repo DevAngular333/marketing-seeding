@@ -16,9 +16,9 @@ JsonStore / schema / audit / writer lease
   │                                   └─> normalized receipt → canonical CONFIRMED/PUBLISHED
   │
   ├─> product intelligence / discovery / artifact graph
-  │     ├─> Product Intelligence (caller evidence + claim graph + versioned handoff persisted on campaign)
+  │     ├─> Product Intelligence (bounded repository inspection + explicit claims + claim graph + versioned handoff persisted on campaign)
   │     ├─> Discovery (caller observations + deterministic normalization/dedup/classification/score persisted on campaign)
-  │     └─> Product Factory (safe local classification/commands/artifact hash)
+  │     └─> Product Factory (safe local classification/commands/artifact hash + bounded persistent run lineage)
   │
   └─> metrics/interaction/reply/conversion collections and dashboard projections
 
@@ -28,7 +28,7 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 
 ## Dependency status
 
-- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, product intelligence handoff persistence/projection, deterministic discovery persistence/projection, safe product factory module.
+- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, deterministic discovery persistence/projection, safe product factory execution with bounded persistent run lineage.
 - **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, product factory orchestration.
 - **Design-only/not implemented:** continuous public crawling, audience matching, strategy/NBA, production LLM content, contextual engagement, learning loop, multi-account registry/recovery, live System-Agentic handoff.
 - **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.
