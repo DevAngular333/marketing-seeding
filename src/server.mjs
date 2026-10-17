@@ -259,6 +259,7 @@ function automationCanMutate(method, pathname) {
   if (method !== "POST") return false;
   if (/^\/api\/campaigns\/[^/]+\/queue-ready-jobs$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/readiness-check$/.test(pathname)) return true;
+  if (/^\/api\/campaigns\/[^/]+\/product-factory$/.test(pathname)) return true;
   if (/^\/api\/posts\/[^/]+\/execution-request$/.test(pathname)) return true;
   if (/^\/api\/execution-requests\/[^/]+\/receipt$/.test(pathname)) return true;
   return [
@@ -267,6 +268,8 @@ function automationCanMutate(method, pathname) {
     /^\/api\/automation\/collect-now$/,
     /^\/api\/campaigns\/[^/]+\/artifacts$/,
     /^\/api\/campaigns\/[^/]+\/stories$/,
+    /^\/api\/campaigns\/[^/]+\/product-intelligence$/,
+    /^\/api\/campaigns\/[^/]+\/discoveries$/,
     /^\/api\/stories\/[^/]+\/channel-drafts$/,
     /^\/api\/schedules\/[^/]+\/runs$/,
     /^\/api\/posts\/[^/]+\/collect-metrics$/,
@@ -319,6 +322,7 @@ const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || `${host}:${port}`}`);
   const role = requestRole(request);
   const actor = role === "operator" ? "local-human-operator" : role === "automation" ? "local-draft-automation" : "read-only-client";
+  let match;
   try {
     if (request.method === "POST" && url.pathname === "/internal/shutdown") {
       if (!isAuthorizedLocalShutdown({
@@ -450,6 +454,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/campaigns") {
       return sendJson(response, 201, await service.createCampaign(await readJson(request), actor));
     }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/product-factory$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.runProductFactory(match[1], await readJson(request), actor));
+    }
     if (request.method === "POST" && url.pathname === "/api/targets") {
       return sendJson(response, 201, await service.createTarget(await readJson(request), actor));
     }
@@ -462,7 +470,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/posts") {
       return sendJson(response, 201, await service.createPost(await readJson(request), actor));
     }
-    let match = url.pathname.match(/^\/api\/posts\/([^/]+)\/readiness-check$/);
+    match = url.pathname.match(/^\/api\/posts\/([^/]+)\/readiness-check$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 200, await service.refreshCampaignJobReadiness(match[1], actor, { force: true }));
     }
@@ -500,6 +508,14 @@ const server = http.createServer(async (request, response) => {
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/stories$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.createStory(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/product-intelligence$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 201, await service.attachProductIntelligence(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/discoveries$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 201, await service.recordDiscoveries(match[1], await readJson(request), actor));
     }
     match = url.pathname.match(/^\/api\/stories\/([^/]+)\/channel-drafts$/);
     if (request.method === "POST" && match) {

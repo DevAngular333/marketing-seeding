@@ -31,3 +31,13 @@ test('blocked keyword receives zero score and no action eligibility', () => {
   const [item] = processDiscoveries([{ url: 'https://example.com/a', text: 'spam automation', source: 'fixture' }], { policies, keywords: ['automation'], blockedKeywords: ['spam'] });
   assert.equal(item.classification.label, 'BLOCKED'); assert.equal(item.score.score, 0);
 });
+
+test('redacts credential-like observation material', () => {
+  const [item] = processDiscoveries([{
+    url: 'https://example.com/a',
+    text: 'token=abc123 password=hunter2',
+    source: 'Bearer abcdefghijklmnop'
+  }], { policies });
+  assert.doesNotMatch(JSON.stringify(item), /hunter2|abcdefghijklmnop/);
+  assert.match(JSON.stringify(item), /credential\/session material exists/);
+});

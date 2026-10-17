@@ -4,9 +4,9 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- HEAD before release commit: `a72d231` (`feat: add safe product factory foundation`)
+- Integration HEAD before release commit: `f4527af` (`feat: add deterministic discovery foundation`); the release commit adds the accepted runtime seam, tests and journal updates below.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
-- Working tree contains the accepted integration seam changes listed in `git status`; they are committed after this report.
+- Working tree contains the accepted integration seam changes listed in `git status`; the release commit is recorded after the final gate.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
 
 ## Runtime
@@ -16,6 +16,12 @@
 - Read-only `/health`: service PID 64620, listener `127.0.0.1:4318`, source commit `b4fa42b…`, schema 8, revision 193.
 - Traffic collector, daily automation, browser tracking and fixture worker disabled.
 - No active execution leases, active live grants, active one-time windows, or active campaign authorizations.
+
+## Local capability additions
+
+- Product intelligence handoff is versioned, hash-validated, sanitized, persisted on campaigns and projected read-only by `/api/dashboard`.
+- Discovery observations are caller-supplied only; they are normalized, deduplicated, policy-classified, scored, persisted on campaigns and projected read-only by `/api/dashboard`.
+- Product factory runtime can classify/run the registered campaign repository with the bounded allowlist and return local artifact evidence; it reports `externalSideEffects: false` and does not create publication authority.
 
 ## Counts
 
@@ -27,9 +33,9 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 
 ## Tests
 
-- Focused integrated gate: `node --test test/browser-interaction-transport.test.mjs test/jev-execution-worker.test.mjs test/linkedin-verification.test.mjs test/service.test.mjs test/standing-campaign-delegation.test.mjs test/campaign-authorization.test.mjs test/guards.test.mjs test/store-migration.test.mjs` → 152 passed, 0 failed, 0 skipped.
-- Full suite: `node --test test/*.test.mjs` → 299 total, 297 passed, 0 failed, 2 skipped; exit 0.
-- Static checks: `node --check` for changed `.mjs` files and `git diff --check` passed.
+- Focused integrated gate: 242 passed, 0 failed, 0 skipped.
+- Full suite: 315 total, 313 passed, 0 failed, 2 skipped; exit 0.
+- Static checks: `node --check src/*.mjs` and `git diff --check` passed.
 
 ## Live proof
 

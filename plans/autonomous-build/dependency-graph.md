@@ -15,8 +15,9 @@ JsonStore / schema / audit / writer lease
   │                             └─> activation → acceptance → independent publication verifier
   │                                   └─> normalized receipt → canonical CONFIRMED/PUBLISHED
   │
-  ├─> artifact/story/channel draft graph
-  │     ├─> Product Intelligence (caller evidence + claim graph)
+  ├─> product intelligence / discovery / artifact graph
+  │     ├─> Product Intelligence (caller evidence + claim graph + versioned handoff persisted on campaign)
+  │     ├─> Discovery (caller observations + deterministic normalization/dedup/classification/score persisted on campaign)
   │     └─> Product Factory (safe local classification/commands/artifact hash)
   │
   └─> metrics/interaction/reply/conversion collections and dashboard projections
@@ -27,7 +28,7 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 
 ## Dependency status
 
-- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, product intelligence module, safe product factory module.
-- **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse.
-- **Design-only/not implemented:** continuous discovery, audience relevance scoring, strategy/NBA, production LLM content, contextual engagement, learning loop, multi-account registry/recovery, versioned System-Agentic handoff.
+- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, product intelligence handoff persistence/projection, deterministic discovery persistence/projection, safe product factory module.
+- **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, product factory orchestration.
+- **Design-only/not implemented:** continuous public crawling, audience matching, strategy/NBA, production LLM content, contextual engagement, learning loop, multi-account registry/recovery, live System-Agentic handoff.
 - **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.

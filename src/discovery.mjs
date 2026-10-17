@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 
 const UNSAFE_SCHEMES = /^(javascript|data|file|ftp):/i;
 const ALLOWED_SCHEMES = new Set(['http:', 'https:']);
+const SECRET_VALUE = /(bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9_]{12,})/gi;
+const SECRET_ASSIGNMENT = /(password|secret|token|cookie|authorization|api[_-]?key|session)\s*[=:]\s*[^\s]+/gi;
 
 function stable(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -13,9 +15,13 @@ function hash(value) { return createHash('sha256').update(stable(value)).digest(
 
 function normalizeText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 
+function redactText(value) {
+  return normalizeText(value).replace(SECRET_VALUE, 'credential/session material exists').replace(SECRET_ASSIGNMENT, '$1=credential/session material exists');
+}
+
 function normalizeUrl(raw) {
   const url = new URL(String(raw));
-  if (!ALLOWED_SCHEMES.has(url.protocol) || UNSAFE_SCHEMES.test(String(raw))) throw new Error('unsupported or unsafe URL scheme');
+  if (!ALLOWED_SCHEMES.has(url.protocol) || UNSAFE_SCHEMES.test(String(raw)) || url.username || url.password) throw new Error('unsupported or unsafe URL');
   url.hash = '';
   url.hostname = url.hostname.toLowerCase();
   return url.toString();
@@ -25,27 +31,31 @@ function policyFor(url, policies = {}) {
   const host = new URL(url).hostname;
   const entry = policies[host] ?? policies['*'];
   if (!entry) return { status: 'UNSUPPORTED', reason: 'no channel policy for host', host };
-  if (entry.enabled === false) return { status: 'INELIGIBLE', reason: entry.reason || 'channel disabled', host };
+  if (entry.enabled === false) return { status: 'INELIGIBLE', reason: redactText(entry.reason || 'channel disabled'), host };
   if (Array.isArray(entry.allowedHosts) && !entry.allowedHosts.includes(host)) return { status: 'INELIGIBLE', reason: 'host not allowed by policy', host };
-  return { status: 'ELIGIBLE', reason: 'channel policy matched', host, channel: entry.channel || host, actions: [...(entry.actions || [])].sort() };
+  return {
+    status: 'ELIGIBLE', reason: 'channel policy matched', host,
+    channel: redactText(entry.channel || host),
+    actions: [...(entry.actions || [])].map((action) => redactText(action)).sort()
+  };
 }
 
 export function normalizeDiscovery(observation, { policies = {}, now = new Date().toISOString() } = {}) {
   if (!observation || typeof observation !== 'object') throw new Error('observation must be an object');
   const url = normalizeUrl(observation.url);
   const policy = policyFor(url, policies);
-  const title = normalizeText(observation.title);
-  const text = normalizeText(observation.text ?? observation.body ?? observation.content);
+  const title = redactText(observation.title);
+  const text = redactText(observation.text ?? observation.body ?? observation.content);
   const provenance = {
-    source: normalizeText(observation.source || 'caller-supplied'),
-    observedAt: observation.observedAt || now,
-    sourceId: observation.sourceId ? normalizeText(observation.sourceId) : undefined,
+    source: redactText(observation.source || 'caller-supplied'),
+    observedAt: redactText(observation.observedAt || now),
+    sourceId: observation.sourceId ? redactText(observation.sourceId) : undefined,
   };
   const normalized = {
     url,
     title,
     text,
-    author: normalizeText(observation.author),
+    author: redactText(observation.author),
     channel: policy.channel || policy.host,
     policy,
     provenance,

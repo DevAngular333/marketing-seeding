@@ -15,6 +15,10 @@ import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 import { activeExecutionForPost, recordSubmissionUnknown, unresolvedSubmission, UNKNOWN_POST_STATUS } from "./submission-uncertainty.mjs";
 import { deriveStandingExecutionControlPlan } from "./standing-campaign-delegation.mjs";
+import { serializeProductIntelligence } from "./product-intelligence.mjs";
+import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
+import { processDiscoveries } from "./discovery.mjs";
+import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence } from "./product-factory.mjs";
 import { appRoot } from "./paths.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
@@ -41,6 +45,7 @@ const DYNAMIC_EXECUTION_REASONS = new Set([
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
 const MAX_GROUNDING_BYTES = 2_000_000;
 const MAX_SCREENSHOT_BYTES = 25_000_000;
+const MAX_PRODUCT_INTELLIGENCE_BYTES = 750_000;
 const TARGET_READINESS_STATES = new Set(["ready", "checking", "warming_up", "blocked"]);
 const PRODUCT_TRACKS = new Set(["3d", "vibe-code", "svg-animation"]);
 const COMMUNITY_MEMBERSHIP_STATES = new Set(["joined", "pending", "rejected", "blocked", "not_applicable", "unknown"]);
@@ -529,6 +534,22 @@ export class SeedingService {
     return this.store.read();
   }
 
+  /** Run a bounded, local-only product factory against the campaign repository. */
+  async runProductFactory(campaignId, input = {}, actor = "automation") {
+    const state = await this.store.read();
+    const campaign = requireItem(state.campaigns, campaignId, "Campaign");
+    const productRepo = await requireProductRepo(campaign.productRepo);
+    const classification = await classifyRepository(productRepo);
+    const plan = createFactoryPlan(classification);
+    const execution = await executeFactoryPlan(plan, {
+      timeoutMs: Math.min(120_000, Math.max(100, Number(input.timeoutMs) || 30_000)),
+      maxOutput: 32_000
+    });
+    const artifactPaths = Array.isArray(input.artifactPaths) ? input.artifactPaths.slice(0, 32) : [];
+    const artifacts = await collectArtifactEvidence(productRepo, artifactPaths, execution.results.map((item) => item.purpose));
+    return { campaignId, actor, classification, plan, execution, artifacts, externalSideEffects: false, persisted: false };
+  }
+
   #assertOperatorControlActor(actor) {
     if (!['operator', 'local-human-operator'].includes(actor)) throw new Error('Only an operator may change the global execution kill switch');
   }
@@ -1009,6 +1030,92 @@ export class SeedingService {
       if (!campaign.name || !campaign.objective) throw new Error("Campaign name and objective are required");
       state.campaigns.push(campaign);
       return campaign;
+    });
+    return result.result;
+  }
+
+  /**
+   * Persist one sanitized, versioned product-understanding handoff on the
+   * campaign. The campaign repository is the only accepted source boundary;
+   * arbitrary caller fields and credential-like values never enter state.
+   */
+  async attachProductIntelligence(campaignId, input = {}, actor = "product-intelligence") {
+    const initialState = await this.store.read();
+    const campaign = requireItem(initialState.campaigns, campaignId, "Campaign");
+    const productRepo = await requireProductRepo(campaign.productRepo);
+    const requestedSource = input.sourceRepository === undefined ? productRepo : await requireProductRepo(input.sourceRepository);
+    if (path.resolve(requestedSource) !== path.resolve(productRepo)) {
+      throw new Error("Product intelligence sourceRepository must match the campaign productRepo");
+    }
+    const documentInput = input.document || input.productIntelligence;
+    if (!documentInput || typeof documentInput !== "object" || Array.isArray(documentInput)) {
+      throw new Error("Product intelligence document is required");
+    }
+    let document;
+    try {
+      const allowedDocumentKeys = new Set([
+        "schemaVersion", "productId", "generatedAt", "evidence", "WHAT_IS_IT",
+        "WHAT_PROBLEM_DOES_IT_SOLVE", "WHY_IS_IT_BETTER", "WHO_NEEDS_IT",
+        "CLAIMS_WE_CAN_PROVE", "CLAIMS_WE_CANNOT_MAKE", "documentHash"
+      ]);
+      document = JSON.parse(serializeProductIntelligence(Object.fromEntries(
+        Object.entries(documentInput).filter(([key]) => allowedDocumentKeys.has(key))
+      )));
+    } catch (error) {
+      throw new Error(`Product intelligence document is not serializable: ${error.message}`);
+    }
+    const serialized = serializeProductIntelligence(document);
+    if (Buffer.byteLength(serialized, "utf8") > MAX_PRODUCT_INTELLIGENCE_BYTES) {
+      throw new Error(`Product intelligence document exceeds ${MAX_PRODUCT_INTELLIGENCE_BYTES} bytes`);
+    }
+    const handoff = createProductIntelligenceHandoff({
+      document,
+      sourceRepository: productRepo,
+      readinessStatus: input.readinessStatus
+    });
+    const validation = validateProductIntelligenceHandoff(handoff, document);
+    if (!validation.ok) throw new Error(`Product intelligence handoff is invalid: ${validation.errors.join(", ")}`);
+    const result = await this.store.mutate(actor, "product_intelligence_attached", (state) => {
+      const current = requireItem(state.campaigns, campaignId, "Campaign");
+      current.productIntelligence = {
+        document,
+        handoff,
+        attachedAt: nowIso(),
+        attachedBy: String(actor || "product-intelligence")
+      };
+      current.updatedAt = nowIso();
+      return current.productIntelligence;
+    });
+    return result.result;
+  }
+
+  /** Normalize and persist caller-supplied public observations for one campaign.
+   * This records opportunity intelligence only; it never derives permission to
+   * publish or invokes a browser/provider.
+   */
+  async recordDiscoveries(campaignId, input = {}, actor = "discovery-collector") {
+    const state = await this.store.read();
+    const campaign = requireItem(state.campaigns, campaignId, "Campaign");
+    const observations = Array.isArray(input.observations) ? input.observations : [];
+    if (observations.length > 500) throw new Error("At most 500 discovery observations may be recorded at once");
+    const options = {
+      policies: input.policies && typeof input.policies === "object" && !Array.isArray(input.policies) ? input.policies : {},
+      keywords: Array.isArray(input.keywords) ? input.keywords : campaign.keywords?.map((item) => item.phrase) || [],
+      blockedKeywords: Array.isArray(input.blockedKeywords) ? input.blockedKeywords : []
+    };
+    const processed = processDiscoveries(observations, options);
+    const result = await this.store.mutate(actor, "discoveries_recorded", (nextState) => {
+      const current = requireItem(nextState.campaigns, campaignId, "Campaign");
+      current.discovery ||= { schemaVersion: 1, observations: [], updatedAt: null };
+      const byId = new Map(current.discovery.observations.map((item) => [item.discoveryId, item]));
+      for (const item of processed) {
+        const previous = byId.get(item.discoveryId);
+        if (!previous || String(item.provenance?.observedAt || "") < String(previous.provenance?.observedAt || "")) byId.set(item.discoveryId, item);
+      }
+      current.discovery.observations = [...byId.values()].sort((left, right) => left.discoveryId.localeCompare(right.discoveryId)).slice(-2_000);
+      current.discovery.updatedAt = nowIso();
+      current.updatedAt = current.discovery.updatedAt;
+      return { campaignId, accepted: processed.length, total: current.discovery.observations.length, observations: processed };
     });
     return result.result;
   }
@@ -3302,6 +3409,22 @@ export class SeedingService {
       pendingReplies: state.replies.filter((item) => item.status !== "sent").length,
       channels,
       campaigns: state.campaigns,
+      productIntelligence: state.campaigns
+        .filter((campaign) => campaign.productIntelligence)
+        .map((campaign) => ({
+          campaignId: campaign.id,
+          handoff: campaign.productIntelligence.handoff,
+          document: campaign.productIntelligence.document,
+          attachedAt: campaign.productIntelligence.attachedAt,
+          attachedBy: campaign.productIntelligence.attachedBy
+        })),
+      discoveries: state.campaigns
+        .filter((campaign) => campaign.discovery?.observations?.length)
+        .flatMap((campaign) => campaign.discovery.observations.map((observation) => ({
+          campaignId: campaign.id,
+          ...observation
+        })))
+        .sort((left, right) => (right.score?.score || 0) - (left.score?.score || 0)),
       targets: state.targets.map((target) => ({
         ...target,
         readiness: normalizeTargetReadiness(target.readiness, target.status)

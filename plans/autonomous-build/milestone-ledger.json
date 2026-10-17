@@ -3,10 +3,11 @@
   "milestones": [
     {"id":"baseline-and-journal","status":"COMPLETE","evidence":"Pinned runtime state, source inspection, journal and read-only health evidence"},
     {"id":"standing-campaign-delegation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"c4fb42f plus integrated service/authorization/kill-switch/provider-fence tests; no live authority"},
-    {"id":"product-intelligence","status":"COMPLETE_LOCAL_VERIFIED","evidence":"2428606; product-intelligence focused tests and evidence/claim graph contracts"},
+    {"id":"product-intelligence","status":"COMPLETE_LOCAL_VERIFIED","evidence":"2428606 + 30de649; product-intelligence evidence/claim graph, versioned handoff, campaign persistence and dashboard projection tests"},
+    {"id":"discovery-foundation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"f4527af plus service persistence/projection; caller-supplied normalization, deduplication, relevance scoring and fail-closed policy tests"},
     {"id":"product-factory","status":"COMPLETE_LOCAL_VERIFIED","evidence":"a72d231; product-factory focused tests, safe command allowlist and artifact hashing"},
     {"id":"browser-transport-certification","status":"LOCAL_CERTIFIED_ORCA_UNPROVEN_LIVE","evidence":"10-trial local fixture 100% activation; ORCA transport boundary and pointer implementation tested; no real final submit"},
     {"id":"live-linkedin-proof","status":"BLOCKED","evidence":"No active exact LIVE authorization/window/grant; no fresh execution created"},
-    {"id":"integration-regression-gate","status":"PASS","evidence":"152 focused passed; 299 full, 297 passed, 0 failed, 2 skipped; exit 0"}
+    {"id":"integration-regression-gate","status":"PASS","evidence":"242 focused tests passed; 315 full tests, 313 passed, 0 failed, 2 skipped; exit 0; node check and diff check passed"}
   ]
 }

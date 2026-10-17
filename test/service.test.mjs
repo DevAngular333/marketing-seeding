@@ -7,6 +7,7 @@ import os from "node:os";
 import { JsonStore } from "../src/store.mjs";
 import { SeedingService, buildTrafficPulse, normalizeKeywords } from "../src/service.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
+import { buildProductIntelligence } from "../src/product-intelligence.mjs";
 
 async function fixture(prefix = "seeding-fixture-") {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -36,6 +37,55 @@ test("kill switch controls are operator-only and advance the durable epoch", asy
   assert.equal(deactivated.active, false);
   assert.equal(deactivated.epoch, 2);
   await assert.rejects(service.rebasePostKillEpoch(post.id, "scheduler"), /Only an operator/);
+});
+
+test("product intelligence handoff is persisted on the campaign and projected read-only", async () => {
+  const { service, campaign, productRepo } = await fixture("seeding-product-intelligence-runtime-test-");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  const attached = await service.attachProductIntelligence(campaign.id, {
+    document: { ...document, credentials: "must-not-persist" },
+    sourceRepository: productRepo,
+    readinessStatus: "incomplete"
+  }, "automation");
+  assert.equal(attached.handoff.readinessStatus, "INCOMPLETE");
+  assert.equal("credentials" in attached.document, false);
+  const state = await service.snapshot();
+  const saved = state.campaigns.find((item) => item.id === campaign.id).productIntelligence;
+  assert.equal(saved.handoff.evidenceClaimDocumentHash, attached.handoff.evidenceClaimDocumentHash);
+  assert.equal("credentials" in saved.document, false);
+  const dashboard = await service.dashboard();
+  assert.equal(dashboard.productIntelligence.length, 1);
+  assert.equal(dashboard.productIntelligence[0].campaignId, campaign.id);
+  assert.equal(dashboard.productIntelligence[0].handoff.readinessStatus, "INCOMPLETE");
+});
+
+test("discovery observations are normalized, scored, persisted and never become publish authority", async () => {
+  const { service, campaign, post } = await fixture("seeding-discovery-runtime-test-");
+  const result = await service.recordDiscoveries(campaign.id, {
+    policies: { "example.com": { channel: "example", actions: ["observe"] } },
+    keywords: ["automation"],
+    blockedKeywords: ["spam"],
+    observations: [
+      { url: "https://EXAMPLE.COM/thread#x", title: "Need automation", text: "workflow pain", source: "fixture" },
+      { url: "https://example.com/thread", title: "Need automation", text: "workflow pain", source: "fixture" },
+      { url: "https://example.com/blocked", text: "spam automation", source: "fixture" }
+    ]
+  }, "automation");
+  assert.equal(result.accepted, 2);
+  assert.equal(result.total, 2);
+  assert.equal(result.observations.some((item) => item.classification.label === "RELEVANT"), true);
+  assert.equal(result.observations.some((item) => item.classification.label === "BLOCKED"), true);
+  const state = await service.snapshot();
+  const saved = state.campaigns.find((item) => item.id === campaign.id);
+  assert.equal(saved.discovery.observations.length, 2);
+  assert.equal(state.posts.length, 1);
+  assert.equal(state.posts[0].id, post.id);
+  const dashboard = await service.dashboard();
+  assert.equal(dashboard.discoveries.length, 2);
 });
 
 test("provider-send fence rejects changed execution identity and target binding", async () => {
