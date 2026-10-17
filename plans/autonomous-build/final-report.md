@@ -26,7 +26,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Discovery can attach bounded caller-supplied audience/channel/locale fit evidence with explicit `MATCHED`/`MISMATCHED`/`UNKNOWN` outcomes; this remains advisory and does not create platform support or execution authority.
 - Product Factory can discover and hash bounded media/document candidates from the registered repository through existing local evidence lineage; explicit paths remain authoritative and no candidate becomes a publication-approved asset automatically.
 - A provider-neutral distribution handoff can be validated and attached idempotently as DRY_RUN metadata with exact content/media/target references; it does not wire SYSTEM_AGENTIC_AI live or create execution authority.
-- Mission Control/API now projects registered account health, bound-target count, readiness state, bounded blocker reason, `SESSION_REUSE` / `MANUAL_AUTH` mode and fail-closed eligibility reasons with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. This is observability only and does not select, authenticate or fail over accounts.
+- Mission Control/API now projects registered account health, bound-target count, readiness state, bounded blocker reason, `SESSION_REUSE` / `MANUAL_AUTH` mode and fail-closed eligibility reasons with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. The UI renders this through the existing GET-only dashboard and adds no action controls. This is observability only and does not select, authenticate or fail over accounts.
 - Mission Control overview now also projects control-cycle status, advisory strategy and learning actions/reasons, verified/UNKNOWN publication counts and measured metric coverage. It is explicitly read-only and advisory; it does not grant authority or execute actions.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
 
@@ -53,7 +53,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 ## Git/release state
 
-- Integration branch HEAD is `c607e1e` (`feat: expose bounded account runtime eligibility`), including the Mission Control read-model change, product-understanding derivation and account-runtime readiness projection artifacts.
+- Integration branch HEAD is `6dcebf9` (`feat: expose account readiness in mission control`), including the Mission Control account/session section, product-understanding derivation and account-runtime readiness projection artifacts.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 

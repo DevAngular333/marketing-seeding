@@ -4,7 +4,7 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration HEAD: `c607e1e` (`feat: expose bounded account runtime eligibility`), including the Mission Control panel, product-understanding derivation and account-runtime readiness projection artifacts.
+- Integration HEAD: `6dcebf9` (`feat: expose account readiness in mission control`), including the Mission Control account/session section, product-understanding derivation and account-runtime readiness projection artifacts.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
 - Integration branch contains the accepted local source changes and release artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
@@ -26,6 +26,7 @@
 - Product factory runtime can classify/run the registered campaign repository with the bounded allowlist, discover bounded media/document candidates when paths are omitted, return local artifact hashes, persist a bounded 24-run campaign-owned lineage and project recent runs read-only; it reports `externalSideEffects: false` and does not create publication authority.
 - Account runtime now has a deterministic read-only `accountRuntime`/`executionAccounts` dashboard projection with profile fingerprints, bounded readiness/blocker fields and bound-target counts; raw profile IDs, identity URLs, evidence and secret-like fields are excluded. This is an observability seam, not login, credential, selection or failover automation.
 - Account runtime projection now also exposes explicit `SESSION_REUSE` / `MANUAL_AUTH` mode labels, fail-closed `eligibleForExecution`, and deterministic `ineligibilityReasons`; these fields are read-only observability and are not consumed as authority or a selector.
+- Mission Control now renders those bounded account/session fields from the existing GET-only dashboard projection; it adds no approval, login, selection, failover, browser or execution control.
 
 ## Counts
 
@@ -41,6 +42,7 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - Full suite after the current integration HEAD: 374 total, 372 passed, 0 failed, 2 skipped; exit 0.
 - UI typecheck: `cd ui && npx tsc --noEmit` passed; production build: `cd ui && npm run build` passed with only existing Vite config warnings.
 - Account runtime projection focused gate: 5 passed, 0 failed, 0 skipped; combined projection/service/server gate: 34 passed, 0 failed, 0 skipped; independent verifier: PASS (bounded).
+- Mission Control account/session UI: TypeScript check and production build passed; independent read-only verifier PASS (bounded); Node suite was not rerun because backend/source semantics were unchanged.
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
 
 ## Live proof

@@ -25,7 +25,8 @@
     "working-tree hardening: bounded account blocker/readiness projection",
     "83403d1 feat: expose safe account runtime health",
     "56ea34e feat: add read-only mission control projection",
-    "c607e1e feat: expose bounded account runtime eligibility"
+    "c607e1e feat: expose bounded account runtime eligibility",
+    "6dcebf9 feat: expose account readiness in mission control"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -54,6 +55,7 @@
     {"name":"account_runtime_readiness_projection","result":"PASS_BOUNDED","tests":5,"passed":5,"failed":0,"skipped":0,"command":"node --test test/account-runtime-projection.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-account-runtime-readiness-projection.md"},
     {"name":"account_runtime_projection_service_server_review","result":"PASS_BOUNDED","tests":34,"passed":34,"failed":0,"skipped":0,"command":"node --test test/account-runtime-projection.test.mjs test/service.test.mjs test/server.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-account-runtime-readiness-projection.md"},
     {"name":"full_node_suite_after_account_runtime_readiness","result":"PASS","tests":374,"passed":372,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"account_runtime_readiness_syntax_diff","result":"PASS","command":"node --check src/service.mjs && node --check test/account-runtime-projection.test.mjs && git diff --check"}
+    {"name":"account_runtime_readiness_syntax_diff","result":"PASS","command":"node --check src/service.mjs && node --check test/account-runtime-projection.test.mjs && git diff --check"},
+    {"name":"account_runtime_mission_control_ui","result":"PASS_BOUNDED","command":"cd ui && npx tsc --noEmit && npm run build","report":"plans/autonomous-build/reports/verify-20261018-account-runtime-mission-control.md","notes":"Read-only account/session projection; existing Vite config warnings only; Node suite unchanged"}
   ]
 }
