@@ -1546,7 +1546,21 @@ export class SeedingService {
     const campaign = requireItem(initial.campaigns, campaignId, "Campaign");
     const story = requireItem(initial.stories || [], input.storyId, "Story");
     if (story.campaignId !== campaignId) throw new Error("Story must belong to the campaign");
-    const targets = (initial.targets || []).filter((target) => target.campaignId === campaignId && (!input.targetIds || input.targetIds.includes(target.id)));
+    // Targets are provider-global records and do not carry campaignId. Scope
+    // them through existing campaign-owned posts or authorization destinations;
+    // explicit targetIds are accepted only when they are already bound there.
+    const campaignPostTargetIds = new Set((initial.posts || [])
+      .filter((post) => post.campaignId === campaignId)
+      .map((post) => post.targetId));
+    for (const authorization of (initial.campaignAuthorizations || []).filter((item) => item.campaignId === campaignId)) {
+      for (const destination of authorization.destinations || []) campaignPostTargetIds.add(destination.targetId);
+    }
+    const requestedTargetIds = Array.isArray(input.targetIds) ? input.targetIds.map(String) : null;
+    if (requestedTargetIds && requestedTargetIds.some((id) => !campaignPostTargetIds.has(id))) {
+      throw new Error("Content target is not bound to the campaign");
+    }
+    const targets = (initial.targets || []).filter((target) => campaignPostTargetIds.has(target.id) && (!requestedTargetIds || requestedTargetIds.includes(target.id)));
+    if (!targets.length) throw new Error("Content derivation requires campaign-bound targets");
     const candidates = deriveContentCandidates({ productIntelligence: campaign.productIntelligence, story, targets });
     const result = await this.store.mutate(actor, "content_candidates_derived", (state) => {
       const current = requireItem(state.campaigns, campaignId, "Campaign");

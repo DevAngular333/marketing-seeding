@@ -63,6 +63,30 @@ test("product intelligence handoff is persisted on the campaign and projected re
   assert.equal(dashboard.productIntelligence[0].handoff.readinessStatus, "INCOMPLETE");
 });
 
+test("content candidates scope normal targets through campaign posts and survive restart without authority side effects", async () => {
+  const { directory, service, campaign, productRepo, target } = await fixture("seeding-content-candidate-runtime-test-");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, {
+    title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+    groundingSources: ["README.md"], claimIds: ["what"]
+  }, "automation");
+  const candidates = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+  assert.equal(candidates.length, 1);
+  const before = await service.snapshot();
+  assert.equal(before.posts.length, 1);
+  assert.equal((before.campaignAuthorizations || []).length, 0);
+  assert.equal((before.executionRequests || []).length, 0);
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  const after = await restarted.snapshot();
+  assert.deepEqual(after.campaigns.find((item) => item.id === campaign.id).contentCandidates, before.campaigns.find((item) => item.id === campaign.id).contentCandidates);
+});
+
 test("repository inspection builds grounded intelligence and persists safe lineage", async () => {
   const { service, campaign, productRepo } = await fixture("seeding-product-inspection-runtime-test-");
   const result = await service.inspectProductIntelligence(campaign.id, {
