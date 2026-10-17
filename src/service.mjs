@@ -496,6 +496,48 @@ function newest(items, timestampField, limit = 20) {
     .slice(0, limit);
 }
 
+function accountProfileFingerprint(profileId) {
+  return createHash("sha256").update(String(profileId || "")).digest("hex");
+}
+
+function projectExecutionAccountRuntime(state) {
+  const targets = Array.isArray(state.targets) ? state.targets : [];
+  const accounts = Array.isArray(state.executionAccounts) ? state.executionAccounts : [];
+  return accounts.map((account) => {
+    const boundReadiness = targets
+      .filter((target) => target && target.channel === account.platform && target.accountId === account.accountId && target.profileId === account.profileId)
+      .map((target) => target.readiness)
+      .filter((readiness) => readiness && typeof readiness === "object")
+      .sort((left, right) => String(right.checkedAt || "").localeCompare(String(left.checkedAt || "")));
+    const latest = boundReadiness[0] || null;
+    const readinessState = latest?.state ? String(latest.state).toUpperCase() : null;
+    const health = String(account.health || "unknown");
+    const currentBlocker = health !== "healthy"
+      ? `health:${health}`
+      : latest && readinessState !== "READY"
+        ? `readiness:${String(latest.reasonCode || readinessState || "unknown")}`
+        : null;
+    return {
+      id: String(account.id || `${account.platform}:${account.accountId}`),
+      platform: String(account.platform || ""),
+      accountId: String(account.accountId || ""),
+      profileFingerprint: accountProfileFingerprint(account.profileId),
+      status: String(account.status || "unknown"),
+      health,
+      lastReadinessAt: account.lastReadinessAt || latest?.checkedAt || null,
+      readiness: latest ? {
+        state: readinessState,
+        checkedAt: latest.checkedAt || null,
+        expiresAt: latest.expiresAt || null,
+        reasonCode: latest.reasonCode || null,
+        recoveryClassification: latest.recoveryClassification || "NONE"
+      } : null,
+      boundTargetCount: targets.filter((target) => target && target.channel === account.platform && target.accountId === account.accountId && target.profileId === account.profileId).length,
+      currentBlocker
+    };
+  }).sort((left, right) => left.id.localeCompare(right.id));
+}
+
 function metricTotals(metric = {}) {
   const snapshot = metric || {};
   return Object.fromEntries(METRIC_FIELDS.map((field) => [field, Number.isSafeInteger(snapshot[field]) ? snapshot[field] : null]));
@@ -3631,6 +3673,7 @@ export class SeedingService {
     state.publicationAttempts ||= [];
     state.fixtureAutomationRuns ||= [];
     state.communityMemberships ||= [];
+    const accountRuntime = projectExecutionAccountRuntime(state);
     const latestMetrics = new Map();
     for (const metric of state.metricSnapshots) {
       const current = latestMetrics.get(metric.postId);
@@ -3696,6 +3739,8 @@ export class SeedingService {
       campaignCount: state.campaigns.length,
       targetCount: state.targets.length,
       postCount: state.posts.length,
+      accountRuntime,
+      executionAccounts: accountRuntime,
       communityMemberships: state.communityMemberships,
       statuses,
       totals,
