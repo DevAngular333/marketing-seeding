@@ -58,6 +58,8 @@
     {"name":"account_runtime_readiness_syntax_diff","result":"PASS","command":"node --check src/service.mjs && node --check test/account-runtime-projection.test.mjs && git diff --check"},
     {"name":"account_runtime_mission_control_ui","result":"PASS_BOUNDED","command":"cd ui && npx tsc --noEmit && npm run build","report":"plans/autonomous-build/reports/verify-20261018-account-runtime-mission-control.md","notes":"Read-only account/session projection; existing Vite config warnings only; Node suite unchanged"},
     {"name":"product_factory_project_evidence","result":"PASS_BOUNDED","tests":45,"passed":45,"failed":0,"skipped":0,"command":"node --test test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-product-factory-project-evidence.md","notes":"Strict manifest syntax-check allowlist, staging isolation and bounded lineage; no arbitrary project scripts executed"},
-    {"name":"full_node_suite_after_product_factory_project_evidence","result":"PASS","tests":379,"passed":377,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"}
+    {"name":"full_node_suite_after_product_factory_project_evidence","result":"PASS","tests":379,"passed":377,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
+    {"name":"strategy_fit_gate","result":"PASS_BOUNDED","tests":36,"passed":36,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/service.test.mjs test/server.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-strategy-fit-gate.md"},
+    {"name":"full_node_suite_after_strategy_fit_gate","result":"PASS","tests":381,"passed":379,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"}
   ]
 }

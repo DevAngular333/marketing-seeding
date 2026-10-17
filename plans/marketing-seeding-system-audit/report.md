@@ -1,12 +1,12 @@
 # Full System Audit — Autonomous Marketing Seeding / Distribution OS
 
-**Audit date:** 2026-10-17  
+**Audit date:** 2026-10-18
 **Repository:** `marketing-seeding`  
 **Audit worktree:** `/Users/nam/Documents/marketing-seeding-integration`  
 **Branch:** `integration/autonomous-build`  
 **Evidence rule:** source, tests, configuration and read-only runtime evidence outrank README/plan claims. Synthetic and local evidence are never treated as live platform proof.
 
-**Release snapshot:** integration HEAD `56ea34e` includes canonical dry-run handoff hardening and the read-only Mission Control UI slice; the canonical service remains an older deployed source revision. The journal contains a hash-only snapshot correction after that commit.
+**Release snapshot:** integration HEAD `7d1dae4` (`fix: fail closed on unsafe product factory manifests`) includes canonical dry-run handoff validation, read-only Mission Control projections and fail-closed Product Factory project evidence. The canonical service remains an older deployed source revision; no deployment was performed.
 
 ## 1. What is this system?
 
@@ -195,13 +195,14 @@ The canonical health endpoint was read-only and reported PID 64620, source commi
 
 ### SYNTHETIC / LOCAL
 
-- 370 Node tests: 368 pass, 0 fail, 2 skip.
+- 381 Node tests: 379 pass, 0 fail, 2 skip.
 - Focused discovery/service/server gate: 50 pass, 0 fail, 0 skip.
 - 242 focused transport/governance/JEV/LinkedIn/intelligence/factory/discovery/service tests: 242 pass, 0 fail, 0 skip.
 - Local browser fixture: 10/10 reversible control activation trials, 100% rate under policy (minimum 10, ≥95%, zero wrong-target, zero silent fallback).
 - Local tests cover command completion without activation, activation without acceptance, acceptance without verifiable publication, verified publication contracts, stale/moving/covered/wrong-composer controls, wrong account/profile, timeout after intent, duplicate dispatch, UNKNOWN immutability and no second final click.
-- Product factory local Node fixture executed an allowlisted syntax check with `externalSideEffects: false`; the run and bounded history survive a new store instance.
+- Product factory local Node fixture executed an allowlisted syntax check in temporary staging with `externalSideEffects: false`; unsafe manifest scripts remain `NOT_EXECUTED_UNSAFE`, and the run and bounded history survive a new store instance.
 - Product intelligence and discovery persistence/projection tests run on temporary state only.
+- Strategy fit gate focused: 36 pass, 0 fail, 0 skip; explicit mismatched/unknown fit is excluded and matched/legacy records remain compatible.
 
 Synthetic evidence does not prove a LinkedIn post.
 

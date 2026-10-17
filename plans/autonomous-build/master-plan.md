@@ -21,7 +21,7 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 13. Add a compact read-only Mission Control projection over existing control-cycle, strategy, learning and outcome fields; do not add an approval or execution path.
 14. Add explicit read-only account session/auth mode, eligibility and ineligibility reasons to Mission Control without adding login, selection, failover or authority semantics.
 
-Result: local implementation gates pass (374 total, 372 passed, 0 failed, 2 skipped); UI typecheck and production build also pass. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
+Result: local implementation gates pass (381 total, 379 passed, 0 failed, 2 skipped); the strategy fit gate focused 36/36; UI typecheck and production build also pass. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 
 ## Later waves (dependency order)
 

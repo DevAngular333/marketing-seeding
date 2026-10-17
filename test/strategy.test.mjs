@@ -102,6 +102,40 @@ test("strategy selects engage or research only from eligible relevant discovery"
   assert.equal(engage.candidateId, "r1");
 });
 
+test("strategy excludes discovery with explicit mismatched or unknown fit", async () => {
+  const { service, campaign, store } = await fixture("strategy-fit-gate-");
+  await store.mutate("fixture", "discovery_fit", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.discovery = {
+      observations: [
+        { discoveryId: "mismatch", status: "ELIGIBLE", classification: { label: "RELEVANT" }, score: { score: 100 }, fit: { eligible: false, audience: { status: "MISMATCHED" }, channel: { status: "MATCHED" }, locale: { status: "MATCHED" } } },
+        { discoveryId: "unknown", status: "ELIGIBLE", classification: { label: "RELEVANT" }, score: { score: 90 }, fit: { eligible: false, audience: { status: "UNKNOWN" }, channel: { status: "UNKNOWN" }, locale: { status: "UNKNOWN" } } }
+      ]
+    };
+    state.posts = state.posts.map((post) => ({ ...post, status: "published" }));
+  });
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00Z" });
+  assert.equal(decision.action, "do_nothing");
+  assert.equal(decision.eligible, false);
+  assert.deepEqual(decision.reasons, ["no_safe_action_candidate"]);
+  assert.deepEqual((await service.snapshot()).executionRequests, []);
+});
+
+test("strategy accepts explicitly matched discovery fit", async () => {
+  const { service, campaign, store } = await fixture("strategy-fit-match-");
+  await store.mutate("fixture", "discovery_fit", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.discovery = {
+      observations: [{ discoveryId: "matched", status: "ELIGIBLE", classification: { label: "RELEVANT" }, score: { score: 100 }, fit: { eligible: true, audience: { status: "MATCHED" }, channel: { status: "MATCHED" }, locale: { status: "MATCHED" } } }]
+    };
+    state.posts = state.posts.map((post) => ({ ...post, status: "published" }));
+  });
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00Z" });
+  assert.equal(decision.action, "research");
+  assert.equal(decision.candidateId, "matched");
+  assert.deepEqual(decision.evidence, ["discovery:matched"]);
+});
+
 test("strategy history is bounded, restart-safe and projected read-only", async () => {
   const { service, campaign, store, root } = await fixture("strategy-history-");
   for (let index = 0; index < 30; index += 1) await service.deriveStrategy(campaign.id, { now: new Date(Date.UTC(2026, 9, 17, 12, index * 16)).toISOString() });

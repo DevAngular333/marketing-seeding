@@ -10,7 +10,7 @@
 - **No live real website publish was attempted.** Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant or lease. ORCA is unavailable in this shell. This is an external authorization/input blocker.
 - No fresh execution ID, durable submit intent, autonomous final click, semantic activation, platform acceptance, permalink, post ID or real `PUBLISHED` receipt exists.
 - Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10; this does not certify LinkedIn.
-- Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory candidate evidence added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194.
+- Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory candidate evidence added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch is at `7d1dae4` with the strategy fit gate and audit/journal artifacts in the working tree pending commit.
 
 ## Outcome
 
@@ -29,13 +29,14 @@ The integration branch now contains local, tested foundations for bounded standi
 - Mission Control/API now projects registered account health, bound-target count, readiness state, bounded blocker reason, `SESSION_REUSE` / `MANUAL_AUTH` mode and fail-closed eligibility reasons with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. The UI renders this through the existing GET-only dashboard and adds no action controls. This is observability only and does not select, authenticate or fail over accounts.
 - Mission Control overview now also projects control-cycle status, advisory strategy and learning actions/reasons, verified/UNKNOWN publication counts and measured metric coverage. It is explicitly read-only and advisory; it does not grant authority or execute actions.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
+- Strategy fit gate excludes explicit mismatched/unknown audience-channel-locale fit while preserving matched and legacy observations; focused 36/36 and full 381/379/0/2 pass.
 
 ## Verification
 
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
- Full Node suite: 379 total, 377 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: 381 total, 379 passed, 0 failed, 2 skipped; exit 0
  Product Factory project-evidence/runtime/service gate: 45 passed, 0 failed, 0 skipped; independent safety review PASS (bounded)
  UI typecheck: `cd ui && npx tsc --noEmit` → PASS
  UI production build: `cd ui && npm run build` → PASS (existing Vite config warnings only)
@@ -54,7 +55,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 ## Git/release state
 
-- Integration branch baseline HEAD is `260113a` (`docs: record account readiness mission control`); current working tree adds the Product Factory project-evidence safety milestone and its reports.
+- Integration branch HEAD is `7d1dae4` (`fix: fail closed on unsafe product factory manifests`); Product Factory project-evidence safety changes are committed. The strategy fit gate, audit refresh and journal entries are the current uncommitted release delta pending review and commit.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 

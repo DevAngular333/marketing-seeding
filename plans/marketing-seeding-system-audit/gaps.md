@@ -1,6 +1,6 @@
 # Current gaps and technical debt
 
-Evidence date: 2026-10-17. Severity reflects the effect on the requested humanless distribution objective.
+Evidence date: 2026-10-18 at integration HEAD `7d1dae4`. Severity reflects the effect on the requested humanless distribution objective.
 
 ## P0
 
@@ -21,7 +21,7 @@ Evidence date: 2026-10-17. Severity reflects the effect on the requested humanle
 ## P1
 
 - Product understanding now has a bounded repository inspection path, but the resulting claims remain explicit/caller supplied; it does not autonomously research or generate claims with a model.
-- Product factory persists bounded run lineage and hashes, but remains a syntax/check runner. It does not build project-specific demos, capture screenshots/GIF/video, or verify generated media.
+- Product factory persists bounded run lineage and hashes, but remains a fail-closed staged syntax/check runner. It does not execute arbitrary project builds, capture screenshots/GIF/video, or verify generated media.
 - Discovery accepts caller-supplied observations. There is no continuous public crawler, audience matcher, channel searcher or community-rule crawler.
 - Strategy and next-best-action selection are not implemented. Schedules and deterministic drafts do not form a feedback-driven strategy engine.
 - Content is seeded/template/caller supplied. There is no production LLM provider, platform-context model routing, content-fatigue loop or claim-safe generation service.

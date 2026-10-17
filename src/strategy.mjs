@@ -69,6 +69,11 @@ function unknownForCampaign(state, campaignId, posts = []) {
 function relevantDiscoveries(campaign) {
   return (campaign?.discovery?.observations || [])
     .filter((item) => item.status === "ELIGIBLE" && item.classification?.label === "RELEVANT")
+    // Newer observations carry explicit audience/channel/locale fit evidence.
+    // A known mismatch or unknown fit must not become an actionable advisory
+    // candidate. Legacy records without fit remain compatible and continue to
+    // use the prior policy/relevance gate.
+    .filter((item) => !item.fit || item.fit.eligible === true)
     .sort((a, b) => (b.score?.score || 0) - (a.score?.score || 0) || String(a.discoveryId).localeCompare(String(b.discoveryId)));
 }
 

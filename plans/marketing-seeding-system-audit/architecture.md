@@ -1,6 +1,6 @@
 # Marketing Seeding System — Implemented Architecture
 
-Verified from source, tests, configuration, read-only runtime inspection, and Git history on 2026-10-17. This document describes the current implementation and labels future work separately.
+Verified from source, tests, configuration, read-only runtime inspection, and Git history on 2026-10-18 at integration HEAD `7d1dae4`. This document describes the current implementation and labels future work separately.
 
 ## Runtime topology
 
@@ -69,7 +69,7 @@ Local Node HTTP server (loopback:4318)
 | LinkedIn adapter | Exact request and bound account/profile | Pre-submit evidence, one click, activation/acceptance evidence, verifier result | ORCA, DOM expressions, verifier | Code and synthetic tests; real publication unverified |
 | Browser transport | Resolved control, validation callback | Transport receipt | ORCA CLI client | Local fixture/contract tested; irreversible live certification absent |
 | Product intelligence | Caller-supplied evidence and claims | Hash-linked product understanding and handoff | Existing campaign state | Local verified; automated research absent |
-| Product factory | Campaign repository | Bounded local command result, optional artifact hashes and campaign-owned run lineage | Allowlisted local binaries | Local verified; not a persistent media factory |
+| Product factory | Campaign repository | Fail-closed staged syntax probe, optional artifact hashes and campaign-owned run lineage | Allowlisted local binaries | Local verified; not a persistent media factory or arbitrary build runner |
 | Discovery | Caller-supplied public observations | Normalized, deduplicated, policy-classified opportunities | Campaign state | Local verified; crawler absent |
 | Dashboard | Read-only service projection | Mission Control views, flow graph, health and evidence | HTTP API, existing frontend | Working local; strategy/NBA views absent |
 | Metrics/engagement | Published post, provider response, screenshot or operator evidence | Metric snapshots, interactions, grounded reply drafts | Official APIs or browser/manual evidence | Partial; canonical runtime has no metric snapshots |

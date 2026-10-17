@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "verifiedAt": "2026-10-17",
+  "verifiedAt": "2026-10-18",
   "capabilities": [
     {"stage":"Repository/product input","status":"PARTIAL","evidence":"Campaign requires an existing productRepo; no upstream ProductRun handoff."},
-    {"stage":"Build/run/render product","status":"PARTIAL","evidence":"Bounded Node/Python/static syntax plan; no project-specific render/media pipeline."},
+    {"stage":"Build/run/render product","status":"PARTIAL","evidence":"Fail-closed relative node --check manifest probe in temporary staging; unsafe scripts remain unexecuted; no project-specific render/media pipeline."},
     {"stage":"Product understanding","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"Evidence-grounded WHAT/PROBLEM/BETTER/AUDIENCE document and hash-linked claims."},
     {"stage":"Evidence/claim verification","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"Stable evidence hashes and unsupported claim quarantine."},
     {"stage":"Audience discovery","status":"NOT_IMPLEMENTED","evidence":"No autonomous audience search or matching engine."},
