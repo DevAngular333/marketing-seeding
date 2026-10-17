@@ -459,6 +459,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && match) {
       return sendJson(response, 200, await service.runProductFactory(match[1], await readJson(request), actor));
     }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/strategy$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 200, await service.deriveStrategy(match[1], await readJson(request), actor));
+    }
     if (request.method === "POST" && url.pathname === "/api/targets") {
       return sendJson(response, 201, await service.createTarget(await readJson(request), actor));
     }

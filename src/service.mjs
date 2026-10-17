@@ -20,6 +20,7 @@ import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } 
 import { processDiscoveries } from "./discovery.mjs";
 import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
+import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { appRoot } from "./paths.mjs";
 
 const READINESS_IGNORED_EXECUTION_REASONS = new Set([
@@ -626,6 +627,21 @@ export class SeedingService {
       }
     }, actor);
     return { campaignId, inspection, productIntelligence: attached, persisted: true, externalSideEffects: false };
+  }
+
+  /** Persist one bounded, deterministic advisory strategy decision. No execution authority is changed. */
+  async deriveStrategy(campaignId, input = {}, actor = "strategy-planner") {
+    const state = await this.store.read();
+    requireItem(state.campaigns, campaignId, "Campaign");
+    const now = input.now ? new Date(input.now) : new Date();
+    if (!Number.isFinite(now.getTime())) throw new Error("Strategy decision time must be valid");
+    const decision = deriveStrategyDecision(state, campaignId, { now });
+    const result = await this.store.mutate(actor, "strategy_decision_recorded", (nextState) => {
+      const campaign = requireItem(nextState.campaigns, campaignId, "Campaign");
+      appendStrategyDecision(campaign, decision);
+      return decision;
+    });
+    return result.result;
   }
 
   #assertOperatorControlActor(actor) {
@@ -3497,6 +3513,14 @@ export class SeedingService {
           repositoryInspection: campaign.productIntelligence.repositoryInspection || null,
           attachedAt: campaign.productIntelligence.attachedAt,
           attachedBy: campaign.productIntelligence.attachedBy
+        })),
+      strategy: state.campaigns
+        .filter((campaign) => Array.isArray(campaign.strategyDecisions) && campaign.strategyDecisions.length)
+        .map((campaign) => ({
+          campaignId: campaign.id,
+          latest: campaign.strategyDecisions.at(-1),
+          recent: campaign.strategyDecisions.slice(-24),
+          updatedAt: campaign.strategyUpdatedAt || null
         })),
       discoveries: state.campaigns
         .filter((campaign) => campaign.discovery?.observations?.length)
