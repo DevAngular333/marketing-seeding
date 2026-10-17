@@ -1,0 +1,4 @@
+?? plans/autonomous-build/discovery-runtime/acceptance.md
+?? plans/autonomous-build/discovery-scheduler/
+?? plans/autonomous-build/distribution-handoff/
+?? plans/autonomous-build/learning-foundation/pin/

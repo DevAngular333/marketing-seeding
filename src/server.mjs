@@ -42,6 +42,7 @@ const sourceDirty = process.env.SEEDING_BUILD_DIRTY === "true";
 const trafficPollMinutes = Number(process.env.SEEDING_TRAFFIC_POLL_MINUTES || 0);
 const controlCycleEnabled = process.env.SEEDING_CONTROL_CYCLE_ENABLED === "true";
 const controlCycleMinutes = Number(process.env.SEEDING_CONTROL_CYCLE_MINUTES || 0);
+const discoveryPollMinutes = Number(process.env.SEEDING_DISCOVERY_POLL_MINUTES || 0);
 if (operatorToken.length < 32) {
   throw new Error("SEEDING_OPERATOR_TOKEN must contain at least 32 characters");
 }
@@ -51,6 +52,9 @@ if (automationToken.length < 32) {
 if (automationToken === operatorToken) throw new Error("Operator and automation tokens must be different");
 if (!Number.isFinite(trafficPollMinutes) || trafficPollMinutes < 0 || (trafficPollMinutes > 0 && trafficPollMinutes < 15)) {
   throw new Error("SEEDING_TRAFFIC_POLL_MINUTES must be 0 (disabled) or at least 15");
+}
+if (!Number.isFinite(discoveryPollMinutes) || discoveryPollMinutes < 0 || (discoveryPollMinutes > 0 && discoveryPollMinutes < 15)) {
+  throw new Error("SEEDING_DISCOVERY_POLL_MINUTES must be 0 (disabled) or at least 15");
 }
 if (controlCycleEnabled && (!Number.isFinite(controlCycleMinutes) || controlCycleMinutes < 15)) {
   throw new Error("SEEDING_CONTROL_CYCLE_MINUTES must be at least 15 when enabled");
@@ -90,9 +94,11 @@ const trafficRuntime = {
   lastSummary: null
 };
 const controlCycleRuntime = { enabled: controlCycleEnabled, intervalMinutes: controlCycleEnabled ? controlCycleMinutes : null, running: false, lastStartedAt: null, lastCompletedAt: null, nextRunAt: null, lastSummary: null };
+const discoveryRuntime = { enabled: discoveryPollMinutes > 0, intervalMinutes: discoveryPollMinutes || null, running: false, lastStartedAt: null, lastCompletedAt: null, nextRunAt: null, lastSummary: null };
 const fixtureWorker = new FixtureWorkerBridge({ service });
 let trafficTimer = null;
 let controlCycleTimer = null;
+let discoveryTimer = null;
 let campaignQueueTimer = null;
 let jevExecutionTimer = null;
 let jevExecutionRunning = false;
@@ -114,6 +120,7 @@ function scheduleTrafficCollection(delayMs = trafficIntervalMs) {
 function scheduleControlCycle(delayMs = controlCycleMinutes * 60_000) {
   if (!controlCycleRuntime.enabled || shuttingDown) return;
   if (controlCycleTimer) clearTimeout(controlCycleTimer);
+  if (discoveryTimer) clearTimeout(discoveryTimer);
   const boundedDelay = Math.max(1_000, delayMs);
   controlCycleRuntime.nextRunAt = new Date(Date.now() + boundedDelay).toISOString();
   controlCycleTimer = setTimeout(async () => {
@@ -138,6 +145,44 @@ function scheduleControlCycle(delayMs = controlCycleMinutes * 60_000) {
     }
   }, boundedDelay);
   controlCycleTimer.unref();
+}
+
+async function runDiscoveryCollection(actor = "scheduled-discovery-observer") {
+  discoveryRuntime.running = true;
+  discoveryRuntime.lastStartedAt = new Date().toISOString();
+  const results = [];
+  try {
+    const state = await service.snapshot();
+    for (const campaign of state.campaigns || []) {
+      const urls = Array.isArray(campaign.discoverySources) ? campaign.discoverySources : [];
+      if (!urls.length || shuttingDown) continue;
+      try {
+        const result = await service.observeDiscoveries(campaign.id, { urls }, actor);
+        results.push({ campaignId: campaign.id, requested: result.requested, accepted: result.persisted?.accepted || 0, unknown: (result.observations || []).filter((item) => item.observationStatus === "UNKNOWN").length });
+      } catch (error) {
+        results.push({ campaignId: campaign.id, ok: false, reason: String(error?.code || error?.message || "discovery_error").slice(0, 160) });
+      }
+    }
+    discoveryRuntime.lastSummary = { campaigns: results.length, succeeded: results.filter((item) => item.ok !== false).length, failed: results.filter((item) => item.ok === false).length };
+    return results;
+  } finally {
+    discoveryRuntime.running = false;
+    discoveryRuntime.lastCompletedAt = new Date().toISOString();
+  }
+}
+
+function scheduleDiscoveryCollection(delayMs = discoveryPollMinutes * 60_000) {
+  if (!discoveryRuntime.enabled || shuttingDown) return;
+  if (discoveryTimer) clearTimeout(discoveryTimer);
+  const boundedDelay = Math.max(1_000, delayMs);
+  discoveryRuntime.nextRunAt = new Date(Date.now() + boundedDelay).toISOString();
+  discoveryTimer = setTimeout(async () => {
+    if (!discoveryRuntime.running && !shuttingDown) {
+      try { await runDiscoveryCollection(); } catch (error) { discoveryRuntime.lastSummary = { campaigns: 0, succeeded: 0, failed: 1, reason: String(error?.code || "discovery_error") }; }
+    }
+    scheduleDiscoveryCollection();
+  }, boundedDelay);
+  discoveryTimer.unref();
 }
 
 function scheduleCampaignQueueEvaluation(delayMs = 30_000) {
@@ -388,6 +433,7 @@ const server = http.createServer(async (request, response) => {
         runtime: runtimeMetadata({ pid: process.pid, sourceCommit, sourceDirty, state }),
         trafficCollector: trafficRuntime,
         controlCycle: controlCycleRuntime,
+        discovery: discoveryRuntime,
         dailyProduction: await readDailyProductionAutomation(),
         browserTracking: await readBrowserTrafficAutomation(),
         fixtureWorker: fixtureWorker.runtime()
@@ -477,6 +523,7 @@ const server = http.createServer(async (request, response) => {
         automation: {
           trafficCollector: trafficRuntime,
           controlCycle: controlCycleRuntime,
+        discovery: discoveryRuntime,
           dailyProduction: await readDailyProductionAutomation(),
           browserTracking: await readBrowserTrafficAutomation(),
           fixtureWorker: fixtureWorker.runtime()
@@ -718,6 +765,7 @@ server.listen(port, host, () => {
   scheduleCampaignQueueEvaluation();
   scheduleJevExecution();
   scheduleControlCycle();
+  scheduleDiscoveryCollection();
 });
 
 if (trafficPollMinutes > 0) {
@@ -732,12 +780,13 @@ function shutdown() {
   shuttingDown = true;
   if (trafficTimer) clearTimeout(trafficTimer);
   if (controlCycleTimer) clearTimeout(controlCycleTimer);
+  if (discoveryTimer) clearTimeout(discoveryTimer);
   if (campaignQueueTimer) clearTimeout(campaignQueueTimer);
   if (jevExecutionTimer) clearTimeout(jevExecutionTimer);
   fixtureWorker.stop();
   server.close(() => {
     void (async () => {
-      while (trafficRuntime.running || controlCycleRuntime.running || campaignQueueRunning || jevExecutionRunning || fixtureWorker.running) {
+      while (trafficRuntime.running || controlCycleRuntime.running || discoveryRuntime.running || campaignQueueRunning || jevExecutionRunning || fixtureWorker.running) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
       await store.releaseWriterLease();

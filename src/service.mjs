@@ -50,6 +50,27 @@ const DYNAMIC_EXECUTION_REASONS = new Set([
 ]);
 
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
+
+const MAX_DISCOVERY_SOURCES = 20;
+function normalizeDiscoverySources(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error("discoverySources must be an array");
+  if (value.length > MAX_DISCOVERY_SOURCES) throw new Error(`At most ${MAX_DISCOVERY_SOURCES} discovery sources are allowed`);
+  const seen = new Set();
+  return value.map((raw) => {
+    const text = String(raw || "").trim();
+    let parsed;
+    try { parsed = new URL(text); } catch { throw new Error("Discovery source must be a valid HTTP(S) URL"); }
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error("Discovery source must be an HTTP(S) URL without credentials");
+    parsed.hash = "";
+    const normalized = parsed.toString();
+    if (normalized.length > 2048) throw new Error("Discovery source URL is too long");
+    if (seen.has(normalized)) throw new Error("Duplicate discovery source");
+    seen.add(normalized);
+    return normalized;
+  });
+}
+
 const MAX_GROUNDING_BYTES = 2_000_000;
 const MAX_SCREENSHOT_BYTES = 25_000_000;
 const MAX_PRODUCT_INTELLIGENCE_BYTES = 750_000;
@@ -1219,6 +1240,7 @@ export class SeedingService {
         landingUrl: optionalHttpUrl(input.landingUrl, "Campaign landingUrl"),
         keywords: normalizeKeywords(input.keywords),
         audience: Array.isArray(input.audience) ? input.audience : [],
+        discoverySources: normalizeDiscoverySources(input.discoverySources) || [],
         status: "draft",
         createdAt: nowIso()
       };
@@ -2770,6 +2792,7 @@ export class SeedingService {
       if (input.landingUrl !== undefined) campaign.landingUrl = optionalHttpUrl(input.landingUrl, "Campaign landingUrl");
       if (input.keywords !== undefined) campaign.keywords = normalizeKeywords(input.keywords);
       if (input.audience !== undefined) campaign.audience = Array.isArray(input.audience) ? input.audience : [];
+      if (input.discoverySources !== undefined) campaign.discoverySources = normalizeDiscoverySources(input.discoverySources);
       if (input.track !== undefined) campaign.track = optionalProductTrack(input.track);
       if (!campaign.name || !campaign.objective) throw new Error("Campaign name and objective are required");
       campaign.updatedAt = nowIso();
