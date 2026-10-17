@@ -4,7 +4,7 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration HEAD: `81c2027` (`fix: harden discovery scheduler polling`); the working tree contains the bounded observer hardening and journal updates described below.
+- Integration HEAD: `6e083ff` (`fix: harden public discovery observer`); the working tree contains the bounded audience/channel fit seam and journal updates described below.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
 - Working tree contains only the explicitly listed observer/config/journal artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
@@ -22,6 +22,7 @@
 - Product intelligence handoff is versioned, hash-validated, sanitized, persisted on campaigns and projected read-only by `/api/dashboard`.
 - Repository inspection can now read a bounded allowlist of safe repository files, redact credential-like material, produce stable evidence hashes and persist metadata-only inspection lineage with the handoff.
 - Discovery observations are normalized, deduplicated, policy-classified, scored, persisted on campaigns and projected read-only by `/api/dashboard`; integration adds an opt-in public HTTP observer and 15-minute poller, which are not enabled in the canonical service.
+- Discovery fit metadata now evaluates caller-supplied audience terms, channel and locale hints as bounded `MATCHED`/`MISMATCHED`/`UNKNOWN` advisory evidence through the existing persistence path; it does not create authority or publication work.
 - Product factory runtime can classify/run the registered campaign repository with the bounded allowlist, return local artifact evidence, persist a bounded 24-run campaign-owned lineage and project recent runs read-only; it reports `externalSideEffects: false` and does not create publication authority.
 
 ## Counts
@@ -34,8 +35,8 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 
 ## Tests
 
-- Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17.
-- Full suite: 361 total, 359 passed, 0 failed, 2 skipped; exit 0.
+- Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39.
+- Full suite: 362 total, 360 passed, 0 failed, 2 skipped; exit 0.
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
 
 ## Live proof

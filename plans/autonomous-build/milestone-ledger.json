@@ -12,6 +12,7 @@
     {"id":"browser-transport-certification","status":"LOCAL_CERTIFIED_ORCA_UNPROVEN_LIVE","evidence":"10-trial local fixture 100% activation; ORCA transport boundary and pointer implementation tested; no real final submit"},
     {"id":"live-linkedin-proof","status":"BLOCKED","evidence":"No active exact LIVE authorization/window/grant; no fresh execution created"},
     {"id":"discovery-runtime-and-scheduler","status":"COMPLETE_LOCAL_VERIFIED","evidence":"b5d9e03, 0e024b9, 81c2027 plus current observer hardening; bounded SSRF-aware public observer, DNS/body timeout bounds, opt-in 15-minute scheduler, campaign error isolation, 50 focused tests; no authority/browser/provider side effects"},
-    {"id":"integration-regression-gate","status":"PASS","evidence":"361 full tests, 359 passed, 0 failed, 2 skipped; focused discovery/service/server gate 50 passed; observer-hardening subset 17 passed; node check and diff check passed"}
+    {"id":"audience-channel-intelligence","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Working-tree seam in src/discovery.mjs and src/service.mjs; bounded caller-supplied audience/channel/locale fit persisted through existing discovery state; independent review PASS (bounded), focused 39/39 and full suite 362 total, 360 passed, 0 failed, 2 skipped"},
+    {"id":"integration-regression-gate","status":"PASS","evidence":"362 full tests, 360 passed, 0 failed, 2 skipped; focused discovery/service/server gate 50 passed; audience-fit review 39 passed; observer-hardening subset 17 passed; node check and diff check passed"}
   ]
 }

@@ -1336,7 +1336,12 @@ export class SeedingService {
     const options = {
       policies: input.policies && typeof input.policies === "object" && !Array.isArray(input.policies) ? input.policies : {},
       keywords: Array.isArray(input.keywords) ? input.keywords : campaign.keywords?.map((item) => item.phrase) || [],
-      blockedKeywords: Array.isArray(input.blockedKeywords) ? input.blockedKeywords : []
+      blockedKeywords: Array.isArray(input.blockedKeywords) ? input.blockedKeywords : [],
+      fit: input.fit && typeof input.fit === "object" && !Array.isArray(input.fit) ? input.fit : {
+        audienceKeywords: input.audienceKeywords,
+        targetChannel: input.targetChannel,
+        targetLocale: input.targetLocale
+      }
     };
     const processed = processDiscoveries(observations, options);
     const result = await this.store.mutate(actor, "discoveries_recorded", (nextState) => {
@@ -1363,7 +1368,11 @@ export class SeedingService {
       observations,
       policies: input.policies,
       keywords: input.keywords,
-      blockedKeywords: input.blockedKeywords
+      blockedKeywords: input.blockedKeywords,
+      fit: input.fit,
+      audienceKeywords: input.audienceKeywords,
+      targetChannel: input.targetChannel,
+      targetLocale: input.targetLocale
     }, actor) : { campaignId, accepted: 0, total: null, observations: [] };
     return { ...result, persisted };
   }

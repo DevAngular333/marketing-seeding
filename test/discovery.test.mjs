@@ -41,3 +41,17 @@ test('redacts credential-like observation material', () => {
   assert.doesNotMatch(JSON.stringify(item), /hunter2|abcdefghijklmnop/);
   assert.match(JSON.stringify(item), /credential\/session material exists/);
 });
+
+test('evaluates bounded audience, channel and locale fit deterministically', () => {
+  const options = { policies, fit: { audienceKeywords: ['automation'], targetChannel: 'example', targetLocale: 'en-US' } };
+  const [matched] = processDiscoveries([{ url: 'https://example.com/a', title: 'Automation tips', text: 'workflow', locale: 'en-US' }], options);
+  assert.equal(matched.fit.audience.status, 'MATCHED');
+  assert.equal(matched.fit.channel.status, 'MATCHED');
+  assert.equal(matched.fit.locale.status, 'MATCHED');
+  assert.equal(matched.fit.eligible, true);
+  const [mismatched] = processDiscoveries([{ url: 'https://example.com/a', title: 'Automation tips', locale: 'fr-FR' }], options);
+  assert.equal(mismatched.fit.locale.status, 'MISMATCHED');
+  const [unknown] = processDiscoveries([{ url: 'https://example.com/b', title: '' }], { policies, fit: { targetLocale: 'en-US' } });
+  assert.equal(unknown.fit.locale.status, 'UNKNOWN');
+  assert.deepEqual(unknown.fit, processDiscoveries([{ url: 'https://example.com/b', title: '' }], { policies, fit: { targetLocale: 'en-US' } })[0].fit);
+});

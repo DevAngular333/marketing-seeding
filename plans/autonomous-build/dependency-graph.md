@@ -17,7 +17,7 @@ JsonStore / schema / audit / writer lease
   │
   ├─> product intelligence / discovery / artifact graph
   │     ├─> Product Intelligence (bounded repository inspection + explicit claims + claim graph + versioned handoff persisted on campaign)
-  │     ├─> Discovery (caller observations + deterministic normalization/dedup/classification/score persisted on campaign)
+  │     ├─> Discovery (caller observations + deterministic normalization/dedup/classification/score + advisory audience/channel/locale fit persisted on campaign)
   │     └─> Product Factory (safe local classification/commands/artifact hash + bounded persistent run lineage)
   │
   ├─> deterministic advisory strategy (reads product readiness, discovery, queue policy and UNKNOWN state)
@@ -33,8 +33,8 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 
 ## Dependency status
 
-- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, deterministic discovery persistence/projection, safe product factory execution with bounded persistent run lineage.
+- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, deterministic discovery persistence/projection, bounded caller-supplied audience/channel/locale fit metadata, safe product factory execution with bounded persistent run lineage.
 - **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, product factory orchestration.
 - **Implemented/local verified:** deterministic advisory strategy decisions, evidence-grounded draft candidates, outcome summaries, advisory learning feedback, opt-in control-cycle scheduling, and bounded public HTTP discovery polling with campaign error isolation; all are non-authoritative.
-- **Design-only/not implemented:** audience matching, platform search/community-rule crawler, outcome-driven authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery, live System-Agentic handoff.
+- **Design-only/not implemented:** autonomous audience search, platform search/community-rule crawler, outcome-driven authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery, live System-Agentic handoff. Caller-supplied fit is implemented as advisory evidence only.
 - **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.

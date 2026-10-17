@@ -15,6 +15,48 @@ function hash(value) { return createHash('sha256').update(stable(value)).digest(
 
 function normalizeText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 
+function boundedTerms(value, limit = 20) {
+  const values = Array.isArray(value) ? value : (value == null ? [] : [value]);
+  return [...new Set(values.map((term) => normalizeText(term).toLowerCase()).filter(Boolean).map((term) => term.slice(0, 64)))].slice(0, limit);
+}
+
+function fitOptions(options = {}) {
+  const fit = options.fit && typeof options.fit === 'object' && !Array.isArray(options.fit) ? options.fit : options;
+  return {
+    audienceKeywords: boundedTerms(fit.audienceKeywords ?? fit.audience ?? fit.audienceTerms),
+    targetChannel: normalizeText(fit.targetChannel ?? fit.channelTarget ?? '').toLowerCase().slice(0, 80),
+    targetLocale: normalizeText(fit.targetLocale ?? fit.locale ?? '').toLowerCase().slice(0, 32),
+  };
+}
+
+export function evaluateDiscoveryFit(discovery, options = {}) {
+  const { audienceKeywords, targetChannel, targetLocale } = fitOptions(options);
+  const haystack = normalizeText(`${discovery?.title || ''} ${discovery?.text || ''}`).toLowerCase().slice(0, 20_000);
+  const matchedTerms = audienceKeywords.filter((term) => haystack.includes(term));
+  const audience = audienceKeywords.length === 0
+    ? { status: 'UNKNOWN', matchedTerms: [], reason: 'no audience terms supplied' }
+    : (matchedTerms.length
+      ? { status: 'MATCHED', matchedTerms, reason: 'audience term matched normalized text' }
+      : (haystack ? { status: 'MISMATCHED', matchedTerms: [], reason: 'no audience term matched normalized text' } : { status: 'UNKNOWN', matchedTerms: [], reason: 'no audience text evidence' }));
+
+  const observedChannel = normalizeText(discovery?.channel || discovery?.policy?.host).toLowerCase();
+  const channel = !targetChannel
+    ? { status: 'UNKNOWN', reason: 'no target channel supplied' }
+    : (!observedChannel ? { status: 'UNKNOWN', reason: 'no observed channel evidence' }
+      : (observedChannel === targetChannel || observedChannel.includes(targetChannel) || targetChannel.includes(observedChannel)
+        ? { status: 'MATCHED', reason: 'observed channel matched target' }
+        : { status: 'MISMATCHED', reason: 'observed channel did not match target' }));
+
+  const observedLocale = normalizeText(discovery?.locale || discovery?.localeHint || '').toLowerCase().slice(0, 32);
+  const locale = !targetLocale
+    ? { status: 'UNKNOWN', reason: 'no target locale supplied' }
+    : (!observedLocale ? { status: 'UNKNOWN', reason: 'no observed locale evidence' }
+      : (observedLocale === targetLocale ? { status: 'MATCHED', reason: 'observed locale matched target' } : { status: 'MISMATCHED', reason: 'observed locale did not match target' }));
+  const statuses = [audience.status, channel.status, locale.status];
+  const eligible = statuses.every((status) => status === 'MATCHED');
+  return { audience, channel, locale, eligible, explanation: eligible ? 'all supplied fit evidence matched' : 'fit is advisory and not fully matched' };
+}
+
 function redactText(value) {
   return normalizeText(value).replace(SECRET_VALUE, 'credential/session material exists').replace(SECRET_ASSIGNMENT, '$1=credential/session material exists');
 }
@@ -60,6 +102,8 @@ export function normalizeDiscovery(observation, { policies = {}, now = new Date(
     policy,
     provenance,
   };
+  const locale = redactText(observation.locale || observation.localeHint);
+  if (locale) normalized.locale = locale;
   const discoveryId = hash({ url, title, text, author: normalized.author });
   return { ...normalized, discoveryId, normalizedAt: now, status: policy.status };
 }
@@ -99,7 +143,8 @@ export function processDiscoveries(observations, options = {}) {
   const normalized = (observations || []).map((item) => normalizeDiscovery(item, options));
   return deduplicateDiscoveries(normalized).map((item) => {
     const classification = classifyDiscovery(item, options);
-    return { ...item, classification, score: scoreDiscovery(item, classification, options) };
+    const fit = evaluateDiscoveryFit(item, options);
+    return { ...item, classification, score: scoreDiscovery(item, classification, options), fit };
   });
 }
 
