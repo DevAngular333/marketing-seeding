@@ -49,7 +49,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 ## Git/release state
 
-- Integration branch includes commits `c4fb42f`, `2428606`, `a72d231`, `769cf23`, `30de649`, `f4527af` and release commit `78f5bc9` for the final local seams and reports.
+- Integration branch HEAD is `83403d1` (`feat: expose safe account runtime health`); it includes the account runtime projection and its evidence artifacts on top of the previously accepted local seams.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 

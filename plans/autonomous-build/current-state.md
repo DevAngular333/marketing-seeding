@@ -4,7 +4,7 @@
 
 - Integration worktree: `/Users/nam/Documents/marketing-seeding-integration`
 - Branch: `integration/autonomous-build`
-- Integration HEAD: `1fac781` (`docs: complete account projection worker contract`); the branch contains the bounded account runtime dashboard projection and journal updates described below.
+- Integration HEAD: `83403d1` (`feat: expose safe account runtime health`); the branch contains the bounded account runtime dashboard projection and journal updates described below.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
 - Working tree contains only the account-runtime audit/projection plan artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
