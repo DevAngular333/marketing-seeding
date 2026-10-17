@@ -148,14 +148,16 @@ test("strategy history is bounded, restart-safe and projected read-only", async 
 });
 
 test("strategy preserves publish precedence while exposing current learning context", async () => {
-  const { service, campaign, store } = await fixture("strategy-learning-context-");
+  const { service, campaign, store, post, target } = await fixture("strategy-learning-context-");
   await store.mutate("fixture", "outcome", (state) => {
     const current = state.campaigns.find((item) => item.id === campaign.id);
+    state.targets.find((item) => item.id === target.id).profileId = "profile";
     current.outcomeSummary = {
       summaryId: "outcome-111111111111111111111111",
       publication: { unknown: 0 },
       metrics: { snapshots: 1, totals: { clicks: 2 }, coverage: { clicks: { measured: 1 } } },
-      evidence: { metricSnapshotIds: ["metric-1"] }
+      evidence: { metricSnapshotIds: ["metric-1"] },
+      postAttributions: [{ postId: post.id, status: "VERIFIED", target: { targetId: target.id, channel: "threads", accountId: "account", profileId: "profile" }, evidence: { receiptIds: ["receipt-1"] } }]
     };
   });
   const learning = await service.deriveLearningFeedback(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
@@ -164,6 +166,8 @@ test("strategy preserves publish precedence while exposing current learning cont
   assert.equal(decision.action, "publish");
   assert.equal(decision.learningContext.feedbackId, learning.feedbackId);
   assert.equal(decision.learningContext.outcomeSummaryId, "outcome-111111111111111111111111");
+  assert.equal(decision.learningContext.postAttributionContext.counts.VERIFIED, 1);
+  assert.equal(decision.learningContext.postAttributionContext.postAttributions[0].postId, post.id);
   assert.equal(decision.reasons.includes("current_learning_feedback_observed"), true);
   assert.equal(decision.evidence.includes(`learning:${learning.feedbackId}`), true);
   const state = await service.snapshot();
@@ -190,6 +194,42 @@ test("strategy ignores stale or malformed learning feedback without changing fal
   const malformed = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:15:00.000Z" });
   assert.equal(malformed.action, "publish");
   assert.equal("learningContext" in malformed, false);
+});
+
+test("strategy rejects self-consistent attribution for a foreign post or target", async () => {
+  const { service, campaign, store, target } = await fixture("strategy-learning-foreign-attribution-");
+  await store.mutate("fixture", "foreign_attribution", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    state.campaigns.push({ id: "other-campaign" });
+    state.posts.push({ id: "foreign-post", campaignId: "other-campaign", targetId: target.id, content: "Other campaign" });
+    current.outcomeSummary = {
+      summaryId: "outcome-666666666666666666666666",
+      publication: { unknown: 0 }, metrics: { snapshots: 0 }, evidence: {},
+      postAttributions: [{ postId: "foreign-post", status: "VERIFIED", target: { targetId: target.id, channel: "threads", accountId: "account", profileId: "profile" } }]
+    };
+  });
+  const learning = await service.deriveLearningFeedback(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
+  assert.equal("postAttributionContext" in learning, true);
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
+  assert.equal("learningContext" in decision, false);
+  assert.equal(decision.action, "publish");
+});
+
+test("strategy rejects attribution when the bound target identity drifts", async () => {
+  const { service, campaign, store, post, target } = await fixture("strategy-learning-target-drift-");
+  await store.mutate("fixture", "target_drift", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.outcomeSummary = {
+      summaryId: "outcome-777777777777777777777777",
+      publication: { unknown: 0 }, metrics: { snapshots: 0 }, evidence: {},
+      postAttributions: [{ postId: post.id, status: "VERIFIED", target: { targetId: target.id, channel: "threads", accountId: "other-account", profileId: "profile" } }]
+    };
+  });
+  const learning = await service.deriveLearningFeedback(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00.000Z" });
+  assert.equal("postAttributionContext" in learning, true);
+  assert.equal("learningContext" in decision, false);
+  assert.equal(decision.action, "publish");
 });
 
 test("authoritative UNKNOWN dominates a learning publish recommendation", async () => {

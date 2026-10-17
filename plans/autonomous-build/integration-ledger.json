@@ -26,7 +26,8 @@
     "83403d1 feat: expose safe account runtime health",
     "56ea34e feat: add read-only mission control projection",
     "c607e1e feat: expose bounded account runtime eligibility",
-    "6dcebf9 feat: expose account readiness in mission control"
+    "6dcebf9 feat: expose account readiness in mission control",
+    "working-tree seam: bounded campaign-aware post attribution context in existing learning/strategy with late-UNKNOWN retention and target identity validation"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -67,6 +68,10 @@
     {"name":"outcome_attribution_independent_review","result":"ACCEPT","report":"plans/autonomous-build/reports/verify-20261018-outcome-attribution.md","notes":"Explicit-link-only attribution, VERIFIED requires canonical identity evidence, UNKNOWN dominates, stable bounded metrics and evidence, campaign-only conversions unassigned"},
     {"name":"full_node_suite_after_outcome_attribution","result":"PASS","tests":388,"passed":386,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
     {"name":"outcome_attribution_syntax_diff","result":"PASS","command":"node --check src/outcome.mjs && git diff --check"},
-    {"name":"canonical_runtime_immutability_after_outcome_attribution","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
+    {"name":"canonical_runtime_immutability_after_outcome_attribution","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4},
+    {"name":"post_attribution_learning_focused","result":"PASS_BOUNDED","tests":20,"passed":20,"failed":0,"skipped":0,"command":"node --test test/learning.test.mjs test/strategy.test.mjs"},
+    {"name":"post_attribution_learning_integration","result":"PASS_BOUNDED","tests":56,"passed":56,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/outcome.test.mjs test/service.test.mjs test/server.test.mjs"},
+    {"name":"full_node_suite_after_post_attribution_learning","result":"PASS","tests":393,"passed":391,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
+    {"name":"post_attribution_learning_static","result":"PASS","command":"node --check src/learning.mjs && node --check src/strategy.mjs && git diff --check"}
   ]
 }

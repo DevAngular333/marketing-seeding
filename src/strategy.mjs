@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { evaluateQueue } from "./guards.mjs";
 import { publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
+import { isNormalizedPostAttributionContext, normalizePostAttributionContext } from "./learning.mjs";
 
 const ACTIONS = new Set(["publish", "engage", "research", "wait", "do_nothing"]);
 const MAX_DECISIONS = 24;
@@ -44,7 +45,48 @@ function productReady(campaign) {
   return handoff?.readinessStatus === "READY" && required.every((field) => document?.[field]?.text && document[field].evidenceRefs?.length);
 }
 
-function currentLearningContext(campaign) {
+const ATTRIBUTION_STATUSES = new Set(["UNKNOWN", "VERIFIED", "PARTIAL", "UNOBSERVED"]);
+
+function boundedIdentity(value, max = 160) {
+  const text = String(value ?? "").trim();
+  if (!text || text.length > max || /(?:password|secret|token|cookie|session|credential|bearer)/i.test(text)) return null;
+  return text;
+}
+
+function identityFingerprint(value) {
+  const text = boundedIdentity(value);
+  return text ? createHash("sha256").update(text).digest("hex").slice(0, 16) : null;
+}
+
+function attributionRowsMatchCampaign(state, campaign, summary) {
+  const rows = Array.isArray(summary?.postAttributions) ? summary.postAttributions : [];
+  const posts = (state.posts || []).filter((post) => post.campaignId === campaign.id);
+  const postById = new Map(posts.map((post) => [post.id, post]));
+  const targets = state.targets || [];
+  return rows.every((row) => {
+    if (!row || typeof row !== "object" || !ATTRIBUTION_STATUSES.has(String(row.status || "").toUpperCase())) return false;
+    const post = postById.get(row.postId);
+    if (!post) return false;
+    const target = targets.find((item) => item.id === post.targetId);
+    if (!target || !row.target || typeof row.target !== "object") return false;
+    const expected = {
+      targetId: boundedIdentity(target.id),
+      channel: boundedIdentity(target.channel, 80),
+      accountFingerprint: identityFingerprint(target.accountId),
+      profileFingerprint: identityFingerprint(target.profileId)
+    };
+    const accountMatches = boundedIdentity(row.target.accountId) === boundedIdentity(target.accountId)
+      || boundedIdentity(row.target.accountFingerprint, 16) === expected.accountFingerprint;
+    const profileMatches = boundedIdentity(row.target.profileId) === boundedIdentity(target.profileId)
+      || boundedIdentity(row.target.profileFingerprint, 16) === expected.profileFingerprint;
+    return boundedIdentity(row.target.targetId) === expected.targetId
+      && boundedIdentity(row.target.channel, 80) === expected.channel
+      && accountMatches
+      && profileMatches;
+  });
+}
+
+function currentLearningContext(state, campaign) {
   const feedback = campaign?.latestLearningFeedback;
   if (!feedback || feedback.advisory !== true || feedback.authoritySideEffects !== false || feedback.campaignId !== campaign.id) return null;
   if (!/^learning-[a-f0-9]{24}$/.test(String(feedback.feedbackId || ""))) return null;
@@ -55,12 +97,23 @@ function currentLearningContext(campaign) {
   const summaryId = summary?.summaryId || null;
   if (summaryId && !/^outcome-[a-f0-9]{24}$/.test(summaryId)) return null;
   if ((feedback.outcomeSummaryId || null) !== summaryId) return null;
+  if (summary?.campaignId && summary.campaignId !== campaign.id) return null;
+
+  let postAttributionContext = null;
+  if (feedback.postAttributionContext !== undefined) {
+    if (!isNormalizedPostAttributionContext(feedback.postAttributionContext)) return null;
+    if (!attributionRowsMatchCampaign(state, campaign, summary)) return null;
+    const currentContext = normalizePostAttributionContext(summary);
+    if (JSON.stringify(currentContext) !== JSON.stringify(feedback.postAttributionContext)) return null;
+    postAttributionContext = feedback.postAttributionContext;
+  }
 
   return {
     feedbackId: feedback.feedbackId,
     outcomeSummaryId: summaryId,
     observedAction: feedback.action,
-    reasonCodes: [...new Set(feedback.reasons)].sort().slice(0, MAX_REASONS)
+    reasonCodes: [...new Set(feedback.reasons)].sort().slice(0, MAX_REASONS),
+    ...(postAttributionContext ? { postAttributionContext } : {})
   };
 }
 
@@ -146,7 +199,7 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
   } else if (unknownForCampaign(state, campaignId, posts)) {
     reasonList = ["submission_unknown_quarantined"];
   } else {
-    learning = currentLearningContext(campaign);
+    learning = currentLearningContext(state, campaign);
     const publishable = [];
     for (const post of posts) {
       if (!["draft", "approved", "queued", "blocked"].includes(post.status) || !post.content?.trim()) continue;
