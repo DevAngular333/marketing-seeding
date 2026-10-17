@@ -43,7 +43,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Product r
 
 ## Git/release state
 
-- Integration branch includes commits `c4fb42f`, `2428606`, `a72d231`, `769cf23`, `30de649`, `f4527af`, plus the pending release commit for the final local seams and reports.
+- Integration branch includes commits `c4fb42f`, `2428606`, `a72d231`, `769cf23`, `30de649`, `f4527af` and release commit `78f5bc9` for the final local seams and reports.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 
