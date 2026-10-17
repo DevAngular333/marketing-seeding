@@ -45,3 +45,37 @@ readiness blocker projection, restart equality, and no canonical state mutation.
 
 No new store, state machine, provider router, browser abstraction, credential broker,
 live access, or canonical runtime writes.
+
+## Completion contract
+
+### Acceptance IDs addressed
+
+- **A1** Reused existing `executionAccounts` and target readiness records; no new store, state machine, router, browser abstraction, or credential broker.
+- **A2** Added read-only dashboard account runtime fields and bounded blocker/recovery projection.
+- **A3** Excluded credentials, cookies, tokens, raw profile IDs, identity URLs, and readiness evidence.
+- **A4** Projection is pure over the read snapshot and restart deterministic; it creates no authority or execution records.
+- **A5** Existing account/profile/readiness/publish and UNKNOWN semantics remain unchanged.
+- **C1-C5** Source ownership, local-only execution, canonical-state protection, frozen core, and secret-handling constraints were respected.
+- **V1/V3** Focused tests passed; allowlist, fingerprinting, count, restart equality, and no-mutation behavior are covered.
+- **V2/V4** Full suite was started by the worker and must be treated as integrator-owned final evidence; no canonical runtime writes were performed in this lane.
+
+### Summary
+
+The dashboard now exposes a deterministic account runtime view while preserving existing state and execution contracts. The compatibility `executionAccounts` projection and explicit `accountRuntime` projection are equivalent and read-only.
+
+### Evidence
+
+- Commit: `b06ca32` (`feat: project safe account runtime dashboard state`)
+- Focused command: `node --test test/account-runtime-projection.test.mjs`
+- Focused result: **2 passed, 0 failed**
+- Full suite command: `node --test test/*.test.mjs` (integrator should record final totals after process completion)
+
+### Confidence
+
+**High for local projection behavior and redaction; low for live account/session health because no browser or external session was accessed.**
+
+### Out-of-scope noticed
+
+Live ORCA/browser execution, credential/session provisioning, login/MFA/CAPTCHA recovery, account selection/failover, and social mutation remain out of scope and unchanged.
+
+**Status: DONE**
