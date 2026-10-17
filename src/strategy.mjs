@@ -88,6 +88,8 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
     const publishable = [];
     for (const post of posts) {
       if (!["draft", "approved", "queued", "blocked"].includes(post.status) || !post.content?.trim()) continue;
+      const target = (state.targets || []).find((item) => item.id === post.targetId);
+      if (!target || target.status !== "active") continue;
       const decision = evaluateQueue(post, state, now, { mode: "dry_run" });
       if (decision.allowed) publishable.push({ post, decision });
     }
