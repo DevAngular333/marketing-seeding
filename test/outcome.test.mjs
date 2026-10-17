@@ -9,3 +9,9 @@ test("outcome preserves unknown coverage and verified publication distinctions",
 });
 
 test("outcome is deterministic for same hour bucket",()=>{const s={campaigns:[{id:"c"}],posts:[],executionReceipts:[],submissionUncertainties:[],metricSnapshots:[],interactions:[],replies:[],conversions:[],keywordSnapshots:[]}; const a=deriveOutcomeSummary(s,"c",{now:new Date("2026-01-01T01:10:00Z")}); const b=deriveOutcomeSummary(s,"c",{now:new Date("2026-01-01T01:59:00Z")}); assert.equal(a.summaryId,b.summaryId);});
+
+test("outcome counts acceptance from persisted nested execution receipts",()=>{
+ const s={campaigns:[{id:"c"}],posts:[{id:"p",campaignId:"c",status:"submit_result_unknown"}],executionReceipts:[{id:"r",postId:"p",receipt:{submitAcceptanceEvidence:{state:"ACCEPTED"}}}],submissionUncertainties:[],metricSnapshots:[],interactions:[],replies:[],conversions:[],keywordSnapshots:[]};
+ const out=deriveOutcomeSummary(s,"c",{now:new Date("2026-01-01T00:00:00Z")});
+ assert.equal(out.publication.accepted,1);
+});

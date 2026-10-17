@@ -26,7 +26,10 @@ export function deriveOutcomeSummary(state, campaignId, { now = new Date() } = {
   const statuses = {};
   for (const post of posts) statuses[post.status || "unknown"] = (statuses[post.status || "unknown"] || 0) + 1;
   const verifiedPosts = posts.filter((post) => post.status === "published" && post.publicationUrl && (post.publicationVerification || post.verificationEvidence || receipts.some((row) => { const receipt = row.receipt || row; const evidence = receipt.publicationEvidence || receipt.publicationVerification || {}; return (row.postId || row.jobId || receipt.jobId) === post.id && (receipt.submitState === "CONFIRMED" || evidence.state === "VERIFIED" || evidence.verificationState === "VERIFIED" || receipt.verificationState === "VERIFIED"); })));
-  const accepted = receipts.filter((r) => r.acceptanceEvidence || r.submitAcceptanceEvidence || r.submissionAccepted === true).length;
+  const accepted = receipts.filter((row) => {
+    const receipt = row.receipt || row;
+    return receipt.acceptanceEvidence || receipt.submitAcceptanceEvidence || receipt.submissionAccepted === true;
+  }).length;
   const unknown = uncertainties.filter((item) => String(item.status).toUpperCase() === "UNKNOWN").length;
   const publication = {
     totalPosts: posts.length,
