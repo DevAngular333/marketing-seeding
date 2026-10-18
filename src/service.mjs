@@ -19,7 +19,7 @@ import { buildProductIntelligence, normalizeEvidenceRecords, serializeProductInt
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
 import { observePublicUrls } from "./discovery-observer.mjs";
-import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe, probeFactorySandboxCapability } from "./product-factory.mjs";
+import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe, probeFactorySandboxCapability, projectFactoryRunEvidence } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { canonicalTemplateSourceRefs, contentCandidateIdentity, deriveContentCandidates, deriveProductIntelligenceStory, deriveTemplateContentCandidates, renderApprovedTemplate, templateCandidateBinding, templateClaimIds, TEMPLATE_CANDIDATE_CONTRACT_VERSION } from "./content-foundation.mjs";
@@ -27,6 +27,7 @@ import { appendLearningFeedback, deriveLearningFeedback } from "./learning.mjs";
 import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
 import { legacyHandoffIdentity, validateDistributionHandoff } from "./distribution-handoff.mjs";
 import { projectEngagementContext } from "./engagement-context.mjs";
+import { projectDiscoveryOpportunities } from "./opportunity-projection.mjs";
 import { appRoot } from "./paths.mjs";
 
 export async function pollConfiguredDiscoveries(service, { actor = "scheduled-discovery-observer", shuttingDown = false } = {}) {
@@ -997,18 +998,21 @@ function safeAccountRuntimeRecovery(value) {
   return ACCOUNT_RUNTIME_RECOVERY_STATES.has(recovery) ? recovery : "UNKNOWN";
 }
 
-function accountRuntimeEligibility({ status, health, boundTargetCount, latest, readinessState, readinessExpired }) {
+function accountRuntimeEligibility({ status, health, boundTargetCount, latest, readinessState, readinessExpiryInvalid, readinessExpired }) {
   const reasons = [];
   if (status !== "enabled") reasons.push(`status:${status}`);
   if (health !== "healthy") reasons.push(`health:${health}`);
   if (!boundTargetCount) reasons.push("target_binding:missing");
   if (!latest) reasons.push("readiness:missing");
+  else if (readinessExpiryInvalid) reasons.push("readiness:expiry_invalid");
   else if (readinessExpired) reasons.push("readiness:expired");
   else if (readinessState !== "READY") reasons.push(`readiness:${safeAccountRuntimeReason(latest.reasonCode || readinessState || "unknown")}`);
   return { eligibleForExecution: reasons.length === 0, ineligibilityReasons: reasons };
 }
 
-function projectExecutionAccountRuntime(state) {
+function projectExecutionAccountRuntime(state, { now = new Date() } = {}) {
+  const observedAt = now instanceof Date ? now : new Date(now);
+  if (!Number.isFinite(observedAt.getTime())) throw new Error("Account runtime projection time must be valid");
   const targets = Array.isArray(state.targets) ? state.targets : [];
   const accounts = Array.isArray(state.executionAccounts) ? state.executionAccounts : [];
   return accounts.map((account) => {
@@ -1022,15 +1026,23 @@ function projectExecutionAccountRuntime(state) {
     const health = String(account.health || "unknown");
     const status = String(account.status || "unknown");
     const readinessExpiresAt = Date.parse(latest?.expiresAt || "");
-    const readinessExpired = Number.isFinite(readinessExpiresAt) && readinessExpiresAt <= Date.now();
+    const readinessExpiryInvalid = Boolean(latest) && !Number.isFinite(readinessExpiresAt);
+    const readinessExpired = Number.isFinite(readinessExpiresAt) && readinessExpiresAt <= observedAt.getTime();
     const boundTargetCount = targets.filter((target) => target && target.channel === account.platform && target.accountId === account.accountId && target.profileId === account.profileId).length;
-    const eligibility = accountRuntimeEligibility({ status, health, boundTargetCount, latest, readinessState, readinessExpired });
+    const eligibleTargetIds = targets
+      .filter((target) => target && target.channel === account.platform && target.accountId === account.accountId && target.profileId === account.profileId)
+      .filter((target) => String(target.readiness?.state || "").toUpperCase() === "READY" && Number.isFinite(Date.parse(target.readiness?.expiresAt || "")) && Date.parse(target.readiness.expiresAt) > observedAt.getTime())
+      .map((target) => String(target.id))
+      .sort();
+    const eligibility = accountRuntimeEligibility({ status, health, boundTargetCount, latest, readinessState, readinessExpiryInvalid, readinessExpired });
     const currentBlocker = status !== "enabled"
       ? `status:${status}`
       : health !== "healthy"
       ? `health:${health}`
       : !latest
         ? "readiness:missing"
+        : readinessExpiryInvalid
+          ? "readiness:expiry_invalid"
         : readinessExpired
           ? "readiness:expired"
           : readinessState !== "READY"
@@ -1054,6 +1066,8 @@ function projectExecutionAccountRuntime(state) {
         recoveryClassification: safeAccountRuntimeRecovery(latest.recoveryClassification)
       } : null,
       boundTargetCount,
+      eligibleTargetCount: eligibleTargetIds.length,
+      eligibleTargetRefs: eligibleTargetIds.map((id) => accountProfileFingerprint(id)),
       currentBlocker,
       ...eligibility
     };
@@ -1186,6 +1200,49 @@ export function projectAuthorizedAccountCandidates(state = {}, { campaignId = nu
     .sort((left, right) => `${left.eligibleForAutonomousExecution ? "0" : "1"}\u0000${left.platform}\u0000${left.targetId}\u0000${left.candidateKey}`.localeCompare(`${right.eligibleForAutonomousExecution ? "0" : "1"}\u0000${right.platform}\u0000${right.targetId}\u0000${right.candidateKey}`))
     .slice(0, AUTHORIZED_ACCOUNT_CANDIDATE_MAX)
     .map((candidate, index) => ({ ...candidate, selectionOrder: index + 1 }));
+}
+
+/**
+ * Summarize the advisory authorized-account candidate projection by exact
+ * campaign destination. This is read-only Mission Control context: it never
+ * chooses a live account, rebinds a target, or creates execution authority.
+ */
+export function projectAuthorizedAccountPoolSummary(candidates = []) {
+  const groups = new Map();
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const key = [candidate.campaignId, candidate.authorizationId, candidate.platform, candidate.targetId].map((value) => String(value || "")).join("\u0000");
+    const current = groups.get(key) || {
+      campaignId: String(candidate.campaignId || ""),
+      authorizationId: String(candidate.authorizationId || ""),
+      platform: String(candidate.platform || ""),
+      targetId: String(candidate.targetId || ""),
+      targetUrl: candidate.targetUrl || null,
+      candidateCount: 0,
+      eligibleCount: 0,
+      eligibleCandidateKeys: [],
+      blockedReasonCounts: {}
+    };
+    current.candidateCount += 1;
+    if (candidate.eligibleForAutonomousExecution === true) {
+      current.eligibleCount += 1;
+      if (candidate.candidateKey) current.eligibleCandidateKeys.push(String(candidate.candidateKey));
+    } else {
+      for (const reason of Array.isArray(candidate.ineligibilityReasons) ? candidate.ineligibilityReasons : []) {
+        const normalized = String(reason || "");
+        if (normalized) current.blockedReasonCounts[normalized] = (current.blockedReasonCounts[normalized] || 0) + 1;
+      }
+    }
+    groups.set(key, current);
+  }
+  return [...groups.values()]
+    .map((summary) => ({
+      ...summary,
+      eligibleCandidateKeys: [...new Set(summary.eligibleCandidateKeys)].sort(),
+      blockedReasonCounts: Object.fromEntries(Object.entries(summary.blockedReasonCounts).sort(([a], [b]) => a.localeCompare(b))),
+      autonomousPath: summary.eligibleCount > 0 ? "AVAILABLE_ADVISORY" : "BLOCKED"
+    }))
+    .sort((left, right) => `${left.campaignId}\u0000${left.platform}\u0000${left.targetId}\u0000${left.authorizationId}`.localeCompare(`${right.campaignId}\u0000${right.platform}\u0000${right.targetId}\u0000${right.authorizationId}`));
 }
 
 function metricTotals(metric = {}) {
@@ -5064,6 +5121,7 @@ export class SeedingService {
     state.communityMemberships ||= [];
     const accountRuntime = projectExecutionAccountRuntime(state);
     const authorizedAccountCandidates = projectAuthorizedAccountCandidates(state, { readinessTtlMs: this.readinessTtlMs });
+    const authorizedAccountPoolSummary = projectAuthorizedAccountPoolSummary(authorizedAccountCandidates);
     const engagementContext = projectEngagementContext(state, { now: new Date() });
     const executionRuntime = projectExecutionRuntime(state);
     const productFactorySandbox = await this.productFactorySandboxCapability();
@@ -5126,6 +5184,14 @@ export class SeedingService {
       const key = `${campaign.id}\u0000${keyword.phrase.toLocaleLowerCase("en-US")}`;
       return { campaignId: campaign.id, ...keyword, latest: latestKeywordMetrics.get(key) || null };
     }));
+    const discoveries = state.campaigns
+      .filter((campaign) => campaign.discovery?.observations?.length)
+      .flatMap((campaign) => campaign.discovery.observations.map((observation) => ({
+        campaignId: campaign.id,
+        ...observation
+      })))
+      .sort((left, right) => (right.score?.score || 0) - (left.score?.score || 0));
+    const discoveryOpportunities = projectDiscoveryOpportunities(discoveries);
     return {
       revision: state.revision,
       updatedAt: state.updatedAt,
@@ -5135,6 +5201,7 @@ export class SeedingService {
       accountRuntime,
       executionAccounts: accountRuntime,
       authorizedAccountCandidates,
+      authorizedAccountPoolSummary,
       engagementContext,
       executionRuntime,
       productFactorySandbox,
@@ -5167,13 +5234,8 @@ export class SeedingService {
           recent: campaign.strategyDecisions.slice(-24),
           updatedAt: campaign.strategyUpdatedAt || null
         })),
-      discoveries: state.campaigns
-        .filter((campaign) => campaign.discovery?.observations?.length)
-        .flatMap((campaign) => campaign.discovery.observations.map((observation) => ({
-          campaignId: campaign.id,
-          ...observation
-        })))
-        .sort((left, right) => (right.score?.score || 0) - (left.score?.score || 0)),
+      discoveries,
+      discoveryOpportunities,
       targets: state.targets.map((target) => ({
         ...target,
         readiness: normalizeTargetReadiness(target.readiness, target.status)
@@ -5193,6 +5255,7 @@ export class SeedingService {
       recentArtifacts: newest(state.artifacts, "createdAt"),
       recentStories: newest(state.stories, "createdAt"),
       recentProductFactoryRuns: newest(state.campaigns.flatMap((campaign) => (campaign.productFactoryRuns || []).map((run) => ({ ...run, campaignId: campaign.id }))), "completedAt"),
+      productFactoryEvidence: projectFactoryRunEvidence(state.campaigns.flatMap((campaign) => (campaign.productFactoryRuns || []).map((run) => ({ ...run, campaignId: campaign.id })))),
       recentPublicationAttempts: newest(state.publicationAttempts, "preparedAt"),
       fixtureAutomation: {
         mode: "local-fixture",
