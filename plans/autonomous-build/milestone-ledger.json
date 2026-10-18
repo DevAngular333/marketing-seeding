@@ -219,7 +219,7 @@
     {
       "id": "dry-run-rehearsal",
       "status": "COMPLETE_LOCAL_VERIFIED",
-      "evidence": "b739bca plus reviewed rework: opt-in autonomous JEV dry-run selection requires matching top-level/nested dryRun flags; dry-run-only scheduler bypasses UNKNOWN reconciliation while mixed autonomous-live mode preserves it; focused JEV/readiness 76/76, full npm test 447/445/0/2, syntax/diff pass, independent review ACCEPT; canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; no ORCA/browser/network/social/UNKNOWN mutation"
+      "evidence": "b739bca + d764783: opt-in autonomous JEV dry-run selection requires matching top-level/nested dryRun flags; dry-run-only scheduler bypasses UNKNOWN reconciliation while mixed autonomous-live mode preserves it; focused JEV/readiness 76/76, full npm test 447/445/0/2, syntax/diff pass, independent review ACCEPT; canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; no ORCA/browser/network/social/UNKNOWN mutation"
     }
   ]
 }

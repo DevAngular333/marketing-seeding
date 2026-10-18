@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "b739bca",
+  "checkpointCommit": "d764783",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -34,7 +34,7 @@
     "f3c21ec fix: quarantine mixed malformed metric assessments",
     "9ea1270 feat(metrics): make official collection idempotent",
     "28798e8 docs(metrics): record collector milestone evidence",
-    "b739bca feat(jev): add opt-in autonomous dry-run rehearsal (rework verified in working tree)"
+    "d764783 fix(jev): isolate autonomous dry-run reconciliation"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -1016,7 +1016,8 @@
       "revision": 194,
       "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
       "protectedUnknownExecutions": 4,
-      "protectedUnknownUncertainties": 4
+      "protectedUnknownUncertainties": 4,
+      "commit": "d764783"
     }
   ]
 }
