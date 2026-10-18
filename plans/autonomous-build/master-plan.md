@@ -9,7 +9,7 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 1. Preserve preexisting LinkedIn/ORCA and transport work.
 2. Add standing campaign authorization with bounded execution delegation on existing authorization/window/grant/lease/idempotency/UNKNOWN contracts.
 3. Add a monotonic kill switch and epoch fencing, plus readiness/account/identity checks at queue, worker, durable intent and final provider-send boundary.
-4. Add deterministic caller-supplied product intelligence with evidence/claim graph and unsupported-claim quarantine.
+4. Add deterministic product intelligence with evidence/claim graph, bounded local field auto-derivation and unsupported-claim quarantine.
 5. Add a deterministic repository classifier and bounded local command/artifact evidence pipeline.
 6. Independently review integration; run focused and complete Node tests.
 7. Add a deterministic advisory strategy, evidence-grounded draft candidate, outcome summary, advisory learning feedback, opt-in control-cycle and opt-in public discovery polling foundations without creating execution authority.
@@ -31,6 +31,7 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 23. Add the versioned deterministic `approved_template_set` candidate binding contract; exact template candidates reuse the same standing queue controls while legacy/manual/ambiguous candidates remain draft-only.
 24. Add deterministic evidence-grounded product-intelligence story derivation over the existing READY handoff; keep it draft-only, idempotent and source-revalidated, with no queue or authority side effects.
 25. Add queue-owned story derivation only behind an explicit bounded campaign CTA/content policy; require current authorization and campaign fingerprints before deriving, and preserve draft-only/idempotent behavior.
+26. Reverify and journal deterministic product-understanding auto-derivation on the integrated branch; preserve explicit-claim precedence and local-only evidence boundaries.
 
 Result: local implementation gates pass (latest full Node suite 420 total, 418 passed, 0 failed, 2 skipped); the scheduler story/content/service focused gate is 52/52, the broader story/product-intelligence/service/server gate is 74/74, the standing-template scheduler gate is 47/47, the template-binding focused service/server gate is 46/46, the queue failure-isolation gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler gate is 42/42, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, and outcome attribution is 42/42. UI typecheck and production build also pass from the prior release gate. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 

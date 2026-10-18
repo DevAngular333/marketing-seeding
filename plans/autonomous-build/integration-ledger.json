@@ -110,5 +110,8 @@
     ,{"name":"story_scheduler_independent_review","result":"ACCEPT","notes":"Stale authorization and campaign bindings are rejected before story derivation; no candidates/posts/requests/windows/grants/leases; UNKNOWN/idempotency preserved"}
     ,{"name":"full_node_suite_after_story_scheduler","result":"PASS","tests":420,"passed":418,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
     ,{"name":"story_scheduler_static","result":"PASS","command":"node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"}
+    ,{"name":"product_understanding_autoderivation_focused","result":"PASS_BOUNDED","tests":67,"passed":67,"failed":0,"skipped":0,"command":"node --test test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs test/product-repository-inspection.test.mjs test/service.test.mjs","notes":"Deterministic local evidence derivation, explicit precedence, unsupported quarantine, redaction, handoff and service persistence"}
+    ,{"name":"product_understanding_autoderivation_static","result":"PASS","command":"node --check src/product-intelligence.mjs && node --check test/product-intelligence.test.mjs && node --check test/product-intelligence-runtime.test.mjs && node --check test/product-repository-inspection.test.mjs && git diff --check"}
+    ,{"name":"product_understanding_autoderivation_runtime_immutability","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
   ]
 }

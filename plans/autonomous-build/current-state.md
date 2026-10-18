@@ -20,6 +20,11 @@
 ## Local capability additions
 
 - Product intelligence handoff is versioned, hash-validated, sanitized, persisted on campaigns and projected read-only by `/api/dashboard`; a separate provider-neutral distribution handoff is implemented as an idempotent `DRY_RUN`-only metadata seam and is not live upstream wiring.
+- Product intelligence can derive bounded descriptive fields from normalized
+  local repository evidence and safe package metadata when explicit claims are
+  absent. Explicit evidence-grounded claims remain authoritative; unsupported
+  fields remain null and are listed in `CLAIMS_WE_CANNOT_MAKE`. This is
+  deterministic local heuristic inference, not LLM research or market proof.
 - Repository inspection can now read a bounded allowlist of safe repository files, redact credential-like material, produce stable evidence hashes and persist metadata-only inspection lineage with the handoff.
 - Discovery observations are normalized, deduplicated, policy-classified, scored, persisted on campaigns and projected read-only by `/api/dashboard`; integration adds an opt-in public HTTP observer and 15-minute poller, which are not enabled in the canonical service.
 - Discovery fit metadata now evaluates caller-supplied audience terms, channel and locale hints as bounded `MATCHED`/`MISMATCHED`/`UNKNOWN` advisory evidence through the existing persistence path; it does not create authority or publication work.

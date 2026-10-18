@@ -16,7 +16,7 @@ JsonStore / schema / audit / writer lease
   │                                   └─> normalized receipt → canonical CONFIRMED/PUBLISHED
   │
   ├─> product intelligence / discovery / artifact graph
-  │     ├─> Product Intelligence (bounded repository inspection + explicit claims + claim graph + versioned handoff persisted on campaign)
+  │     ├─> Product Intelligence (bounded repository inspection + deterministic local field derivation + explicit claims + claim graph + versioned handoff persisted on campaign)
   │     │     └─> deterministic evidence-grounded draft story (READY handoff, source revalidation, draft-only)
   │     │           └─> queue-owned story derivation (explicit bounded storyPolicy + current authority/campaign bindings)
   │     ├─> Discovery (caller observations + deterministic normalization/dedup/classification/score + advisory audience/channel/locale fit persisted on campaign)
@@ -41,7 +41,7 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 
 ## Dependency status
 
-- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, downstream DRY_RUN distribution-handoff validation/persistence, deterministic discovery persistence/projection, bounded caller-supplied audience/channel/locale fit metadata, safe product factory execution with bounded candidate discovery and persistent run lineage, and queue-driven exact content-candidate materialization/approved-copy plus versioned approved-template standing binding.
+- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and deterministic local product-intelligence field derivation with handoff persistence/projection, downstream DRY_RUN distribution-handoff validation/persistence, deterministic discovery persistence/projection, bounded caller-supplied audience/channel/locale fit metadata, safe product factory execution with bounded candidate discovery and persistent run lineage, and queue-driven exact content-candidate materialization/approved-copy plus versioned approved-template standing binding.
 - **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, project-specific product factory orchestration and artifact lifecycle. Metric projection is deterministic locally, and story derivation is draft-only, but live metric evidence and LinkedIn collection remain absent.
 - **Implemented/local verified:** read-only account runtime projection reusing existing account/profile/readiness state; no login, credential broker, account selector or failover.
 - **Implemented/local verified:** deterministic advisory strategy decisions, evidence-grounded draft candidates, outcome summaries with bounded explicit-link-only post attribution, campaign-aware post attribution context in advisory learning/strategy, opt-in control-cycle scheduling, and bounded public HTTP discovery polling with campaign error isolation; all are non-authoritative.

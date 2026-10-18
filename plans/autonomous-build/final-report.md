@@ -24,6 +24,9 @@ The integration branch now contains local, tested foundations for bounded standi
 - Standing campaign authorization can derive bounded one-time execution controls without routine per-post approval, subject to existing operator-created campaign authority.
 - Queue-driven approved-copy and versioned approved-template candidates can enter that standing path automatically only for an active campaign and one exact active standing authorization; repeated ticks/restart remain idempotent and inactive/ambiguous/malformed cases stay draft-only.
 - Product intelligence emits evidence/claim hashes, supported/unsupported claims and a versioned handoff; integration branch persists/projects it read-only.
+- Product intelligence also derives bounded descriptive fields from normalized
+  local evidence and safe package metadata when explicit claims are absent;
+  valid explicit claims win, unsafe or unsupported claims remain quarantined.
 - Product intelligence can derive one deterministic, evidence-grounded draft story from the READY handoff after current repository bytes and lineage are revalidated. The draft remains idempotent and execution-free; no queue or authority is inferred.
 - With an explicit bounded `storyPolicy`, the queue can derive that draft story autonomously under one current standing template authorization. Stale authorization or campaign bindings fail closed before derivation.
 - Product factory classifies a repository, executes only the strict fail-closed `node --check` manifest plan in temporary staging with bounds and optional artifact hashes, persists a bounded campaign-owned run lineage and has no external side effect. Arbitrary project scripts and build/render commands remain explicitly unexecuted.
