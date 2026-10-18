@@ -2322,6 +2322,7 @@ export class SeedingService {
     const candidateId = String(input.contentId || input.candidateId || "").trim();
     const candidateIdentity = String(input.contentIdentity || "").trim();
     const requireStandingAuthorization = input.requireStandingAuthorization === true;
+    const rehearsalOnly = input.rehearsalOnly === true;
     if (!candidateId || !candidateIdentity) throw new Error("Exact content candidate identity is required");
     let shouldPrepareExecution = false;
     const result = await this.store.mutate(actor, "content_candidate_materialized", async (state) => {
@@ -2392,7 +2393,7 @@ export class SeedingService {
       const recomputedIdentity = contentCandidateIdentity({ storyId: candidate.storyId, targetId: candidate.targetId, channel: candidate.channel, content, claimIds: candidate.claimIds || [], evidenceRefs: templateScopeValid ? candidateSourceRefs.map((source) => `${source.relativePath}#${source.sha256}`) : [...new Set(candidate.evidenceRefs || [])].sort(), templateBinding });
       if (candidate.contentIdentity !== recomputedIdentity) throw new Error("Content candidate identity mismatch");
       if (candidate.contentId !== `content-${candidate.contentIdentity.slice(0, 24)}`) throw new Error("Content candidate contentId mismatch");
-      const candidateFitsStandingAuthorization = Boolean(
+      const candidateFitsStandingAuthorization = !rehearsalOnly && Boolean(
         campaign.status === "active" && authorization && authorization.executionMode === "standing_autonomous" && authorization.allowLiveExecution === true &&
         authorization.binding === campaignAuthorizationFingerprint(authorization) &&
         authorization.campaignBinding === campaignScopeFingerprint(campaign) &&
@@ -2417,6 +2418,7 @@ export class SeedingService {
           throw new Error("Existing post conflicts with content candidate");
         }
         if (existing.status !== "draft") {
+          if (rehearsalOnly && existing.contentId === candidate.contentId && existing.contentIdentity === candidate.contentIdentity) return existing;
           if (candidateFitsStandingAuthorization && ["queued", "blocked"].includes(existing.status) &&
               existing.campaignAuthorizationId === authorization.id && existing.campaignAuthorizationBinding === authorization.binding) {
             shouldPrepareExecution = true;
@@ -2500,6 +2502,85 @@ export class SeedingService {
       return latest.posts.find((item) => item.id === result.result.id) || result.result;
     }
     return result.result;
+  }
+
+  /**
+   * Materialize explicitly marked rehearsal candidates into the existing JEV
+   * dry-run queue. Metadata is the authority for this lane; standing/live
+   * authorization is never inferred and no live control is created.
+   */
+  async handoffRehearsalCandidates(actor = "dry-run-handoff-scheduler") {
+    const snapshot = await this.store.read();
+    const candidates = (snapshot.campaigns || []).flatMap((campaign) =>
+      (campaign.contentCandidates || []).map((candidate) => ({ campaign, candidate }))
+    );
+    const results = [];
+    for (const { campaign, candidate } of candidates) {
+      const metadata = candidate?.rehearsalMetadata || candidate?.rehearsal;
+      if (!metadata || typeof metadata !== "object" || (metadata.enabled !== true && metadata.dryRun !== true && metadata.mode !== "DRY_RUN")) continue;
+      try {
+        const campaignId = String(metadata.campaignId || "").trim();
+        const storyId = String(metadata.storyId || "").trim();
+        const templateId = String(metadata.templateId || "").trim();
+        const targetId = String(metadata.targetId || "").trim();
+        const contentId = String(metadata.contentId || metadata.candidateId || "").trim();
+        const contentIdentity = String(metadata.contentIdentity || "").trim();
+        const contentHash = String(metadata.contentHash || "").trim().toLowerCase();
+        const authorizationId = String(metadata.authorizationId || "").trim();
+        if (!campaignId || campaignId !== campaign.id || !storyId || !templateId || !targetId || !contentId || !contentIdentity || !contentHash || !authorizationId) {
+          throw new Error("rehearsal metadata is incomplete");
+        }
+        if (candidate.contentId !== contentId || candidate.contentIdentity !== contentIdentity || candidate.storyId !== storyId || candidate.targetId !== targetId || candidate.templateId !== templateId || candidate.contentHash !== contentHash || campaignContentHash(candidate.content || "") !== contentHash) {
+          throw new Error("rehearsal candidate lineage is stale or mismatched");
+        }
+        const story = (snapshot.stories || []).find((item) => item.id === storyId);
+        if (!story || story.campaignId !== campaign.id) throw new Error("rehearsal story lineage is invalid");
+        const target = (snapshot.targets || []).find((item) => item.id === targetId);
+        if (!target || target.id !== candidate.targetId) throw new Error("rehearsal target lineage is invalid");
+        const authorization = (snapshot.campaignAuthorizations || []).find((item) => item.id === authorizationId);
+        if (!authorization || authorization.campaignId !== campaign.id || authorization.status !== "active") throw new Error("rehearsal authorization is missing or stale");
+        if (authorization.binding !== campaignAuthorizationFingerprint(authorization) || authorization.campaignBinding !== campaignScopeFingerprint(campaign)) throw new Error("rehearsal authorization binding is stale");
+        const destination = (authorization.destinations || []).find((item) => item.targetId === target.id && item.platform === target.channel && item.accountId === target.accountId && item.profileId === target.profileId && item.targetUrl === target.url);
+        if (!destination) throw new Error("rehearsal target is not authorized");
+
+        const existingPost = (snapshot.posts || []).find((item) => item.campaignId === campaign.id && item.targetId === target.id && item.contentId === contentId && item.contentIdentity === contentIdentity);
+        const prior = existingPost ? (snapshot.executionRequests || []).filter((item) => item.jobId === existingPost.id).sort((left, right) => (right.attempt || 0) - (left.attempt || 0))[0] : null;
+        if (prior && prior.dryRun === true && prior.request?.dryRun === true && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(prior.state)) {
+          results.push({ candidateId: contentId, postId: existingPost.id, executionId: prior.executionId, status: prior.state });
+          continue;
+        }
+
+        const post = await this.materializeContentCandidate(campaign.id, { contentId, contentIdentity, rehearsalOnly: true }, actor);
+        const updated = await this.store.mutate(actor, "rehearsal_post_bound", (state) => {
+          const current = requireItem(state.posts, post.id, "Post");
+          const currentAuthorization = requireItem(state.campaignAuthorizations || [], authorizationId, "Campaign authorization");
+          if (current.rehearsalHandoff !== true && current.status !== "draft") throw new Error("existing post is not an explicit rehearsal row");
+          if (!["draft", "blocked", "queued"].includes(current.status) || unresolvedSubmission(state, current)) throw new Error("existing post is not safe for rehearsal");
+          const prior = (state.executionRequests || []).filter((item) => item.jobId === current.id);
+          if (prior.some((item) => item.dryRun !== true || item.request?.dryRun !== true || ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state))) throw new Error("existing post has live or submitted execution history");
+          const currentTarget = requireItem(state.targets, current.targetId, "Target");
+          const binding = { platform: currentTarget.channel, accountId: currentTarget.accountId, profileId: currentTarget.profileId, targetId: currentTarget.id };
+          if (!isReadinessFresh(currentTarget.readiness, binding, new Date(), this.readinessTtlMs)) throw new Error("rehearsal requires fresh bound READY readiness");
+          current.campaignAuthorizationId = currentAuthorization.id;
+          current.campaignAuthorizationBinding = currentAuthorization.binding;
+          current.rehearsalHandoff = true;
+          current.readinessState = "READY";
+          current.status = "queued";
+          current.queuedAt ||= nowIso();
+          current.jobLifecycle ||= [{ state: "CREATED", at: current.createdAt || current.queuedAt }];
+          if (!current.jobLifecycle.some((item) => item.state === "QUEUED")) current.jobLifecycle.push({ state: "READY", at: current.queuedAt }, { state: "QUEUED", at: current.queuedAt });
+          return current;
+        });
+        const request = await this.prepareExecutionRequest(updated.result.id, actor, { dryRun: true });
+        results.push({ candidateId: contentId, postId: updated.result.id, executionId: request.executionId, status: "REQUEST_READY" });
+      } catch (error) {
+        results.push({ candidateId: String(metadata.contentId || metadata.candidateId || candidate?.contentId || ""), status: "SKIPPED", reason: String(error?.message || "rehearsal_handoff_failed").slice(0, 160) });
+      }
+    }
+    return { scanned: candidates.filter(({ candidate }) => {
+      const metadata = candidate?.rehearsalMetadata || candidate?.rehearsal;
+      return metadata && typeof metadata === "object" && (metadata.enabled === true || metadata.dryRun === true || metadata.mode === "DRY_RUN");
+    }).length, results };
   }
 
   /**
@@ -2874,7 +2955,8 @@ export class SeedingService {
     const previous = (snapshot.executionRequests || []).filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
     const operator = ["operator", "local-human-operator"].includes(actor);
     const resumingOwnedDryRun = String(actor).startsWith("jev-worker:") && previous?.request?.dryRun === true && previous.state === "REQUEST_READY";
-    if (dryRun && !operator && !resumingOwnedDryRun) throw new Error("Dry-run execution requests require an operator");
+    const rehearsalScheduler = actor === "dry-run-handoff-scheduler";
+    if (dryRun && !operator && !resumingOwnedDryRun && !rehearsalScheduler) throw new Error("Dry-run execution requests require an operator");
     const priorSubmitted = (snapshot.executionRequests || []).filter((item) => item.jobId === postId && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state)).sort((a, b) => b.attempt - a.attempt)[0];
     if (priorSubmitted) return priorSubmitted;
     if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;

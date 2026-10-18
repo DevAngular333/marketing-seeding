@@ -256,8 +256,26 @@ function scheduleJevExecution(delayMs = 5_000) {
       } else if (dryRunOnly) {
         jevDryRunRuntime.running = true;
         jevDryRunRuntime.lastStartedAt = new Date().toISOString();
+        // The autonomous rehearsal lane owns its explicit candidate handoff.
+        // Keep this before the worker query so a newly marked candidate can
+        // reach the existing dry-run request/lease/receipt path in the same
+        // tick. This branch is entered only when no live or explicit
+        // execution id is configured, so it cannot create live authority or
+        // reconcile historical UNKNOWN executions.
+        const handoff = await service.handoffRehearsalCandidates("dry-run-handoff-scheduler");
         const results = await jevWorker.runReadyDryRunOnce();
-        jevDryRunRuntime.lastSummary = { jobs: results.length, completed: results.filter((item) => item.status === "DRY_RUN_COMPLETE").length, failed: results.filter((item) => item.status === "DRY_RUN_FAILED" || item.status === "WORKER_ERROR").length };
+        const handoffResults = Array.isArray(handoff?.results) ? handoff.results : [];
+        jevDryRunRuntime.lastSummary = {
+          jobs: results.length,
+          completed: results.filter((item) => item.status === "DRY_RUN_COMPLETE").length,
+          failed: results.filter((item) => item.status === "DRY_RUN_FAILED" || item.status === "WORKER_ERROR").length,
+          handoff: {
+            scanned: Number(handoff?.scanned || 0),
+            requestReady: handoffResults.filter((item) => item.status === "REQUEST_READY").length,
+            completed: handoffResults.filter((item) => item.status === "DRY_RUN_COMPLETE").length,
+            skipped: handoffResults.filter((item) => item.status === "SKIPPED").length
+          }
+        };
       } else if (reconciliations.length > 0) {
         process.stdout.write(`JEV reconciliation ${JSON.stringify({ executions: reconciliations.length, confirmed: reconciliations.filter((item) => item.status === "CONFIRMED").length, unsupported: reconciliations.filter((item) => item.status === "PLATFORM_UNSUPPORTED").length })}\n`);
       }

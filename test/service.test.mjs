@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { JsonStore } from "../src/store.mjs";
@@ -9,6 +9,8 @@ import { SeedingService, buildMetricCheckpoints, buildMetricCollectionPlan, buil
 import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
 import { buildProductIntelligence } from "../src/product-intelligence.mjs";
+import { JevExecutionWorker } from "../src/jev-execution-worker.mjs";
+import { PlatformAdapterRegistry, PLATFORM_CAPABILITIES } from "../src/platform-registries.mjs";
 
 async function fixture(prefix = "seeding-fixture-") {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -163,6 +165,75 @@ test("materialize content candidate creates an idempotent draft without authorit
   const after = await restarted.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation");
   assert.equal(after.id, created.id);
   assert.equal((await restarted.snapshot()).posts.filter((post) => post.contentId === candidate.contentId).length, 1);
+});
+
+test("explicit rehearsal candidate handoff creates one dry-run request and reaches the existing worker", async (t) => {
+  const f = await templateCandidateFixture("seeding-rehearsal-handoff-test-");
+  t.after(() => rm(f.directory, { recursive: true, force: true }));
+  const auth = (await f.service.snapshot()).campaignAuthorizations.find((item) => item.campaignId === f.campaign.id);
+  await f.service.store.mutate("test", "mark_rehearsal_account_ready", (state) => {
+    const account = state.executionAccounts.find((item) => item.accountId === f.target.accountId);
+    account.status = "enabled";
+    account.health = "healthy";
+    return state;
+  });
+  await f.service.store.mutate("test", "mark_rehearsal_candidate", (state) => {
+    const candidate = state.campaigns.find((item) => item.id === f.campaign.id).contentCandidates.find((item) => item.contentId === f.candidate.contentId);
+    candidate.rehearsalMetadata = {
+      enabled: true, campaignId: f.campaign.id, storyId: candidate.storyId, templateId: candidate.templateId,
+      candidateId: candidate.contentId, contentId: candidate.contentId, contentIdentity: candidate.contentIdentity,
+      contentHash: candidate.contentHash, targetId: candidate.targetId, authorizationId: auth.id
+    };
+    return state;
+  });
+  const first = await f.service.handoffRehearsalCandidates();
+  assert.equal(first.results.length, 1);
+  assert.equal(first.results[0].status, "REQUEST_READY", JSON.stringify(first.results[0]));
+  const before = await f.service.snapshot();
+  assert.equal(before.executionRequests.length, 1);
+  assert.equal(before.executionRequests[0].dryRun, true);
+  assert.equal(before.executionRequests[0].request.dryRun, true);
+  assert.equal(before.liveExecutionGrants.length, 0);
+  assert.equal(before.oneTimeExecutionWindows.length, 0);
+  const repeated = await f.service.handoffRehearsalCandidates();
+  assert.equal(repeated.results.length, 1);
+  assert.equal((await f.service.snapshot()).executionRequests.length, 1);
+  const restarted = new SeedingService(new JsonStore(path.join(f.directory, "state.json")));
+  await restarted.init();
+  const afterRestart = await restarted.handoffRehearsalCandidates();
+  assert.equal(afterRestart.results.length, 1);
+  assert.equal((await restarted.snapshot()).executionRequests.length, 1);
+  const registry = new PlatformAdapterRegistry();
+  registry.register("threads", { contractVersion: 1, capabilities: Object.fromEntries(PLATFORM_CAPABILITIES.map((item) => [item, false])), async execute() { return { submitState: "NOT_STARTED", gates: { all: true } }; }, async reconcile() { throw new Error("not used"); } });
+  const worker = new JevExecutionWorker({ service: f.service, adapterRegistry: registry, workerId: "rehearsal-handoff-test", env: {} });
+  const run = await worker.runReadyDryRunOnce();
+  assert.equal(run[0].status, "DRY_RUN_COMPLETE");
+  assert.equal((await worker.runReadyDryRunOnce()).length, 0);
+  const after = await f.service.snapshot();
+  assert.equal(after.executionReceipts.length, 1);
+  assert.equal(after.executionReceipts[0].receipt.submitState, "NOT_STARTED");
+  assert.equal(after.executionReceipts[0].receipt.publicationEvidence, null);
+});
+
+test("rehearsal handoff fails closed for malformed metadata and excludes unmarked candidates", async (t) => {
+  const f = await templateCandidateFixture("seeding-rehearsal-handoff-guards-");
+  t.after(() => rm(f.directory, { recursive: true, force: true }));
+  await f.service.store.mutate("test", "mark_malformed_rehearsal", (state) => {
+    const candidate = state.campaigns.find((item) => item.id === f.campaign.id).contentCandidates.find((item) => item.contentId === f.candidate.contentId);
+    candidate.rehearsalMetadata = { enabled: true, campaignId: f.campaign.id, contentId: candidate.contentId };
+    return state;
+  });
+  const result = await f.service.handoffRehearsalCandidates();
+  assert.equal(result.scanned, 1);
+  assert.equal(result.results[0].status, "SKIPPED");
+  assert.match(result.results[0].reason, /incomplete/);
+  assert.equal((await f.service.snapshot()).executionRequests.length, 0);
+  await f.service.store.mutate("test", "remove_rehearsal_marker", (state) => {
+    const candidate = state.campaigns.find((item) => item.id === f.campaign.id).contentCandidates.find((item) => item.contentId === f.candidate.contentId);
+    delete candidate.rehearsalMetadata;
+    return state;
+  });
+  assert.deepEqual(await f.service.handoffRehearsalCandidates(), { scanned: 0, results: [] });
 });
 
 test("materialize content candidate rejects identity tampering and unbound targets", async () => {

@@ -34,7 +34,8 @@
     "f3c21ec fix: quarantine mixed malformed metric assessments",
     "9ea1270 feat(metrics): make official collection idempotent",
     "28798e8 docs(metrics): record collector milestone evidence",
-    "d764783 fix(jev): isolate autonomous dry-run reconciliation"
+    "d764783 fix(jev): isolate autonomous dry-run reconciliation",
+    "working-tree seam: explicit rehearsal candidate → existing JEV dry-run queue handoff with strict lineage, readiness and idempotency"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -1018,6 +1019,58 @@
       "protectedUnknownExecutions": 4,
       "protectedUnknownUncertainties": 4,
       "commit": "d764783"
+    },
+    {
+      "name": "dry_run_queue_handoff_targeted",
+      "result": "PASS",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test --test-name-pattern='explicit rehearsal candidate handoff|rehearsal handoff fails closed' test/service.test.mjs",
+      "report": "plans/autonomous-build/dry-run-queue-handoff/test-results.md"
+    },
+    {
+      "name": "dry_run_queue_handoff_readiness_jev",
+      "result": "PASS",
+      "tests": 76,
+      "passed": 76,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/readiness-execution.test.mjs test/jev-execution-worker.test.mjs",
+      "report": "plans/autonomous-build/dry-run-queue-handoff/test-results.md"
+    },
+    {
+      "name": "dry_run_queue_handoff_full_node_suite",
+      "result": "PASS",
+      "tests": 449,
+      "passed": 447,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test",
+      "report": "plans/autonomous-build/dry-run-queue-handoff/test-results.md"
+    },
+    {
+      "name": "dry_run_queue_handoff_static_and_journal",
+      "result": "PASS",
+      "command": "for f in src/*.mjs; do node --check \"$f\"; done && python3 JSON parse for journal files && git diff --check",
+      "report": "plans/autonomous-build/dry-run-queue-handoff/test-results.md"
+    },
+    {
+      "name": "dry_run_queue_handoff_independent_review",
+      "result": "ACCEPT",
+      "report": "plans/autonomous-build/reports/verify-20261018-dry-run-queue-handoff.md",
+      "notes": "Existing independent read-only review accepted the final service handoff and scheduler isolation; no live authority or external action."
+    },
+    {
+      "name": "canonical_runtime_immutability_after_dry_run_queue_handoff",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 4
     }
   ]
 }

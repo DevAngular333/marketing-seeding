@@ -256,3 +256,29 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   handoff and real LinkedIn publication remain unverified. Canonical schema 8,
   revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`
   and all protected UNKNOWN records are unchanged.
+
+## Explicit rehearsal candidate → JEV dry-run queue handoff (2026-10-18)
+
+- Added `SeedingService.handoffRehearsalCandidates()` for candidates carrying
+  explicit `rehearsalMetadata`. It validates exact campaign/story/template/
+  candidate/target/content hash lineage, active authorization binding,
+  destination, healthy account/profile and fresh readiness before reusing the
+  existing dry-run request path.
+- The existing dry-run-only JEV scheduler invokes the handoff before
+  `runReadyDryRunOnce()` and exposes only bounded handoff counters in its
+  read-only runtime projection. Live execution-ID and autonomous-live paths are
+  unchanged.
+- Repeated ticks and a new `JsonStore` instance retain one request per exact
+  candidate; a terminal rehearsal row is not redispatched. Top-level and
+  nested `dryRun: true` remain required. No live window, live grant,
+  publication evidence, ORCA call, browser action or social mutation occurs.
+- Targeted handoff regressions: 2 passed, 0 failed, 0 skipped. Readiness/JEV
+  gate: 76 passed, 0 failed, 0 skipped. Full Node suite: 449 total, 447
+  passed, 0 failed, 2 skipped. Source syntax, JSON parsing and `git diff
+  --check` pass.
+- The local fixture reached one `DRY_RUN_COMPLETE` receipt with
+  `submitState: NOT_STARTED` and no publication evidence. This is local /
+  synthetic orchestration proof; candidate handoff and real LinkedIn
+  publication remain unverified. Canonical schema 8 revision 194 SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` and
+  all protected UNKNOWN records remain unchanged.
