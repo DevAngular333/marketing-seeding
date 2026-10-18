@@ -14,6 +14,7 @@ import { LinkedInAdapter } from "./linkedin-adapter.mjs";
 import { JevExecutionWorker } from "./jev-execution-worker.mjs";
 import { PlatformAdapterRegistry, ReadinessProviderRegistry } from "./platform-registries.mjs";
 import { isAuthorizedLocalShutdown, runtimeMetadata } from "./service-lifecycle.mjs";
+import { consumeSystemAgenticHandoff } from "./system-agentic-handoff-bridge.mjs";
 
 async function loadLocalEnv() {
   try {
@@ -695,7 +696,10 @@ const server = http.createServer(async (request, response) => {
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/distribution-handoff$/);
     if (request.method === "POST" && match) {
-      return sendJson(response, 200, await service.attachDistributionHandoff(match[1], await readJson(request), actor));
+      const input = await readJson(request);
+      return sendJson(response, 200, input?.bridgeVersion !== undefined
+        ? await consumeSystemAgenticHandoff(service, input, actor, { expectedCampaignId: match[1] })
+        : await service.attachDistributionHandoff(match[1], input, actor));
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/content-candidates$/);
     if (request.method === "POST" && match) {

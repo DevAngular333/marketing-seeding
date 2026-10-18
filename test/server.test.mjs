@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 import { createInitialState } from "../src/store.mjs";
 import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, publicationIdentityKey } from "../src/campaign-authorization.mjs";
 import { contentCandidateIdentity } from "../src/content-foundation.mjs";
+import { createSystemAgenticHandoffEnvelope } from "../src/system-agentic-handoff-bridge.mjs";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -104,6 +105,24 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   const afterReadOnlyGets = await readFile(path.join(dataDir, "state.json"), "utf8");
   assert.equal(afterReadOnlyGets, beforeReadOnlyGets);
   assert.equal((await fetch(`${baseUrl}/api/dashboard`)).status, 200);
+  const bridgePayload = {
+    mode: "DRY_RUN", campaignId: fixtureCampaign.id, handoffVersion: 1,
+    productRun: { productId: fixtureCampaign.id, objective: fixtureCampaign.objective, status: "COMPLETED", pipelineIds: ["server-bridge"], artifactRefs: [], mediaRefs: [], contentVariantRefs: [candidateContentId], campaignRefs: [fixtureCampaign.id], distributionIntentRefs: ["server-bridge-intent"], metadata: {}, createdAt: "2026-10-18T00:00:00Z" },
+    productArtifacts: [], mediaArtifacts: [],
+    contentVariants: [{ contentVariantId: candidateContentId, productId: fixtureCampaign.id, pipelineId: "server-bridge", sourceArtifactRefs: [], sourceMediaRefs: [], format: "text", angle: "evidence", audience: "public", platformHints: ["linkedin"], text: candidateContent, mediaRefs: [], metadata: { contentIdentity: candidateIdentity }, provenance: {}, producerModuleId: "server-fixture", producerStepId: "bridge-step", createdAt: "2026-10-18T00:00:00Z" }],
+    contentPackage: { contentPackageId: "server-bridge-package", productId: fixtureCampaign.id, contentVariantRefs: [candidateContentId], mediaVariantRefs: [], sourceArtifactRefs: [], metadata: {}, createdAt: "2026-10-18T00:00:00Z", pipelineId: "server-bridge", producerModuleId: "server-fixture", producerStepId: "bridge-step" },
+    distributionIntent: { distributionIntentId: "server-bridge-intent", productId: fixtureCampaign.id, contentVariantRefs: [candidateContentId], mediaRefs: [], objective: fixtureCampaign.objective, audienceHints: ["public"], platformHints: ["linkedin"], metadata: {}, createdAt: "2026-10-18T00:00:00Z", pipelineId: "server-bridge", producerModuleId: "server-fixture", producerStepId: "bridge-step", contentPackageRef: "server-bridge-package" },
+    platform: { targetId: fixtureTarget.id }
+  };
+  const bridgeResponse = await fetch(`${baseUrl}/api/campaigns/${fixtureCampaign.id}/distribution-handoff`, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify(createSystemAgenticHandoffEnvelope(bridgePayload, { emittedAt: "2026-10-18T00:00:00Z" })) });
+  assert.equal(bridgeResponse.status, 200);
+  const bridgeResult = await bridgeResponse.json();
+  assert.equal(bridgeResult.bridge.source.system, "SYSTEM_AGENTIC_AI");
+  assert.equal(bridgeResult.result.liveDispatch, false);
+  assert.equal(bridgeResult.result.publicationAttempts, 0);
+  const rawCompatibilityResponse = await fetch(`${baseUrl}/api/campaigns/${fixtureCampaign.id}/distribution-handoff`, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify(bridgePayload) });
+  assert.equal(rawCompatibilityResponse.status, 200);
+  assert.equal((await rawCompatibilityResponse.json()).result.liveDispatch, false);
   const leadFeedResponse = await fetch(`${baseUrl}/api/leads`);
   assert.equal(leadFeedResponse.status, 200);
   const leadFeed = await leadFeedResponse.json();

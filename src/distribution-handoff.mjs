@@ -171,12 +171,30 @@ export function validateDistributionHandoff(input = {}, { state, campaignId } = 
   const targetId = String(input.platform?.targetId || input.targetId || "");
   if (targetId && !(state?.targets || []).some((target) => target.id === targetId && (campaign?.contentCandidates || []).some((candidateItem) => candidateItem.targetId === targetId))) errors.push("target is not campaign bound");
   if (errors.length) return { ok: false, errors };
+  let source;
+  if (input.source) {
+    if (!input.source || typeof input.source !== "object" || Array.isArray(input.source)) return { ok: false, errors: ["source must be an object"] };
+    source = { system: clean(input.source.system || "system-agentic", 100), version: clean(input.source.version || "1", 100) };
+    if (input.source.envelopeHash !== undefined) {
+      const envelopeHash = clean(input.source.envelopeHash, 64);
+      if (!HASH_RE.test(envelopeHash)) errors.push("source envelopeHash must be SHA-256");
+      else source.envelopeHash = envelopeHash;
+    }
+    if (input.source.emittedAt !== undefined) {
+      const emittedAt = clean(input.source.emittedAt, 40);
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(emittedAt) || !Number.isFinite(Date.parse(emittedAt))) errors.push("source emittedAt must be a UTC ISO timestamp");
+      else source.emittedAt = emittedAt;
+    }
+  } else {
+    source = { system: "system-agentic", version: "1" };
+  }
+  if (errors.length) return { ok: false, errors };
   const sanitized = {
     schemaVersion: 1, handoffVersion: 1, mode: "DRY_RUN", campaignId: campaign.id, productId,
     content: { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity, sha256: content.sha256 },
     media: media.map((ref) => ({ artifactId: ref.artifactId, sha256: ref.sha256 })),
     platform: targetId ? { targetId } : null,
-    source: input.source ? { system: clean(input.source.system || "system-agentic"), version: clean(input.source.version || "1") } : { system: "system-agentic", version: "1" }
+    source
   };
   const handoffHash = hash(sanitized);
   return { ok: true, handoff: { ...sanitized, handoffHash }, result: { mode: "DRY_RUN", canonicalStateTouched: true, liveDispatch: false, publicationAttempts: 0 } };

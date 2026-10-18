@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "working-tree:execution-evidence-read-model",
+  "checkpointCommit": "working-tree:system-agentic-handoff-bridge",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -36,7 +36,8 @@
     "28798e8 docs(metrics): record collector milestone evidence",
     "d764783 fix(jev): isolate autonomous dry-run reconciliation",
     "working-tree seam: explicit rehearsal candidate \u2192 existing JEV dry-run queue handoff with strict lineage, readiness and idempotency",
-    "working-tree seam: bounded read-only execution evidence projection for Mission Control dashboard and /health"
+    "working-tree seam: bounded read-only execution evidence projection for Mission Control dashboard and /health",
+    "working-tree seam: versioned SYSTEM_AGENTIC_AI DRY_RUN handoff bridge with wrapped/raw route compatibility and restart-safe zero-side-effect proof"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -1155,6 +1156,41 @@
       "protectedUnknownExecutions": 4,
       "protectedUnknownUncertainties": 4,
       "report": "plans/autonomous-build/dry-run-restart-soak/report.md"
+    },
+    {
+      "name": "system_agentic_handoff_bridge_focused",
+      "result": "PASS",
+      "tests": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/system-agentic-handoff-bridge.test.mjs test/distribution-handoff.test.mjs test/server.test.mjs",
+      "report": "plans/autonomous-build/system-agentic-handoff-bridge/test-results.md"
+    },
+    {
+      "name": "system_agentic_handoff_bridge_static",
+      "result": "PASS",
+      "command": "node --check src/*.mjs; git diff --check",
+      "report": "plans/autonomous-build/system-agentic-handoff-bridge/test-results.md"
+    },
+    {
+      "name": "system_agentic_handoff_bridge_full_node_suite",
+      "result": "PASS",
+      "tests": 461,
+      "passed": 459,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test",
+      "report": "plans/autonomous-build/system-agentic-handoff-bridge/test-results.md"
+    },
+    {
+      "name": "system_agentic_handoff_bridge_safety",
+      "result": "PASS",
+      "executionArtifacts": 0,
+      "liveDispatch": false,
+      "externalSideEffects": false,
+      "report": "plans/autonomous-build/system-agentic-handoff-bridge/report.md"
     }
   ]
 }

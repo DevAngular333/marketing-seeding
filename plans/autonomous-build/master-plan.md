@@ -78,6 +78,13 @@ provider lane.
     evidence. Do not add a store, route, worker, adapter, authority path or
     UI control.
 
+37. Add a versioned local `SYSTEM_AGENTIC_AI` → marketing-seeding handoff
+    bridge around the existing DRY_RUN validator and campaign store. Require
+    explicit source/version/time/hash and route identity, preserve raw
+    canonical compatibility, and prove restart/idempotency with zero
+    execution artifacts. Keep LIVE authority, browser execution and external
+    publication blocked until a separately authorized lane exists.
+
 Result: local implementation gates pass (latest full Node suite 457 total, 455 passed, 0 failed, 2 skipped); execution evidence projection service/server gate is 72/72, UI typecheck/build pass, explicit rehearsal handoff has 2 targeted regressions with readiness/JEV at 76/76, and the restart/lease recovery soak is 1/1 with a combined dry-run/readiness/JEV/service gate of 148/148. Discovery-fit scheduler focused gate is 90/90 and independently reviewed PASS_BOUNDED; post-metrics advisory is 25/25 focused, 87/87 integrated, and independently reviewed PASS_BOUNDED; official metrics collection is 58/58 focused and independently reviewed PASS (bounded); metric checkpoint observability is 59/59 focused and independently reviewed ACCEPT_BOUNDED. The scheduler story/content/service focused gate is 52/52, the broader story/product-intelligence/service/server gate is 74/74, the standing-template scheduler gate is 47/47, the template-binding focused service/server gate is 46/46, the queue failure-isolation gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler gate is 42/42, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, and outcome attribution is 42/42. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 
 ## Later waves (dependency order)
