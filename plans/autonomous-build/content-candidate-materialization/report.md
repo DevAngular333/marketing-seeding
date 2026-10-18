@@ -1,6 +1,6 @@
 # Content Candidate Materialization Report
 
-**Status:** COMPLETE_LOCAL_VERIFIED (draft-only; superseded by exact standing authorization binding)
+**Status:** COMPLETE_LOCAL_VERIFIED (draft-only base seam; standing approved-copy and template binding are layered on top)
 **Branch:** `integration/autonomous-build`
 **Date:** 2026-10-18
 
@@ -31,5 +31,7 @@ Without an exact active `standing_autonomous` authorization, materialization rem
 
 ## Boundaries and remaining work
 
-- `approved_template_set` authorizations remain conservatively draft-only for this materialization path; exact approved-copy binding is the only automatic promotion mode.
+- `approved_template_set` promotion is implemented by the separately versioned
+  template-candidate-binding seam; this base milestone remains the generic
+  idempotent draft materialization contract.
 - No live browser, ORCA or platform behavior was exercised.

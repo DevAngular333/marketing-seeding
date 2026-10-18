@@ -27,6 +27,46 @@ async function fixture(prefix = "seeding-fixture-") {
   return { directory, productRepo: await realpath(productRepo), groundingText, service, campaign, target, post };
 }
 
+async function templateCandidateFixture(prefix) {
+  const { service, campaign, productRepo, target } = await fixture(prefix);
+  const profileId = `${prefix}-profile`;
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, {
+    title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+    groundingSources: ["README.md"], claimIds: ["what"]
+  }, "automation");
+  const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+  await service.authorizeCampaign(campaign.id, {
+    id: `${prefix}-auth`,
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: {
+      mode: "approved_template_set",
+      approvedClaims: [{ id: "what", text: "A bounded product runtime.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+      templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}}" }]
+    },
+    audienceRules: { allowedAudiences: ["builders"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true, executionMode: "standing_autonomous", standingAuthorizationReference: `${prefix}-standing`
+  }, "operator");
+  const [candidate] = await service.deriveTemplateContentCandidates(campaign.id, { storyId: story.id, templateId: "template-1" }, "automation");
+  return { service, campaign, productRepo, target, candidate };
+}
+
 test("kill switch controls are operator-only and advance the durable epoch", async () => {
   const { service, post } = await fixture("seeding-kill-switch-controls-test-");
   await assert.rejects(service.activateKillSwitch("maintenance", "scheduler"), /Only an operator/);
@@ -257,6 +297,164 @@ test("queue scheduler materializes exact standing approved-copy candidates idemp
   assert.equal(after.oneTimeExecutionWindows.filter((item) => item.jobId === firstPost.id).length, 1);
   assert.equal(after.liveExecutionGrants.filter((item) => item.jobId === firstPost.id).length, 1);
   assert.equal(after.submissionUncertainties.length, 0);
+});
+
+test("template candidates render from exact approved claims and queue idempotently", async () => {
+  const { directory, service, campaign, productRepo, target } = await fixture("seeding-template-candidate-scheduler-test-");
+  const profileId = "threads-template-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, {
+    title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+    groundingSources: ["README.md"], claimIds: ["what"]
+  }, "automation");
+  const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-template-candidate-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: {
+      mode: "approved_template_set",
+      approvedClaims: [{ id: "what", text: "A bounded product runtime.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+      templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}}\n{{disclosure}}" }],
+      requiredDisclosures: ["AI-assisted draft grounded in verified repository evidence."]
+    },
+    audienceRules: { allowedAudiences: ["builders"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true,
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "fixture-standing-template-candidate"
+  }, "operator");
+
+  const [candidate] = await service.deriveTemplateContentCandidates(campaign.id, { storyId: story.id, templateId: "template-1" }, "automation");
+  assert.equal(candidate.content, "A bounded product runtime.\nAI-assisted draft grounded in verified repository evidence.");
+  assert.equal(candidate.templateContractVersion, 1);
+  assert.equal(candidate.templateId, "template-1");
+  assert.equal(candidate.templatePlatform, "threads");
+  assert.deepEqual(candidate.templateClaimIds, ["what"]);
+  assert.deepEqual(candidate.templateSourceRefs, [{ relativePath: "README.md", sha256: sourceHash }]);
+  assert.equal(candidate.contentId, `content-${candidate.contentIdentity.slice(0, 24)}`);
+
+  await service.queueDueCampaignJobs("template-candidate-scheduler");
+  const first = await service.snapshot();
+  const post = first.posts.find((item) => item.contentId === candidate.contentId);
+  assert.ok(post);
+  assert.equal(post.status, "queued");
+  assert.equal(post.templateId, "template-1");
+  assert.equal(post.templateFingerprint, candidate.templateFingerprint);
+  assert.equal(first.executionRequests.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(first.oneTimeExecutionWindows.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(first.liveExecutionGrants.filter((item) => item.jobId === post.id).length, 1);
+
+  await service.queueDueCampaignJobs("template-candidate-scheduler");
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  await restarted.queueDueCampaignJobs("template-candidate-scheduler-restart");
+  const after = await restarted.snapshot();
+  assert.equal(after.posts.filter((item) => item.idempotencyKey === post.idempotencyKey).length, 1);
+  assert.equal(after.executionRequests.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(after.oneTimeExecutionWindows.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(after.liveExecutionGrants.filter((item) => item.jobId === post.id).length, 1);
+});
+
+test("template candidate tampering remains draft-only with no execution artifacts", async () => {
+  const { service, campaign, productRepo, target } = await fixture("seeding-template-candidate-tamper-test-");
+  const profileId = "threads-template-tamper-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, {
+    title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+    groundingSources: ["README.md"], claimIds: ["what"]
+  }, "automation");
+  const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-template-candidate-tamper-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: { mode: "approved_template_set", approvedClaims: [{ id: "what", text: "A bounded product runtime.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }], templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}}" }] },
+    audienceRules: { allowedAudiences: ["builders"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true, executionMode: "standing_autonomous", standingAuthorizationReference: "fixture-standing-template-tamper"
+  }, "operator");
+  const [candidate] = await service.deriveTemplateContentCandidates(campaign.id, { storyId: story.id, templateId: "template-1" }, "automation");
+  await service.store.mutate("fixture", "tamper_template_candidate", (state) => {
+    const row = state.campaigns.find((item) => item.id === campaign.id).contentCandidates.find((item) => item.contentId === candidate.contentId);
+    row.content = "tampered outside approved template";
+    return state;
+  });
+  const before = await service.snapshot();
+  await service.queueDueCampaignJobs("template-candidate-tamper");
+  const after = await service.snapshot();
+  const saved = after.campaigns.find((item) => item.id === campaign.id).contentCandidates.find((item) => item.contentId === candidate.contentId);
+  assert.equal(saved.status, "draft");
+  assert.equal(after.posts.filter((item) => item.campaignId === campaign.id && item.contentId === candidate.contentId).length, 0);
+  assert.equal(after.executionRequests.length, before.executionRequests.length);
+  assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length);
+  assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length);
+});
+
+test("template binding scope tampering fails closed before execution artifacts", async () => {
+  const cases = [
+    ["contract", (candidate) => { candidate.templateContractVersion = 99; }, /Unsupported or unauthorized template candidate contract/],
+    ["fingerprint", (candidate) => { candidate.templateFingerprint = "f".repeat(64); }, /fingerprint/],
+    ["authorization", (candidate) => { candidate.templateAuthorizationBinding = "f".repeat(64); }, /fingerprint/],
+    ["claims", (candidate) => { candidate.templateClaimIds = ["other"]; }, /claim binding/],
+    ["sources", (candidate) => { candidate.templateSourceRefs = [{ relativePath: "README.md", sha256: "f".repeat(64) }]; }, /grounding source changed/],
+    ["render", (candidate) => { candidate.content = "outside the approved template"; }, /content hash mismatch/],
+    ["target", (_candidate, target) => { target.url = "https://www.threads.net/@different"; }, /does not fit one exact active standing authorization/],
+    ["authorization-template", (_candidate, _target, authorization) => { authorization.contentBoundary.templates[0].template = "{{claim:what}} changed"; }, /fingerprint/],
+    ["claim", (_candidate, _target, authorization) => { authorization.contentBoundary.approvedClaims[0].text = "changed claim"; }, /outside the authorized template/]
+  ];
+  for (const [label, mutate, expected] of cases) {
+    const { service, campaign, productRepo, target, candidate } = await templateCandidateFixture(`seeding-template-binding-${label}-test`);
+    await service.store.mutate("fixture", `tamper_template_binding_${label}`, (state) => {
+      const currentCampaign = state.campaigns.find((item) => item.id === campaign.id);
+      const currentCandidate = currentCampaign.contentCandidates.find((item) => item.contentId === candidate.contentId);
+      const authorization = state.campaignAuthorizations.find((item) => item.campaignId === campaign.id && item.status === "active");
+      mutate(currentCandidate, state.targets.find((item) => item.id === target.id), authorization);
+      return state;
+    });
+    if (label === "sources") await writeFile(path.join(productRepo, "README.md"), "source drift\n", "utf8");
+    const before = await service.snapshot();
+    await assert.rejects(service.materializeContentCandidate(campaign.id, {
+      contentId: candidate.contentId,
+      contentIdentity: candidate.contentIdentity,
+      requireStandingAuthorization: true
+    }, "template-binding-tamper"), expected, label);
+    const after = await service.snapshot();
+    const saved = after.campaigns.find((item) => item.id === campaign.id).contentCandidates.find((item) => item.contentId === candidate.contentId);
+    assert.equal(saved.status, "draft", label);
+    assert.equal(after.posts.filter((item) => item.campaignId === campaign.id && item.contentId === candidate.contentId).length, 0, label);
+    assert.equal(after.executionRequests.length, before.executionRequests.length, label);
+    assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length, label);
+    assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length, label);
+  }
 });
 
 test("queue scheduler leaves candidates without exact approved-copy standing authority draft-only", async () => {

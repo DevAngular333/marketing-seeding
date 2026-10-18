@@ -118,6 +118,7 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
     const validToken = /^\{\{(?:claim:[a-zA-Z0-9_.-]+|disclosure)\}\}$/;
     for (const template of templates) {
       const tokens = template.template.match(/\{\{[^}]+\}\}/g) || [];
+      if (!tokens.some((token) => token.startsWith("{{claim:"))) throw new Error(`Template ${template.id} must include at least one claim placeholder`);
       if (tokens.some((token) => !validToken.test(token))) throw new Error(`Unsupported placeholder in campaign template ${template.id}`);
       for (const token of tokens.filter((value) => value.startsWith("{{claim:"))) {
         if (!approvedIds.has(token.slice(8, -2))) throw new Error(`Template references an unapproved claim: ${token}`);

@@ -109,6 +109,9 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal((await fetch(`${baseUrl}/api/state`)).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/automation/collect-now`, { method: "POST" })).status, 401);
   const candidateMaterializePath = `${baseUrl}/api/campaigns/live-grant-campaign/content-candidates/materialize`;
+  const templateCandidatePath = `${baseUrl}/api/campaigns/live-grant-campaign/template-content-candidates`;
+  assert.equal((await fetch(templateCandidatePath, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify({}) })).status, 401);
+  assert.equal((await fetch(templateCandidatePath, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({}) })).status, 400);
   assert.equal((await fetch(candidateMaterializePath, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify({}) })).status, 400);
   assert.equal((await fetch(candidateMaterializePath, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) })).status, 401);
   const materializedResponse = await fetch(candidateMaterializePath, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify({ contentId: candidateContentId, contentIdentity: candidateIdentity }) });

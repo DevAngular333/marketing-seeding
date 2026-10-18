@@ -652,6 +652,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.deriveContentCandidates(match[1], await readJson(request), actor));
     }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/template-content-candidates$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 201, await service.deriveTemplateContentCandidates(match[1], await readJson(request), actor));
+    }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/content-candidates\/materialize$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.materializeContentCandidate(match[1], await readJson(request), actor));

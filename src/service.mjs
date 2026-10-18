@@ -22,7 +22,7 @@ import { observePublicUrls } from "./discovery-observer.mjs";
 import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
-import { contentCandidateIdentity, deriveContentCandidates } from "./content-foundation.mjs";
+import { canonicalTemplateSourceRefs, contentCandidateIdentity, deriveContentCandidates, deriveTemplateContentCandidates, renderApprovedTemplate, templateCandidateBinding, templateClaimIds, TEMPLATE_CANDIDATE_CONTRACT_VERSION } from "./content-foundation.mjs";
 import { appendLearningFeedback, deriveLearningFeedback } from "./learning.mjs";
 import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
 import { validateDistributionHandoff } from "./distribution-handoff.mjs";
@@ -1863,6 +1863,48 @@ export class SeedingService {
     return result.result;
   }
 
+  async deriveTemplateContentCandidates(campaignId, input = {}, actor = "content-drafter") {
+    const initial = await this.store.read();
+    if (input.targetIds !== undefined && !Array.isArray(input.targetIds)) throw new Error("targetIds must be an array when supplied");
+    const campaign = requireItem(initial.campaigns, campaignId, "Campaign");
+    const story = requireItem(initial.stories || [], input.storyId, "Story");
+    if (story.campaignId !== campaignId) throw new Error("Story must belong to the campaign");
+    const activeAuthorizations = (initial.campaignAuthorizations || []).filter((item) => item.campaignId === campaignId && item.status === "active");
+    if (activeAuthorizations.length !== 1) throw new Error("Template derivation requires exactly one active campaign authorization");
+    const authorization = activeAuthorizations[0];
+    if (authorization.binding !== campaignAuthorizationFingerprint(authorization) || authorization.campaignBinding !== campaignScopeFingerprint(campaign)) {
+      throw new Error("Template derivation requires a current campaign authorization binding");
+    }
+    if (authorization.contentBoundary?.mode !== "approved_template_set") throw new Error("Template derivation requires approved_template_set authorization");
+    const now = Date.now();
+    if (!Number.isFinite(Date.parse(authorization.validFrom)) || now < Date.parse(authorization.validFrom) || !Number.isFinite(Date.parse(authorization.validUntil)) || now > Date.parse(authorization.validUntil)) {
+      throw new Error("Template derivation requires a current campaign authorization window");
+    }
+    const campaignTargetIds = new Set((initial.posts || []).filter((post) => post.campaignId === campaignId).map((post) => post.targetId));
+    for (const destination of authorization.destinations || []) campaignTargetIds.add(destination.targetId);
+    const requestedTargetIds = Array.isArray(input.targetIds) ? input.targetIds.map(String) : null;
+    if (requestedTargetIds && requestedTargetIds.some((id) => !campaignTargetIds.has(id))) throw new Error("Template target is not bound to the campaign");
+    const targets = (initial.targets || []).filter((target) => campaignTargetIds.has(target.id) && (!requestedTargetIds || requestedTargetIds.includes(target.id)) && (authorization.destinations || []).some((destination) => destination.targetId === target.id && destination.platform === target.channel && destination.accountId === target.accountId && destination.profileId === target.profileId && destination.targetUrl === target.url));
+    if (!targets.length) throw new Error("Template derivation requires an authorized campaign target");
+    const candidates = deriveTemplateContentCandidates({ story, targets, authorization, templateId: input.templateId });
+    const productRepo = await requireProductRepo(campaign.productRepo);
+    for (const candidate of candidates) {
+      const refs = canonicalTemplateSourceRefs(candidate.templateSourceRefs);
+      const current = await Promise.all(refs.map((source) => readGroundingSource(productRepo, source.relativePath)));
+      if (current.some((source, index) => source.relativePath !== refs[index].relativePath || source.sha256 !== refs[index].sha256)) throw new Error("Template claim source changed since authorization");
+    }
+    const result = await this.store.mutate(actor, "template_content_candidates_derived", (state) => {
+      const current = requireItem(state.campaigns, campaignId, "Campaign");
+      current.contentCandidates ||= [];
+      const byIdentity = new Map(current.contentCandidates.map((item) => [item.contentIdentity, item]));
+      for (const candidate of candidates) byIdentity.set(candidate.contentIdentity, candidate);
+      current.contentCandidates = [...byIdentity.values()].slice(-24);
+      current.updatedAt = nowIso();
+      return current.contentCandidates.filter((item) => candidates.some((candidate) => candidate.contentIdentity === item.contentIdentity));
+    });
+    return result.result;
+  }
+
   async materializeContentCandidate(campaignId, input = {}, actor = "automation") {
     const candidateId = String(input.contentId || input.candidateId || "").trim();
     const candidateIdentity = String(input.contentIdentity || "").trim();
@@ -1898,9 +1940,6 @@ export class SeedingService {
       if (policy.maxContentChars && content.length > policy.maxContentChars) throw new Error(`Content exceeds ${policy.maxContentChars} characters for ${target.channel}`);
       const contentHash = campaignContentHash(content);
       if (candidate.contentHash && candidate.contentHash !== contentHash) throw new Error("Content candidate content hash mismatch");
-      const recomputedIdentity = contentCandidateIdentity({ storyId: candidate.storyId, targetId: candidate.targetId, channel: candidate.channel, content, claimIds: candidate.claimIds || [], evidenceRefs: [...new Set(candidate.evidenceRefs || [])].sort() });
-      if (candidate.contentIdentity !== recomputedIdentity) throw new Error("Content candidate identity mismatch");
-      if (candidate.contentId !== `content-${candidate.contentIdentity.slice(0, 24)}`) throw new Error("Content candidate contentId mismatch");
       const identityKey = publicationIdentityKey({ campaignId, contentId: candidate.contentId, platform: target.channel, accountId: target.accountId, targetId: target.id });
       const activeAuthorizations = (state.campaignAuthorizations || []).filter((item) => item.campaignId === campaignId && item.status === "active");
       if (activeAuthorizations.length > 1) throw new Error("Multiple active campaign authorizations prevent fail-closed materialization");
@@ -1908,13 +1947,45 @@ export class SeedingService {
       const now = new Date();
       const destination = authorization?.destinations?.find((item) => item.targetId === target.id && item.platform === target.channel && item.accountId === target.accountId && item.profileId === target.profileId && item.targetUrl === target.url);
       const boundary = authorization?.contentBoundary || {};
+      const hasTemplateBinding = candidate.templateContractVersion !== undefined || candidate.templateId || candidate.templateFingerprint || candidate.templateClaimIds || candidate.templateSourceRefs;
+      let templateScopeValid = false;
+      let candidateSourceRefs = groundingSources;
+      let templateBinding = null;
+      if (hasTemplateBinding) {
+        if (candidate.templateContractVersion !== TEMPLATE_CANDIDATE_CONTRACT_VERSION || boundary.mode !== "approved_template_set") throw new Error("Unsupported or unauthorized template candidate contract");
+        const template = (boundary.templates || []).find((item) => item.id === candidate.templateId && item.platform === target.channel);
+        if (!template) throw new Error("Template candidate is not bound to the authorized template");
+        const expectedClaimIds = templateClaimIds(template.template);
+        const suppliedClaimIds = [...new Set((candidate.templateClaimIds || []).map(String))].sort();
+        if (JSON.stringify(suppliedClaimIds) !== JSON.stringify(expectedClaimIds) || JSON.stringify([...new Set((candidate.claimIds || []).map(String))].sort()) !== JSON.stringify(expectedClaimIds)) throw new Error("Template candidate claim binding mismatch");
+        const claims = expectedClaimIds.map((id) => (boundary.approvedClaims || []).find((claim) => claim.id === id));
+        if (claims.some((claim) => !claim)) throw new Error("Template candidate claim is not approved");
+        const expectedSourceRefs = canonicalTemplateSourceRefs(claims.flatMap((claim) => claim.sourceRefs || []));
+        const suppliedSourceRefs = canonicalTemplateSourceRefs(candidate.templateSourceRefs);
+        if (JSON.stringify(suppliedSourceRefs) !== JSON.stringify(expectedSourceRefs)) throw new Error("Template candidate source binding mismatch");
+        const storySourceKeys = new Set(groundingSources.map((source) => `${source.relativePath}\u0000${source.sha256}`));
+        if (expectedSourceRefs.some((source) => !storySourceKeys.has(`${source.relativePath}\u0000${source.sha256}`))) throw new Error("Template candidate source is not bound to story grounding");
+        const currentTemplateSources = await Promise.all(expectedSourceRefs.map((source) => readGroundingSource(productRepo, source.relativePath)));
+        if (currentTemplateSources.some((source, index) => source.relativePath !== expectedSourceRefs[index].relativePath || source.sha256 !== expectedSourceRefs[index].sha256)) throw new Error("Template candidate source changed since authorization");
+        const expectedBinding = templateCandidateBinding({ templateId: template.id, platform: target.channel, template: template.template, requiredDisclosures: boundary.requiredDisclosures || [], claimIds: expectedClaimIds, sourceRefs: expectedSourceRefs, authorizationBinding: authorization.binding });
+        if (candidate.templateFingerprint !== expectedBinding.templateFingerprint || candidate.templatePlatform !== expectedBinding.templatePlatform || candidate.templateAuthorizationBinding !== expectedBinding.templateAuthorizationBinding) throw new Error("Template candidate fingerprint mismatch");
+        const rendered = renderApprovedTemplate({ template: template.template, approvedClaims: claims, requiredDisclosures: boundary.requiredDisclosures || [] });
+        if (content !== rendered) throw new Error("Content is outside the authorized template render");
+        if (candidate.contentHash !== contentHash) throw new Error("Template candidate content hash is missing or stale");
+        candidateSourceRefs = expectedSourceRefs;
+        templateBinding = expectedBinding;
+        templateScopeValid = true;
+      }
+      const recomputedIdentity = contentCandidateIdentity({ storyId: candidate.storyId, targetId: candidate.targetId, channel: candidate.channel, content, claimIds: candidate.claimIds || [], evidenceRefs: templateScopeValid ? candidateSourceRefs.map((source) => `${source.relativePath}#${source.sha256}`) : [...new Set(candidate.evidenceRefs || [])].sort(), templateBinding });
+      if (candidate.contentIdentity !== recomputedIdentity) throw new Error("Content candidate identity mismatch");
+      if (candidate.contentId !== `content-${candidate.contentIdentity.slice(0, 24)}`) throw new Error("Content candidate contentId mismatch");
       const candidateFitsStandingAuthorization = Boolean(
         campaign.status === "active" && authorization && authorization.executionMode === "standing_autonomous" && authorization.allowLiveExecution === true &&
         authorization.binding === campaignAuthorizationFingerprint(authorization) &&
         authorization.campaignBinding === campaignScopeFingerprint(campaign) &&
         Number.isFinite(Date.parse(authorization.validFrom)) && now >= new Date(authorization.validFrom) &&
         Number.isFinite(Date.parse(authorization.validUntil)) && now <= new Date(authorization.validUntil) &&
-        destination && boundary.mode === "approved_copy_set" && boundary.contentHashes?.includes(contentHash) &&
+        destination && ((boundary.mode === "approved_copy_set" && !hasTemplateBinding && boundary.contentHashes?.includes(contentHash)) || (boundary.mode === "approved_template_set" && templateScopeValid)) &&
         authorization.audienceRules?.allowedAudiences?.includes(String(story.audience || "").trim()) &&
         (authorization.publicationVisibilityRules?.allowedVisibilities || ["PUBLIC"]).includes("PUBLIC")
       );
@@ -1928,7 +1999,8 @@ export class SeedingService {
             existing.audience !== String(story.audience || "").trim() || existing.language !== (String(story.language || "en").trim() || "en") || existing.publicationVisibility !== "PUBLIC" ||
             JSON.stringify(existing.claimIds || []) !== JSON.stringify(candidate.claimIds || []) ||
             JSON.stringify(existing.contentEvidenceRefs || []) !== JSON.stringify([...new Set((candidate.evidenceRefs || []).map(String))].sort()) ||
-            JSON.stringify(existing.contentSourceRefs || []) !== JSON.stringify(groundingSources)) {
+            JSON.stringify(existing.contentSourceRefs || []) !== JSON.stringify(candidateSourceRefs) ||
+            (templateScopeValid && (existing.templateContractVersion !== candidate.templateContractVersion || existing.templateId !== candidate.templateId || existing.templatePlatform !== candidate.templatePlatform || existing.templateFingerprint !== candidate.templateFingerprint || existing.templateAuthorizationBinding !== candidate.templateAuthorizationBinding || JSON.stringify(existing.templateClaimIds || []) !== JSON.stringify(candidate.templateClaimIds || []) || JSON.stringify(existing.templateSourceRefs || []) !== JSON.stringify(candidateSourceRefs)))) {
           throw new Error("Existing post conflicts with content candidate");
         }
         if (existing.status !== "draft") {
@@ -1970,10 +2042,19 @@ export class SeedingService {
         content, contentId: candidate.contentId, contentIdentity: candidate.contentIdentity, contentHash,
         contentEvidenceRefs: [...new Set((candidate.evidenceRefs || []).map(String))].sort(),
         claimIds: [...new Set((candidate.claimIds || []).map(String))],
-        contentSourceRefs: groundingSources,
+        contentSourceRefs: candidateSourceRefs,
         idempotencyKey: identityKey, audience: String(story.audience || "").trim(),
         language: String(story.language || "en").trim() || "en", publicationVisibility: "PUBLIC", status: "draft",
-        approvedAt: null, createdAt: at, updatedAt: at
+        approvedAt: null, createdAt: at, updatedAt: at,
+        ...(templateScopeValid ? {
+          templateContractVersion: candidate.templateContractVersion,
+          templateId: candidate.templateId,
+          templatePlatform: candidate.templatePlatform,
+          templateFingerprint: candidate.templateFingerprint,
+          templateAuthorizationBinding: candidate.templateAuthorizationBinding,
+          templateClaimIds: [...candidate.templateClaimIds],
+          templateSourceRefs: candidateSourceRefs
+        } : {})
       };
       if (candidateFitsStandingAuthorization) {
         post.campaignAuthorizationId = authorization.id;
@@ -2020,8 +2101,8 @@ export class SeedingService {
     const activeAuthorizations = (snapshot.campaignAuthorizations || [])
       .filter((item) => item.campaignId === campaignId && item.status === "active");
     const authorization = activeAuthorizations.length === 1 ? activeAuthorizations[0] : null;
-    if (!authorization || authorization.executionMode !== "standing_autonomous" || authorization.allowLiveExecution !== true || authorization.contentBoundary?.mode !== "approved_copy_set") {
-      return { campaignId, materialized: [], skipped: (campaign.contentCandidates || []).filter((item) => item.status === "draft").length, reason: "standing_approved_copy_authorization_not_uniquely_active" };
+    if (!authorization || authorization.executionMode !== "standing_autonomous" || authorization.allowLiveExecution !== true || !["approved_copy_set", "approved_template_set"].includes(authorization.contentBoundary?.mode)) {
+      return { campaignId, materialized: [], skipped: (campaign.contentCandidates || []).filter((item) => item.status === "draft").length, reason: "standing_content_authorization_not_uniquely_active" };
     }
     const results = [];
     for (const candidate of (campaign.contentCandidates || []).filter((item) => item.status === "draft")) {

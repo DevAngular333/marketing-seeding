@@ -6,5 +6,7 @@
 - Added strict standing-authority enforcement to the existing
   `materializeContentCandidate` seam.
 - Added idempotent repeated-tick and restart coverage.
-- Added draft-only regressions for missing/inactive/template-set authority.
+- Added draft-only regressions for missing/inactive authority and legacy or
+  incomplete template candidates. The later template-candidate-binding
+  milestone adds the versioned exact template path.
 - Preserved advisory `runCampaignControlCycle` authority-free behavior.

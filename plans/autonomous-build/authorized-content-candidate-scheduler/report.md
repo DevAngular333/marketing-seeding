@@ -8,9 +8,11 @@
 
 The queue now materializes draft content candidates automatically only when one
 exact active campaign authorization is a standing autonomous authorization with
-live execution enabled and an `approved_copy_set` boundary. The scheduler then
-reuses the existing content materialization, readiness, execution request,
-one-time window, live grant, lease and idempotency contracts.
+live execution enabled and an approved content boundary. `approved_copy_set`
+uses exact content hashes. `approved_template_set` uses the separately
+versioned template binding contract. Both modes reuse the existing content
+materialization, readiness, execution request, one-time window, live grant,
+lease and idempotency contracts.
 
 This removes a per-post approval dependency for the bounded approved-copy case
 without creating a new store, state machine, provider router, browser
@@ -22,9 +24,9 @@ authority-free.
 - No active exact standing authorization: candidate stays `draft`.
 - Paused, revoked, expired, missing, multiply-active or mismatched authority:
   no candidate promotion and no execution controls.
-- `approved_template_set`: remains draft-only because the current candidate
-  identity has no versioned template/fingerprint and cannot prove exact claim,
-  disclosure or source binding.
+- `approved_template_set`: is eligible only through the versioned
+  `template-candidate-binding` contract; legacy or incomplete candidates remain
+  draft-only.
 - Existing terminal or uncertain posts are never replayed from a draft
   candidate; historical `UNKNOWN` records remain immutable.
 - Repeated ticks and a fresh `JsonStore` instance preserve one post, request,
@@ -44,3 +46,6 @@ were not modified.
 - Syntax and diff checks passed.
 - Independent review: **ACCEPT**; the recommended inactive-campaign fail-closed
   condition is implemented and covered by regression.
+
+The template binding milestone adds the corresponding `approved_template_set`
+queue path and is documented in `plans/autonomous-build/template-candidate-binding/`.

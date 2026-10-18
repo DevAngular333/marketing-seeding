@@ -17,9 +17,10 @@ grant and lease controls.
 - A3. Repeated scheduler ticks and a fresh service instance preserve one
   publication identity and do not create duplicate posts, requests, windows or
   grants.
-- A4. Inactive, paused, revoked, expired, missing, multiply-active,
-  mismatched-authority and `approved_template_set` candidates remain draft-only
-  or fail closed.
+- A4. Inactive, paused, revoked, expired, missing, multiply-active and
+  mismatched-authority candidates remain draft-only or fail closed. Template
+  candidates are eligible only through the separately versioned exact binding
+  contract; legacy or incomplete template candidates remain draft-only.
 - A5. Historical `UNKNOWN` executions and canonical runtime state remain
   untouched; no browser, ORCA, platform or social side effect occurs.
 - A6. The advisory control cycle remains authority-free and is not used for

@@ -28,7 +28,8 @@
     "c607e1e feat: expose bounded account runtime eligibility",
     "6dcebf9 feat: expose account readiness in mission control",
     "working-tree seam: bounded campaign-aware post attribution context in existing learning/strategy with late-UNKNOWN retention and target identity validation",
-    "working-tree seam: exact content-candidate materialization and approved-copy standing authorization binding with inactive-authority regressions"
+    "working-tree seam: exact content-candidate materialization and approved-copy standing authorization binding with inactive-authority regressions",
+    "working-tree seam: versioned approved-template candidate binding with claim/source/render revalidation and HTTP role coverage"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -88,6 +89,11 @@
     {"name":"campaign_queue_observability_static","result":"PASS","command":"node --check src/server.mjs && node --check test/server.test.mjs && node --check test/server-lifecycle.test.mjs && git diff --check"},
     {"name":"full_node_suite_after_campaign_queue_observability","result":"PASS","tests":406,"passed":404,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"},
     {"name":"campaign_queue_failure_isolation_focused","result":"PASS_BOUNDED","tests":47,"passed":47,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs","notes":"One failing campaign does not starve the next; bounded failure reason; no authority/browser/canonical/UNKNOWN mutation"},
-    {"name":"campaign_queue_failure_isolation_static","result":"PASS","command":"node --check src/service.mjs && node --check src/server.mjs && node --check test/service.test.mjs && git diff --check"}
+    {"name":"campaign_queue_failure_isolation_static","result":"PASS","command":"node --check src/service.mjs && node --check src/server.mjs && node --check test/service.test.mjs && git diff --check"},
+    {"name":"template_candidate_binding_focused","result":"PASS_BOUNDED","tests":46,"passed":46,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs","notes":"Deterministic approved_template_set rendering, fingerprint/source/claim/authorization binding, contract/fingerprint/authorization/claim/source/render/target tamper rejection, queue/restart idempotency and operator-only HTTP route"},
+    {"name":"template_candidate_binding_static","result":"PASS","command":"node --check src/content-foundation.mjs && node --check src/service.mjs && node --check src/server.mjs && git diff --check"},
+    {"name":"template_candidate_binding_independent_review","result":"ACCEPT","notes":"HTTP auth reachability gap closed; no safety or acceptance findings"},
+    {"name":"full_node_suite_after_template_candidate_binding","result":"PASS","tests":410,"passed":408,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"},
+    {"name":"canonical_runtime_immutability_after_template_candidate_binding","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
   ]
 }
