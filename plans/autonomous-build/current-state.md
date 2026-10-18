@@ -117,6 +117,31 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 
 - Added deterministic `SeedingService.deriveProductIntelligenceStory` over the existing persisted READY product-intelligence handoff and `JsonStore` story collection. It requires four supported, evidence-grounded fields: `WHAT_IS_IT`, `WHAT_PROBLEM_DOES_IT_SOLVE`, `WHY_IS_IT_BETTER` and `WHO_NEEDS_IT`.
 - The service revalidates handoff integrity, repository inspection hashes and records, current evidence bytes, source lineage, bounded CTA/disclosure and credential-like input before persisting. The derived row is deterministic, restart-safe, idempotent and always `status: "draft"`.
-- This path is intentionally not called by the queue or control cycle. It creates no authorization, post, request, one-time window, grant, lease, browser action or provider action.
-- Focused story/content/service gate: 67 passed, 0 failed, 0 skipped. Latest full suite: 417 total, 415 passed, 0 failed, 2 skipped; syntax and `git diff --check` passed. Independent review: ACCEPT.
+- The base service method remains draft-only and execution-free. Queue invocation
+  is separately gated by the explicit story-policy milestone below.
+- Focused story/content/service gate at the base milestone: 67 passed, 0 failed,
+  0 skipped. The current full suite is recorded below as 420 total, 418 passed,
+  0 failed, 2 skipped; syntax and `git diff --check` passed. Independent review:
+  ACCEPT.
 - Evidence is LOCAL / SYNTHETIC only. Canonical runtime and all four historical UNKNOWN executions remain unchanged. Live LinkedIn proof remains blocked by absent exact authorization/session and unavailable ORCA.
+
+## Scheduler-owned product story derivation (2026-10-18)
+
+- Queue scheduling now accepts an explicit bounded `contentBoundary.storyPolicy`
+  only inside an `approved_template_set` authorization. CTA, disclosure and
+  language are normalized, bounded, credential/session-filtered and included in
+  the authorization fingerprint.
+- The queue derives at most one deterministic draft story for an active
+  campaign with exactly one active `standing_autonomous` authorization,
+  `allowLiveExecution === true`, a valid authorization binding and a valid
+  campaign-scope binding. It reuses the existing product-intelligence story
+  method and `JsonStore`.
+- Missing policy, incomplete READY handoff, ambiguous authority, stale or
+  tampered bindings and source drift remain draft-only and create no candidate,
+  post, request, window, grant or lease. Existing template materialization and
+  UNKNOWN/idempotency controls remain the only execution route.
+- Focused scheduler/story gate: 52 passed, 0 failed, 0 skipped. Broader
+  product-intelligence/service/server gate: 74 passed, 0 failed, 0 skipped.
+  Full Node suite: 420 total, 418 passed, 0 failed, 2 skipped. Independent
+  review: ACCEPT. No browser, ORCA, LinkedIn, social, canonical or historical
+  UNKNOWN mutation occurred.

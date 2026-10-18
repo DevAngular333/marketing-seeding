@@ -624,6 +624,142 @@ test("queue does not derive template candidates for paused or ambiguous authorit
   }
 });
 
+test("queue derives one deterministic product story only from an explicit standing story policy", async () => {
+  const { directory, service, campaign, productRepo, target } = await fixture("seeding-story-policy-queue-test-");
+  const profileId = "threads-story-policy-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  await service.inspectProductIntelligence(campaign.id, {
+    allowlist: ["README.md"],
+    claims: [
+      { id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["repo:README.md"] },
+      { id: "problem", field: "WHAT_PROBLEM_DOES_IT_SOLVE", text: "It reduces blind retries.", evidenceRefs: ["repo:README.md"] },
+      { id: "better", field: "WHY_IS_IT_BETTER", text: "It is deterministic and verified.", evidenceRefs: ["repo:README.md"] },
+      { id: "who", field: "WHO_NEEDS_IT", text: "Operators and developers.", evidenceRefs: ["repo:README.md"] }
+    ]
+  }, "automation");
+  const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-story-policy-queue-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: {
+      mode: "approved_template_set",
+      approvedClaims: [{ id: "what", text: "A bounded product runtime.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+      templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}} {{disclosure}}" }],
+      requiredDisclosures: ["Evidence-grounded draft."],
+      storyPolicy: { callToAction: "Read the evidence", disclosure: "Evidence-grounded draft.", language: "en" }
+    },
+    audienceRules: { allowedAudiences: ["Operators and developers."] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true,
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "standing-story-policy-queue"
+  }, "operator");
+
+  const before = await service.snapshot();
+  const firstTick = await service.queueDueCampaignJobs("story-policy-queue");
+  const afterFirst = await service.snapshot();
+  const firstCampaign = afterFirst.campaigns.find((item) => item.id === campaign.id);
+  const firstStories = afterFirst.stories.filter((story) => story.campaignId === campaign.id);
+  const firstCandidates = firstCampaign.contentCandidates.filter((candidate) => candidate.templateId === "template-1");
+  assert.equal(firstStories.length, 1);
+  assert.equal(firstStories[0].status, "draft");
+  assert.equal(firstStories[0].callToAction, "Read the evidence");
+  assert.equal(firstCandidates.length, 1);
+  assert.equal(afterFirst.posts.filter((post) => post.campaignId === campaign.id && post.contentId === firstCandidates[0].contentId).length, 1);
+  assert.ok(firstTick.some((item) => item.campaignId === campaign.id));
+
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  await restarted.queueDueCampaignJobs("story-policy-queue-restart");
+  const afterRestart = await restarted.snapshot();
+  assert.equal(afterRestart.stories.filter((story) => story.campaignId === campaign.id).length, 1);
+  assert.equal(afterRestart.campaigns.find((item) => item.id === campaign.id).contentCandidates.filter((candidate) => candidate.templateId === "template-1").length, 1);
+  assert.equal(afterRestart.posts.filter((post) => post.campaignId === campaign.id && post.contentId === firstCandidates[0].contentId).length, 1);
+  assert.equal(afterRestart.executionRequests.length, afterFirst.executionRequests.length);
+  assert.equal(afterRestart.oneTimeExecutionWindows.length, afterFirst.oneTimeExecutionWindows.length);
+  assert.equal(afterRestart.liveExecutionGrants.length, afterFirst.liveExecutionGrants.length);
+  assert.equal(before.submissionUncertainties.length, afterRestart.submissionUncertainties.length);
+});
+
+test("queue story derivation stays draft-only without policy, with ambiguous or stale authority, or after source drift", async () => {
+  const scenarios = ["missing-policy", "ambiguous-authority", "stale-binding", "stale-campaign-binding", "source-drift"];
+  for (const scenario of scenarios) {
+    const { service, campaign, productRepo, target } = await fixture(`seeding-story-policy-${scenario}-test-`);
+    const profileId = `threads-story-policy-${scenario}-profile`;
+    await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+    await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+      state: "ready", checkedAt: new Date().toISOString(),
+      checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+    } }, "operator");
+    await service.inspectProductIntelligence(campaign.id, {
+      allowlist: ["README.md"],
+      claims: [
+        { id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["repo:README.md"] },
+        { id: "problem", field: "WHAT_PROBLEM_DOES_IT_SOLVE", text: "It reduces blind retries.", evidenceRefs: ["repo:README.md"] },
+        { id: "better", field: "WHY_IS_IT_BETTER", text: "It is deterministic and verified.", evidenceRefs: ["repo:README.md"] },
+        { id: "who", field: "WHO_NEEDS_IT", text: "Operators and developers.", evidenceRefs: ["repo:README.md"] }
+      ]
+    }, "automation");
+    const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+    const contentBoundary = {
+      mode: "approved_template_set",
+      approvedClaims: [{ id: "what", text: "A bounded product runtime.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+      templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}}" }],
+      ...(scenario === "missing-policy" ? {} : { storyPolicy: { callToAction: "Read the evidence" } })
+    };
+    await service.authorizeCampaign(campaign.id, {
+      id: `standing-story-policy-${scenario}-auth`,
+      validFrom: new Date(Date.now() - 60_000).toISOString(),
+      validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+      destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+      approvedAssets: [], contentBoundary,
+      audienceRules: { allowedAudiences: ["Operators and developers."] },
+      publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+      schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+      rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+      allowLiveExecution: true,
+      executionMode: "standing_autonomous",
+      standingAuthorizationReference: `standing-story-policy-${scenario}`
+    }, "operator");
+    if (scenario === "ambiguous-authority") {
+      const snapshot = await service.snapshot();
+      const authorization = snapshot.campaignAuthorizations.find((item) => item.campaignId === campaign.id);
+      await service.store.mutate("fixture", "duplicate_story_policy_authority", (state) => {
+        state.campaignAuthorizations.push({ ...authorization, id: `${authorization.id}-duplicate`, status: "active" });
+        return state;
+      });
+    }
+    if (["stale-binding", "stale-campaign-binding"].includes(scenario)) {
+      await service.store.mutate("fixture", "stale_story_policy_authority", (state) => {
+        const authorization = state.campaignAuthorizations.find((item) => item.campaignId === campaign.id && item.status === "active");
+        if (scenario === "stale-binding") authorization.binding = "tampered-authorization-binding";
+        else authorization.campaignBinding = "tampered-campaign-binding";
+        return state;
+      });
+    }
+    if (scenario === "source-drift") await writeFile(path.join(productRepo, "README.md"), "source drift\n", "utf8");
+    const before = await service.snapshot();
+    await service.queueDueCampaignJobs(`story-policy-${scenario}`);
+    const after = await service.snapshot();
+    assert.equal(after.stories.filter((story) => story.campaignId === campaign.id).length, 0, scenario);
+    assert.equal((after.campaigns.find((item) => item.id === campaign.id).contentCandidates || []).length, 0, scenario);
+    assert.equal(after.posts.filter((post) => post.campaignId === campaign.id).length, before.posts.filter((post) => post.campaignId === campaign.id).length, scenario);
+    assert.equal(after.executionRequests.length, before.executionRequests.length, scenario);
+    assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length, scenario);
+    assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length, scenario);
+    assert.equal(after.executionLeases.length, before.executionLeases.length, scenario);
+  }
+});
+
 test("queue scheduler isolates one campaign failure and continues the next campaign", async () => {
   const { service, campaign, target } = await fixture("seeding-queue-failure-isolation-test-");
   const secondCampaign = await service.createCampaign({ name: "Second course", objective: "Continue queue", productRepo: campaign.productRepo }, "operator");

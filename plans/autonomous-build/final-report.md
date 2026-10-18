@@ -25,6 +25,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Queue-driven approved-copy and versioned approved-template candidates can enter that standing path automatically only for an active campaign and one exact active standing authorization; repeated ticks/restart remain idempotent and inactive/ambiguous/malformed cases stay draft-only.
 - Product intelligence emits evidence/claim hashes, supported/unsupported claims and a versioned handoff; integration branch persists/projects it read-only.
 - Product intelligence can derive one deterministic, evidence-grounded draft story from the READY handoff after current repository bytes and lineage are revalidated. The draft remains idempotent and execution-free; no queue or authority is inferred.
+- With an explicit bounded `storyPolicy`, the queue can derive that draft story autonomously under one current standing template authorization. Stale authorization or campaign bindings fail closed before derivation.
 - Product factory classifies a repository, executes only the strict fail-closed `node --check` manifest plan in temporary staging with bounds and optional artifact hashes, persists a bounded campaign-owned run lineage and has no external side effect. Arbitrary project scripts and build/render commands remain explicitly unexecuted.
 - Discovery normalizes, deduplicates, policy-classifies and scores observations; the opt-in public HTTP observer and 15-minute scheduler persist only bounded successful observations, isolate campaign errors, and do not create publish authority.
 - Discovery can attach bounded caller-supplied audience/channel/locale fit evidence with explicit `MATCHED`/`MISMATCHED`/`UNKNOWN` outcomes; this remains advisory and does not create platform support or execution authority.
@@ -43,7 +44,7 @@ The integration branch now contains local, tested foundations for bounded standi
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
- Full Node suite: latest 417 total, 415 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: latest 420 total, 418 passed, 0 failed, 2 skipped; exit 0
  Story/content/service focused gate: 67 passed, 0 failed, 0 skipped
  Queue observability focused gate: 46 passed, 0 failed, 0 skipped
  Queue failure-isolation focused gate: 47 passed, 0 failed, 0 skipped
@@ -79,6 +80,16 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 
 ## Latest verification overlay (2026-10-18)
 
+- Queue-owned story derivation is locally verified behind an explicit bounded
+  authorization `storyPolicy`. Focused scheduler/story gate: 52 passed, 0
+  failed, 0 skipped; broader product-intelligence/service/server gate: 74
+  passed, 0 failed, 0 skipped; independent review ACCEPT.
+- The queue checks both the current authorization fingerprint and campaign scope
+  fingerprint before deriving. Missing policy, ambiguous authority, stale
+  binding, source drift and incomplete handoff create no story/candidate/post/
+  request/window/grant/lease. No browser, ORCA, LinkedIn, canonical or
+  historical UNKNOWN mutation occurred.
+
 - Exact evidence-grounded candidate materialization now rereads grounding bytes, recomputes identity/content hash, and persists one idempotent post lineage.
 - An exact active `standing_autonomous` authorization with `approved_copy_set` can bind the candidate to the existing queue/readiness/request/one-time-window/live-grant path without a per-post approval step.
 - Paused, revoked and expired authorizations remain draft-only and create no execution artifacts. Multiple active or mismatched authority fails closed. Versioned `approved_template_set` candidates are promoted only when their exact template, claims, disclosures, source bytes and authorization binding revalidate.
@@ -91,7 +102,7 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 
 - Queue-only standing template derivation is now locally verified. An active campaign with exactly one active `standing_autonomous` `approved_template_set` authorization can derive candidates from persisted stories without an operator candidate call.
 - Candidate identity is immutable during autonomous derivation; state is reread before materialization; source, claim, render, template fingerprint, target, account/profile, URL, audience, visibility and authorization binding remain fail-closed.
-- Focused service/server gate: 47 passed, 0 failed, 0 skipped. Latest full Node suite: 412 total, 410 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
+- Focused service/server gate at the standing-template milestone: 47 passed, 0 failed, 0 skipped. The current full Node suite is 420 total, 418 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
 - No browser, ORCA, LinkedIn, social, canonical runtime or historical UNKNOWN mutation occurred. Live irreversible-submit proof remains blocked by absent exact authorization/session and unavailable ORCA in this shell.
 
 ## Latest verification overlay (2026-10-18, product intelligence story draft)
@@ -99,9 +110,10 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 - `SeedingService.deriveProductIntelligenceStory` now derives one deterministic
   draft from a READY handoff, four distinct supported claims, current inspected
   source bytes and an explicit bounded CTA/disclosure.
-- Focused story/content/service gate: 67 passed, 0 failed, 0 skipped. Full
-  Node suite: 417 total, 415 passed, 0 failed, 2 skipped. Syntax and diff
+- Base story/content/service gate: 67 passed, 0 failed, 0 skipped. The current
+  full Node suite is 420 total, 418 passed, 0 failed, 2 skipped. Syntax and diff
   checks pass; independent review ACCEPT.
-- Story derivation is not wired into queue/control-cycle scheduling and cannot
-  create candidates, authority or browser work. Evidence remains LOCAL /
-  SYNTHETIC; no social, canonical or historical UNKNOWN mutation occurred.
+- Queue-owned story derivation is now wired only behind an explicit bounded
+  story policy and current authorization/campaign fingerprints. It remains
+  draft-only and cannot broaden authority; evidence remains LOCAL / SYNTHETIC
+  only, with no social, canonical or historical UNKNOWN mutation.

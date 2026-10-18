@@ -1660,6 +1660,12 @@ export class SeedingService {
         .filter((story) => story.campaignId === campaignId)
         .flatMap((story) => story.groundingSources || [])
         .map((source) => `${source.relativePath}#${source.sha256}`));
+      const inspectedSources = campaign.productIntelligence?.repositoryInspection?.records || [];
+      for (const source of inspectedSources) {
+        const relativePath = String(source?.locator || "").trim();
+        const sha256 = String(source?.sha256 || "").trim().toLowerCase();
+        if (relativePath && /^[a-f0-9]{64}$/.test(sha256)) verifiedSourceRefs.add(`${relativePath}#${sha256}`);
+      }
       for (const claim of authorization.contentBoundary.approvedClaims) {
         for (const source of claim.sourceRefs) {
           if (!verifiedSourceRefs.has(`${source.relativePath}#${source.sha256}`)) {
@@ -2228,15 +2234,34 @@ export class SeedingService {
     const activeAuthorizations = (snapshot.campaignAuthorizations || [])
       .filter((item) => item.campaignId === campaignId && item.status === "active");
     const authorization = activeAuthorizations.length === 1 ? activeAuthorizations[0] : null;
-    if (campaign.status !== "active" || !authorization || authorization.executionMode !== "standing_autonomous" || authorization.allowLiveExecution !== true || !["approved_copy_set", "approved_template_set"].includes(authorization.contentBoundary?.mode)) {
+    if (campaign.status !== "active" || !authorization || authorization.executionMode !== "standing_autonomous" || authorization.allowLiveExecution !== true ||
+        authorization.binding !== campaignAuthorizationFingerprint(authorization) ||
+        authorization.campaignBinding !== campaignScopeFingerprint(campaign) ||
+        !["approved_copy_set", "approved_template_set"].includes(authorization.contentBoundary?.mode)) {
       return { campaignId, materialized: [], skipped: (campaign.contentCandidates || []).filter((item) => item.status === "draft").length, reason: "standing_content_authorization_not_uniquely_active" };
     }
 
     // A standing template authorization is also the bounded source of its
-    // candidates. Derive only from persisted stories and the exact approved
-    // templates, then re-read before materialization so every candidate still
-    // passes the same source/claim/target/authorization checks. This keeps the
-    // queue autonomous without creating a second content or authority path.
+    // candidates. An explicit story policy may derive one deterministic,
+    // draft-only story from the READY product-intelligence handoff. The policy
+    // is part of the authorization fingerprint; no CTA is inferred from a
+    // campaign objective, URL or other unapproved field.
+    if (authorization.contentBoundary.mode === "approved_template_set" && authorization.contentBoundary.storyPolicy) {
+      try {
+        await this.deriveProductIntelligenceStory(campaignId, authorization.contentBoundary.storyPolicy, actor);
+      } catch {
+        // Missing/incomplete intelligence, stale source lineage or unsafe
+        // policy input remains draft-only. Existing persisted stories are not
+        // replaced and no execution authority is created by this branch.
+      }
+      snapshot = await this.store.read();
+      campaign = requireItem(snapshot.campaigns, campaignId, "Campaign");
+    }
+
+    // Derive only from persisted stories and the exact approved templates,
+    // then re-read before materialization so every candidate still passes the
+    // same source/claim/target/authorization checks. This keeps the queue
+    // autonomous without creating a second content or authority path.
     if (authorization.contentBoundary.mode === "approved_template_set") {
       const stories = (snapshot.stories || [])
         .filter((story) => story.campaignId === campaignId)
@@ -2326,7 +2351,8 @@ export class SeedingService {
         activeAuthorizations[0].executionMode === "standing_autonomous" &&
         activeAuthorizations[0].allowLiveExecution === true &&
         activeAuthorizations[0].contentBoundary?.mode === "approved_template_set" &&
-        (candidateSnapshot.stories || []).some((story) => story.campaignId === campaign.id);
+        (activeAuthorizations[0].contentBoundary?.storyPolicy ||
+          (candidateSnapshot.stories || []).some((story) => story.campaignId === campaign.id));
       if ((campaign.contentCandidates || []).some((candidate) => candidate.status === "draft") || templateQueueSource) {
         try {
           await this.materializeAuthorizedContentCandidates(campaign.id, actor);

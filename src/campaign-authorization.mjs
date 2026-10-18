@@ -6,6 +6,8 @@ import { normalizePublicationVisibility } from "./publication-visibility.mjs";
 
 const SUPPORTED_AUTH_STATUSES = new Set(["active", "paused", "expired", "revoked"]);
 const sha256Pattern = /^[a-f0-9]{64}$/i;
+const STORY_POLICY_SECRET = /(?:password|passphrase|secret|token|cookie|authorization|credential|api[_-]?key|session(?:[_ -]?token)?)\s*[:=]/i;
+const STORY_POLICY_SECRET_VALUE = /(?:bearer\s+[a-z0-9._-]{6,}|sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9_]{12,})/i;
 
 function required(value, label) {
   const text = String(value ?? "").trim();
@@ -19,6 +21,25 @@ function digest(value) {
 
 function normalizeDuplicateContent(value) {
   return String(value || "").toLowerCase().replace(/https?:\/\/\S+/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normalizeStoryPolicy(input, mode) {
+  if (input === undefined || input === null) return null;
+  if (mode !== "approved_template_set") throw new Error("storyPolicy requires approved_template_set authorization");
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("storyPolicy must be an object");
+  const callToAction = required(input.callToAction, "storyPolicy.callToAction").replace(/\s+/g, " ");
+  const disclosure = input.disclosure === undefined ? null : required(input.disclosure, "storyPolicy.disclosure").replace(/\s+/g, " ");
+  const language = input.language === undefined ? null : required(input.language, "storyPolicy.language").replace(/\s+/g, " ");
+  const values = { callToAction, disclosure, language };
+  for (const [field, value] of Object.entries(values)) {
+    if (value !== null && (value.length < 1 || value.length > (field === "callToAction" ? 300 : field === "disclosure" ? 500 : 32))) {
+      throw new Error(`storyPolicy.${field} exceeds its bounded length`);
+    }
+    if (value !== null && (STORY_POLICY_SECRET.test(value) || STORY_POLICY_SECRET_VALUE.test(value))) {
+      throw new Error(`storyPolicy.${field} contains credential/session material`);
+    }
+  }
+  return values;
 }
 
 export function campaignScopeFingerprint(campaign) {
@@ -133,6 +154,7 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
     contentHashes,
     approvedClaims,
     templates,
+    storyPolicy: normalizeStoryPolicy(contentBoundary.storyPolicy, mode),
     requiredDisclosures: [...new Set((contentBoundary.requiredDisclosures || []).map((item) => required(item, "required disclosure")))],
     forbiddenTerms: [...new Set((contentBoundary.forbiddenTerms || []).map((item) => required(item, "forbidden term").toLocaleLowerCase("en-US")))],
     maxCharactersByPlatform: { ...(contentBoundary.maxCharactersByPlatform || {}) },

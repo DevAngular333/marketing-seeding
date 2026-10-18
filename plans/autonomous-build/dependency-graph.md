@@ -18,6 +18,7 @@ JsonStore / schema / audit / writer lease
   ├─> product intelligence / discovery / artifact graph
   │     ├─> Product Intelligence (bounded repository inspection + explicit claims + claim graph + versioned handoff persisted on campaign)
   │     │     └─> deterministic evidence-grounded draft story (READY handoff, source revalidation, draft-only)
+  │     │           └─> queue-owned story derivation (explicit bounded storyPolicy + current authority/campaign bindings)
   │     ├─> Discovery (caller observations + deterministic normalization/dedup/classification/score + advisory audience/channel/locale fit persisted on campaign)
   │     └─> Product Factory (safe local classification/commands + bounded candidate discovery + artifact hash + bounded persistent run lineage)
   │
@@ -46,12 +47,13 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 - **Implemented/local verified:** deterministic advisory strategy decisions, evidence-grounded draft candidates, outcome summaries with bounded explicit-link-only post attribution, campaign-aware post attribution context in advisory learning/strategy, opt-in control-cycle scheduling, and bounded public HTTP discovery polling with campaign error isolation; all are non-authoritative.
 - **Design-only/not implemented:** upstream live System-Agentic handoff producer/consumer, autonomous audience search, platform search/community-rule crawler, outcome-driven adaptive authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery. Post attribution and learning context are advisory evidence only; caller-supplied fit is implemented as advisory evidence.
 - **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.
-- **Story draft boundary:** deterministic story derivation is available through `SeedingService` for an explicit caller CTA, but is not scheduler-owned and does not create candidates or authority.
+- **Story draft boundary:** deterministic story derivation is available through `SeedingService`; the queue may invoke it only through an explicit bounded `storyPolicy` under one current standing template authorization. It remains draft-only and does not infer CTA or broaden authority.
 
 ## Latest queue derivation seam
 
 ```text
-persisted campaign stories + exact active standing approved_template_set authority
+explicit storyPolicy + READY product-intelligence handoff + exact current standing approved_template_set authority
+  -> deterministic draft story
   -> deterministic template candidate derivation
   -> immutable candidate identity / source and claim binding
   -> existing content materializer

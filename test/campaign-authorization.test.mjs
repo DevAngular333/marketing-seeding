@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { JsonStore } from "../src/store.mjs";
@@ -227,6 +228,64 @@ test("live execution requires explicit campaign scope and changes the authorizat
   }, "operator");
   assert.equal(liveAuth.allowLiveExecution, true);
   assert.notEqual(liveAuth.binding, defaultAuth.binding);
+});
+
+test("story policy is bounded, fingerprinted, and only valid for approved templates", async () => {
+  const { service, campaign, targets, authorization, directory } = await campaignFixture();
+  const copy = "Story policy scope copy.";
+  await assert.rejects(authorization([copy], {
+    contentBoundary: {
+      mode: "approved_copy_set",
+      contentHashes: [campaignContentHash(copy)],
+      storyPolicy: { callToAction: "Read the evidence" }
+    }
+  }), /storyPolicy requires approved_template_set/);
+
+  const productRepo = path.join(directory, "product-repo");
+  const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+  await service.store.mutate("fixture", "seed_story_policy_source", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.productIntelligence = { repositoryInspection: { records: [{ locator: "README.md", sha256: sourceHash }] } };
+    state.stories.push({ id: "story-policy-grounding", campaignId: campaign.id, groundingSources: [{ relativePath: "README.md", sha256: sourceHash }] });
+    return state;
+  });
+  const input = {
+    id: "story-policy-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: targets[0].channel, accountId: targets[0].accountId, profileId: targets[0].profileId, targetId: targets[0].id }],
+    approvedAssets: [],
+    contentBoundary: {
+      mode: "approved_template_set",
+      approvedClaims: [{ id: "what", text: "A bounded runtime.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+      templates: [{ id: "template-1", platform: targets[0].channel, template: "{{claim:what}}" }],
+      storyPolicy: { callToAction: "Read the evidence", disclosure: "Evidence-grounded draft.", language: "en" }
+    },
+    audienceRules: { allowedAudiences: ["builders"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 2, maxJobsPerCampaignPerDay: 2, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true,
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "story-policy-standing"
+  };
+  const valid = await authorization([copy], {
+    id: "story-policy-valid-auth",
+    contentBoundary: input.contentBoundary,
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "story-policy-standing-valid"
+  });
+  assert.deepEqual(valid.contentBoundary.storyPolicy, input.contentBoundary.storyPolicy);
+  assert.equal(valid.binding, (await service.snapshot()).campaignAuthorizations.find((item) => item.id === valid.id).binding);
+  await assert.rejects(service.authorizeCampaign(campaign.id, { ...input, contentBoundary: {
+    ...input.contentBoundary,
+    storyPolicy: { callToAction: "token: leaked" }
+  } }, "operator"), /credential\/session/);
+  await assert.rejects(service.authorizeCampaign(campaign.id, { ...input, contentBoundary: {
+    ...input.contentBoundary,
+    storyPolicy: { callToAction: "x".repeat(301) }
+  } }, "operator"), /bounded length/);
+  assert.equal((await service.snapshot()).campaignAuthorizations.filter((item) => item.id === valid.id).length, 1);
 });
 
 test("campaign authorization profile binding can be corrected without changing its other scope", async () => {
