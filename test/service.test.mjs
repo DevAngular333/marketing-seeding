@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
 import path from "node:path";
 import os from "node:os";
 import { JsonStore } from "../src/store.mjs";
-import { SeedingService, buildMetricCheckpoints, buildTrafficPulse, normalizeKeywords } from "../src/service.mjs";
+import { SeedingService, buildMetricCheckpoints, buildMetricCollectionPlan, buildTrafficPulse, normalizeKeywords } from "../src/service.mjs";
 import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
 import { buildProductIntelligence } from "../src/product-intelligence.mjs";
@@ -1458,6 +1458,31 @@ test("dashboard exposes bounded metric checkpoints through the existing traffic 
   assert.ok(pulse);
   assert.deepEqual(pulse.checkpoints.map((item) => item.status), ["unknown", "pending", "pending"]);
   assert.equal(pulse.checkpoints[0].collectorRunId, "checkpoint-unknown");
+});
+
+test("metric collection plan selects only due checkpoints when opted in", () => {
+  const now = new Date("2026-10-06T02:00:00.000Z");
+  const state = { posts: [
+    { id: "due", status: "published", publishedAt: "2026-10-06T00:00:00.000Z" },
+    { id: "pending", status: "published", publishedAt: "2026-10-06T01:30:00.000Z" },
+    { id: "invalid", status: "published", publishedAt: "invalid" },
+    { id: "draft", status: "draft", publishedAt: "2026-10-05T00:00:00.000Z" }
+  ] };
+  const plan = buildMetricCollectionPlan(state, { now, dueOnly: true });
+  assert.equal(plan.length, 3);
+  assert.equal(plan.find((item) => item.postId === "due").shouldCollect, true);
+  assert.deepEqual(plan.find((item) => item.postId === "due").dueCheckpoints, ["1h"]);
+  assert.equal(plan.find((item) => item.postId === "pending").shouldCollect, false);
+  assert.equal(plan.find((item) => item.postId === "pending").reason, "checkpoint_not_due");
+  assert.equal(plan.find((item) => item.postId === "invalid").shouldCollect, false);
+  assert.equal(plan.find((item) => item.postId === "invalid").reason, "published_at_invalid");
+});
+
+test("metric collection plan remains backward compatible when dueOnly is disabled", () => {
+  const state = { posts: [{ id: "pending", status: "published", publishedAt: "2026-10-06T01:30:00.000Z" }] };
+  const plan = buildMetricCollectionPlan(state, { now: new Date("2026-10-06T02:00:00.000Z") });
+  assert.equal(plan[0].shouldCollect, true);
+  assert.deepEqual(plan[0].dueCheckpoints, []);
 });
 
 test("traffic pulse prioritizes open interactions and reports metric deltas", () => {
