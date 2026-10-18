@@ -351,6 +351,19 @@ export class JevExecutionWorker {
     return results;
   }
 
+  async runReadyDryRunOnce() {
+    const ready = await this.service.readyDryRunExecutionRequests();
+    const results = [];
+    for (const item of ready) {
+      try {
+        results.push(await this.run(item.executionId, { dryRun: true }));
+      } catch (error) {
+        results.push({ status: "WORKER_ERROR", executionId: item.executionId, reasonCode: String(error.code || "worker_error").toLowerCase() });
+      }
+    }
+    return results;
+  }
+
   async reconcile(executionId) {
     const initial = await this.service.executionContext(executionId);
     if (!["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN"].includes(initial.requestRow.state)) {

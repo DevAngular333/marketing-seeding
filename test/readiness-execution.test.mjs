@@ -83,6 +83,41 @@ test("stale readiness refreshes automatically and prepares one versioned executi
   assert.equal((await service.readyExecutionRequests()).length, 0); // Request exists; live dispatch still requires a job grant.
 });
 
+test("autonomous dry-run readiness selects only safe dry-run rows and never live rows", async (context) => {
+  const fixtureState = await fixture({ platform: "linkedin", provider: { async checkReadiness() { return ready(); } } });
+  context.after(() => rm(fixtureState.directory, { recursive: true, force: true }));
+  await fixtureState.service.refreshCampaignJobReadiness(fixtureState.post.id, "operator", { force: true });
+  await fixtureState.service.store.mutate("test", "mark_isolated_fixture_dry_run", (state) => {
+    const row = state.executionRequests.find((item) => item.jobId === fixtureState.post.id);
+    row.request.dryRun = true;
+  });
+  const dry = (await fixtureState.service.snapshot()).executionRequests[0];
+  const selected = await fixtureState.service.readyDryRunExecutionRequests();
+  assert.deepEqual(selected.map((item) => item.executionId), [dry.executionId]);
+  assert.equal((await fixtureState.service.readyExecutionRequests()).some((item) => item.executionId === dry.executionId), false);
+  const registry = new PlatformAdapterRegistry();
+  registry.register("linkedin", {
+    contractVersion: 1,
+    capabilities: Object.fromEntries(PLATFORM_CAPABILITIES.map((capability) => [capability, false])),
+    async execute() {
+      return { submitState: "NOT_STARTED", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), gates: { all: true } };
+    },
+    async reconcile() { throw new Error("not used"); }
+  });
+  const worker = new JevExecutionWorker({ service: fixtureState.service, adapterRegistry: registry, workerId: "autonomous-dry-run-test", env: {} });
+  const first = await worker.runReadyDryRunOnce();
+  assert.equal(first.length, 1);
+  assert.equal(first[0].status, "DRY_RUN_COMPLETE");
+  assert.equal((await worker.runReadyDryRunOnce()).length, 0);
+  const state = await fixtureState.service.snapshot();
+  assert.equal(state.executionReceipts.length, 1);
+  assert.equal(state.executionReceipts[0].receipt.dryRun, true);
+  assert.equal(state.executionReceipts[0].receipt.submitState, "NOT_STARTED");
+  assert.equal(state.executionReceipts[0].receipt.publicationUrl, null);
+  assert.equal(state.liveExecutionGrants.length, 0);
+  assert.equal(state.oneTimeExecutionWindows.length, 0);
+});
+
 test("queued request refreshes stale readiness without changing execution identity", async () => {
   let calls = 0;
   const { service, post } = await fixture({ provider: { async checkReadiness() { calls += 1; return ready(); } } });

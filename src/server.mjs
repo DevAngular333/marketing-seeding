@@ -113,6 +113,14 @@ const campaignQueueRuntime = {
   nextRunAt: null,
   lastSummary: null
 };
+const jevDryRunRuntime = {
+  enabled: process.env.SEEDING_JEV_DRY_RUN_AUTONOMOUS_ENABLED === "true",
+  running: false,
+  lastStartedAt: null,
+  lastCompletedAt: null,
+  nextRunAt: null,
+  lastSummary: null
+};
 let shuttingDown = false;
 
 function scheduleTrafficCollection(delayMs = trafficIntervalMs) {
@@ -227,6 +235,7 @@ function scheduleJevExecution(delayMs = 5_000) {
     const dryRunExecutionId = String(process.env.SEEDING_JEV_DRY_RUN_EXECUTION_ID || "").trim();
     const autonomousLive = process.env.SEEDING_JEV_LIVE_ENABLED === "true" && process.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED === "true";
     const executionId = liveExecutionId || dryRunExecutionId;
+    const autonomousDryRun = jevDryRunRuntime.enabled && !liveExecutionId && !dryRunExecutionId;
     if (jevExecutionRunning || shuttingDown) return scheduleJevExecution();
     const shouldExecute = autonomousLive || Boolean(executionId && !jevExecutionStarted.has(executionId));
     jevExecutionRunning = true;
@@ -241,17 +250,27 @@ function scheduleJevExecution(delayMs = 5_000) {
           const result = await jevWorker.run(executionId, { dryRun: !liveExecutionId });
           process.stdout.write(`JEV execution ${JSON.stringify({ executionId, status: result.status, submitState: result.receipt?.submitState || null, reconciliations: reconciliations.length })}\n`);
         }
+      } else if (autonomousDryRun) {
+        jevDryRunRuntime.running = true;
+        jevDryRunRuntime.lastStartedAt = new Date().toISOString();
+        const results = await jevWorker.runReadyDryRunOnce();
+        jevDryRunRuntime.lastSummary = { jobs: results.length, completed: results.filter((item) => item.status === "DRY_RUN_COMPLETE").length, failed: results.filter((item) => item.status === "DRY_RUN_FAILED" || item.status === "WORKER_ERROR").length };
       } else if (reconciliations.length > 0) {
         process.stdout.write(`JEV reconciliation ${JSON.stringify({ executions: reconciliations.length, confirmed: reconciliations.filter((item) => item.status === "CONFIRMED").length, unsupported: reconciliations.filter((item) => item.status === "PLATFORM_UNSUPPORTED").length })}\n`);
       }
     } catch (error) {
       process.stderr.write(`JEV cycle stopped ${JSON.stringify({ executionId: executionId || null, reason: error.code || "worker_error" })}\n`);
     } finally {
+      if (jevDryRunRuntime.running) {
+        jevDryRunRuntime.running = false;
+        jevDryRunRuntime.lastCompletedAt = new Date().toISOString();
+      }
       jevExecutionRunning = false;
       scheduleJevExecution();
     }
   }, Math.max(1_000, delayMs));
   jevExecutionTimer.unref();
+  jevDryRunRuntime.nextRunAt = new Date(Date.now() + Math.max(1_000, delayMs)).toISOString();
 }
 
 async function readDailyProductionAutomation() {
@@ -453,6 +472,7 @@ const server = http.createServer(async (request, response) => {
         campaignQueue: campaignQueueRuntime,
         controlCycle: controlCycleRuntime,
         discovery: discoveryRuntime,
+        jevDryRun: jevDryRunRuntime,
         dailyProduction: await readDailyProductionAutomation(),
         browserTracking: await readBrowserTrafficAutomation(),
         fixtureWorker: fixtureWorker.runtime()
@@ -544,6 +564,7 @@ const server = http.createServer(async (request, response) => {
           campaignQueue: campaignQueueRuntime,
           controlCycle: controlCycleRuntime,
           discovery: discoveryRuntime,
+          jevDryRun: jevDryRunRuntime,
           dailyProduction: await readDailyProductionAutomation(),
           browserTracking: await readBrowserTrafficAutomation(),
           fixtureWorker: fixtureWorker.runtime()

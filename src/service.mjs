@@ -3084,6 +3084,28 @@ export class SeedingService {
     });
   }
 
+  /**
+   * Return only explicitly-created dry-run requests that are safe to rehearse.
+   * This intentionally has no live grant/window checks and is separate from
+   * readyExecutionRequests(), whose contract is live dispatch only.
+   */
+  async readyDryRunExecutionRequests() {
+    const state = await this.store.read();
+    return (state.executionRequests || []).filter((item) => {
+      if (item.state !== "REQUEST_READY" || item.submitState !== "NOT_STARTED" || item.request?.dryRun !== true) return false;
+      const post = (state.posts || []).find((candidate) => candidate.id === item.jobId);
+      const target = (state.targets || []).find((candidate) => candidate.id === post?.targetId);
+      if (!post || post.status !== "queued" || !target) return false;
+      if (unresolvedSubmission(state, post, item.request?.idempotencyKey)) return false;
+      const account = (state.executionAccounts || []).find((candidate) => candidate.id === executionAccountKey(target.channel, target.accountId));
+      if (!account || account.status !== "enabled" || account.health !== "healthy" || account.profileId !== target.profileId || account.accountId !== target.accountId) return false;
+      const decision = evaluateQueue(post, state, new Date(), { mode: "dry_run", executionId: item.executionId });
+      if (!decision.allowed) return false;
+      const binding = { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id };
+      return isReadinessFresh(target.readiness, binding, new Date(), this.readinessTtlMs);
+    });
+  }
+
   async executionContext(executionId) {
     const state = await this.store.read();
     const requestRow = (state.executionRequests || []).find((item) => item.executionId === executionId);
