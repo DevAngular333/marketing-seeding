@@ -4099,7 +4099,8 @@ export class SeedingService {
     try {
       const metrics = await collectOfficialMetrics(post, target, options);
       const persisted = await this.store.mutate(actor, "collector_succeeded", (nextState) => {
-        requireItem(nextState.posts, postId, "Post");
+        const currentPost = requireItem(nextState.posts, postId, "Post");
+        const capturedAt = nowIso();
         const readings = Object.fromEntries(METRIC_FIELDS.map((field) => [field, metricReading(metrics, field)]));
         const snapshot = {
           id: randomUUID(), postId, capturedAt: nowIso(),
@@ -4108,17 +4109,29 @@ export class SeedingService {
           source: `official:${target.channel}`,
           provenance: { kind: "official_api", adapter: target.channel, verifiedAt: nowIso() }
         };
-        nextState.metricSnapshots.push(snapshot);
         nextState.collectorRuns ||= [];
-        nextState.collectorRuns.push({ id: randomUUID(), postId, channel: target.channel, status: "succeeded", at: nowIso() });
-        return snapshot;
+        const source = `official:${target.channel}`;
+        const previous = [...(nextState.metricSnapshots || [])]
+          .filter((item) => item.postId === currentPost.id && item.source === source)
+          .sort(compareMetricSnapshots)
+          .at(-1);
+        const metricsChanged = !metricReadingsMatchSnapshot(previous, readings);
+        if (metricsChanged) nextState.metricSnapshots.push(snapshot);
+        const run = {
+          id: randomUUID(), postId, channel: target.channel, status: "succeeded", at: capturedAt,
+          source, metricsChanged
+        };
+        nextState.collectorRuns.push(run);
+        return { metricSnapshot: metricsChanged ? snapshot : null, collectorRun: run, metricsChanged };
       });
       return persisted.result;
     } catch (error) {
       await this.store.mutate(actor, "collector_failed", (nextState) => {
         nextState.collectorRuns ||= [];
         nextState.collectorRuns.push({
-          id: randomUUID(), postId, channel: target.channel, status: "failed", at: nowIso(), error: String(error.message).slice(0, 300)
+          id: randomUUID(), postId, channel: target.channel, status: "failed", at: nowIso(),
+          source: `official:${target.channel}`, metricsChanged: false,
+          error: String(error?.code || error?.message || "collector_failed").slice(0, 300)
         });
       });
       throw error;
@@ -4143,9 +4156,9 @@ export class SeedingService {
       }
       try {
         const metric = await this.collectMetrics(post.id, actor, options);
-        results.push({ postId: post.id, ok: true, metricId: metric.id });
+        results.push({ postId: post.id, ok: true, status: "succeeded", metricsChanged: metric.metricsChanged, metricId: metric.metricSnapshot?.id || null });
       } catch (error) {
-        results.push({ postId: post.id, ok: false, error: error.message });
+        results.push({ postId: post.id, ok: false, status: "failed", error: String(error?.code || error?.message || "collector_failed").slice(0, 300) });
       }
     }
     return results;

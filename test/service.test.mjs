@@ -1530,3 +1530,68 @@ test("campaign keywords are normalized, persisted and expose latest performance"
   assert.equal(keyword.latest.clicks, 12);
   assert.equal(keyword.latest.leads, 2);
 });
+
+test("official metric collection deduplicates unchanged readings and records changed readings across restart", async () => {
+  const { directory, service, post } = await fixture("seeding-official-metrics-idempotence-test-");
+  await service.store.mutate("test", "publish_metric_fixture", (state) => {
+    const saved = state.posts.find((item) => item.id === post.id);
+    saved.status = "published";
+    saved.externalId = "thread-fixture-1";
+    saved.publicationUrl = "https://www.threads.net/@fixture/post/thread-fixture-1";
+  });
+  const env = { THREADS_GRAPH_VERSION: "v1", THREADS_ACCESS_TOKEN: "fixture-token" };
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ data: [
+    { name: "views", values: [{ value: 10 }] },
+    { name: "likes", values: [{ value: 2 }] },
+    { name: "replies", values: [{ value: 1 }] }
+  ] }) });
+  const first = await service.collectMetrics(post.id, "fixture-collector", { env, fetchImpl, retries: 0 });
+  assert.equal(first.metricsChanged, true);
+  assert.ok(first.metricSnapshot?.id);
+  const second = await service.collectMetrics(post.id, "fixture-collector", { env, fetchImpl, retries: 0 });
+  assert.equal(second.metricsChanged, false);
+  assert.equal(second.metricSnapshot, null);
+  assert.equal(second.collectorRun.metricsChanged, false);
+  const state = await service.snapshot();
+  assert.equal(state.metricSnapshots.length, 1);
+  assert.equal(state.collectorRuns.length, 2);
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  const third = await restarted.collectMetrics(post.id, "fixture-collector", { env, fetchImpl, retries: 0 });
+  assert.equal(third.metricsChanged, false);
+  const changedFetch = async () => ({ ok: true, status: 200, json: async () => ({ data: [
+    { name: "views", values: [{ value: 11 }] },
+    { name: "likes", values: [{ value: 2 }] },
+    { name: "replies", values: [{ value: 1 }] }
+  ] }) });
+  const changed = await restarted.collectMetrics(post.id, "fixture-collector", { env, fetchImpl: changedFetch, retries: 0 });
+  assert.equal(changed.metricsChanged, true);
+  const finalState = await restarted.snapshot();
+  assert.equal(finalState.metricSnapshots.length, 2);
+  assert.equal(finalState.metricSnapshots[0].impressions, 10);
+  assert.equal(finalState.metricSnapshots[1].impressions, 11);
+});
+
+test("collectAllMetrics isolates one official provider failure and keeps manual providers explicit", async () => {
+  const { service, post, target } = await fixture("seeding-official-metrics-isolation-test-");
+  await service.store.mutate("test", "publish_metric_fixture", (state) => {
+    const saved = state.posts.find((item) => item.id === post.id);
+    saved.status = "published";
+    saved.externalId = null;
+    saved.publicationUrl = "https://www.threads.net/@fixture/post/failure";
+    const manualTarget = { ...state.targets.find((item) => item.id === target.id), id: "manual-target", channel: "linkedin", url: "https://www.linkedin.com/feed/" };
+    state.targets.push(manualTarget);
+    state.posts.push({ ...saved, id: "manual-post", targetId: manualTarget.id, externalId: null, publicationUrl: "https://www.linkedin.com/feed/update/urn:li:activity:1" });
+  });
+  const result = await service.collectAllMetrics("fixture-collector", {
+    env: { THREADS_GRAPH_VERSION: "v1", THREADS_ACCESS_TOKEN: "fixture-token" },
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }), retries: 0
+  });
+  assert.equal(result.length, 2);
+  assert.equal(result.find((item) => item.postId === post.id).ok, false);
+  assert.equal(result.find((item) => item.postId === "manual-post").status, "not_applicable");
+  const state = await service.snapshot();
+  assert.equal(state.metricSnapshots.length, 0);
+  assert.equal(state.collectorRuns.filter((run) => run.postId === post.id)[0].status, "failed");
+  assert.equal(state.collectorRuns.find((run) => run.postId === "manual-post").reason, "manual_only");
+});
