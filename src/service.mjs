@@ -27,6 +27,7 @@ import { appendLearningFeedback, deriveLearningFeedback } from "./learning.mjs";
 import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
 import { legacyHandoffIdentity, validateDistributionHandoff } from "./distribution-handoff.mjs";
 import { projectEngagementContext } from "./engagement-context.mjs";
+import { projectConversationContinuity } from "./conversation-continuity.mjs";
 import { projectDiscoveryOpportunities } from "./opportunity-projection.mjs";
 import { appRoot } from "./paths.mjs";
 
@@ -80,6 +81,7 @@ const METRIC_CHECKPOINTS = Object.freeze([
 
 const EXECUTION_RUNTIME_MAX_RECENT = 12;
 const EXECUTION_RUNTIME_MAX_BLOCKERS = 8;
+const EXECUTION_RUNTIME_MAX_TIMELINE = 32;
 const EXECUTION_RUNTIME_STATES = new Set([
   "REQUEST_READY", "EXECUTING", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED",
   "CANCELLED_PRE_SUBMIT", "SUBMIT_SENT_INTENT", "SUBMIT_SENT",
@@ -249,7 +251,49 @@ export function projectExecutionRuntime(state = {}) {
       reasonCode: reasonCodes[0] || null
     };
     projectionRows.push(projection);
-    timeline.push({ at: actionAt, executionId, mode, state: stateName, phase, submitState, event: verified ? "publication_verified" : stateName === "DRY_RUN_COMPLETE" ? "dry_run_completed" : "execution_state" });
+    let executionTimelineEventCount = 0;
+    const addTimelineEvent = (at, event, eventState = stateName, eventPhase = phase, eventSubmitState = submitState, publicationStatus = quarantined ? "UNKNOWN" : "NOT_VERIFIED", permalink = null) => {
+      if (!Number.isFinite(Date.parse(String(at || "")))) return;
+      executionTimelineEventCount += 1;
+      timeline.push({
+        at: new Date(at).toISOString(),
+        event,
+        executionRef: executionRuntimeFingerprint(executionId),
+        mode,
+        state: executionRuntimeBucket(eventState, EXECUTION_RUNTIME_STATES),
+        phase: executionRuntimeBucket(eventPhase, EXECUTION_RUNTIME_PHASES),
+        submitState: executionRuntimeBucket(eventSubmitState, EXECUTION_RUNTIME_SUBMIT_STATES),
+        publicationStatus,
+        permalink: publicationStatus === "VERIFIED" ? executionRuntimeHttpUrl(permalink) : null
+      });
+    };
+    addTimelineEvent(row.createdAt, "execution_request_created", "REQUEST_READY", "REQUEST_READY", "NOT_STARTED", mode === "DRY_RUN" ? "DRY_RUN_ONLY" : "NOT_VERIFIED");
+    addTimelineEvent(row.executionStartedAt, "execution_started", "EXECUTING", "EXECUTING", "NOT_STARTED", mode === "DRY_RUN" ? "DRY_RUN_ONLY" : "NOT_VERIFIED");
+    addTimelineEvent(row.submitIntentAt, "durable_submit_intent", "SUBMIT_SENT_INTENT", "SUBMIT_SENT_INTENT", "NOT_STARTED", mode === "DRY_RUN" ? "DRY_RUN_ONLY" : "NOT_VERIFIED");
+    addTimelineEvent(row.dispatchedAt, "submit_sent", "SUBMIT_SENT", "SUBMIT_SENT", "SUBMIT_SENT", "NOT_VERIFIED");
+    for (const receiptRow of receipts.filter((item) => item?.executionId === executionId)) {
+      const receiptState = executionRuntimeBucket(receiptRow.receipt?.submitState, EXECUTION_RUNTIME_SUBMIT_STATES);
+      const eventState = receiptState === "UNKNOWN" ? "SUBMIT_RESULT_UNKNOWN"
+        : receiptState === "CONFIRMED" ? "CONFIRMED"
+          : receiptState === "FAILED" ? "FAILED"
+            : receiptState === "SUBMIT_SENT" ? "SUBMIT_SENT" : "REQUEST_READY";
+      const event = receiptState === "UNKNOWN" ? "submit_result_unknown"
+        : receiptState === "SUBMIT_SENT" ? "transport_receipt_recorded"
+          : receiptState === "CONFIRMED" ? "submission_receipt_recorded"
+            : receiptState === "FAILED" ? "pre_submit_failure_recorded" : "execution_receipt_recorded";
+      addTimelineEvent(receiptRow.receivedAt || receiptRow.receipt?.finishedAt, event, eventState, eventState, receiptState,
+        receiptState === "UNKNOWN" || quarantined ? "UNKNOWN" : mode === "DRY_RUN" ? "DRY_RUN_ONLY" : "NOT_VERIFIED");
+    }
+    if (stateName === "DRY_RUN_COMPLETE") {
+      addTimelineEvent(row.dryRunCompletedAt || actionAt, "dry_run_completed", stateName, phase, submitState, "DRY_RUN_ONLY");
+    } else if (stateName === "DRY_RUN_FAILED") {
+      addTimelineEvent(row.dryRunFailedAt || actionAt, "dry_run_failed", stateName, phase, submitState, "DRY_RUN_ONLY");
+    }
+    if (verified) {
+      addTimelineEvent(receipt?.receipt?.publicationEvidence?.verifiedAt, "publication_verified", "CONFIRMED", "VERIFIED", "CONFIRMED", "VERIFIED", receipt?.receipt?.publicationUrl);
+    } else if (executionTimelineEventCount === 0) {
+      addTimelineEvent(actionAt, "execution_state_observed", stateName, phase, submitState, publicationStatus);
+    }
   }
   const quarantineRows = new Map();
   for (const item of unknownUncertaintyRows) {
@@ -274,10 +318,8 @@ export function projectExecutionRuntime(state = {}) {
   const recent = projectionRows
     .sort((left, right) => String(right.actionAt || "").localeCompare(String(left.actionAt || "")) || String(left.executionRef).localeCompare(String(right.executionRef)))
     .slice(0, EXECUTION_RUNTIME_MAX_RECENT);
-  const latest = timeline
-    .filter((item) => item.at)
-    .sort((left, right) => String(right.at).localeCompare(String(left.at)) || String(left.executionId).localeCompare(String(right.executionId)))
-    .at(0);
+  timeline.sort((left, right) => String(right.at).localeCompare(String(left.at)) || String(left.executionRef).localeCompare(String(right.executionRef)) || String(left.event).localeCompare(String(right.event)));
+  const latest = timeline[0];
   return {
     schemaVersion: 1,
     readOnly: true,
@@ -286,15 +328,20 @@ export function projectExecutionRuntime(state = {}) {
     latestAction: latest ? {
       at: latest.at,
       event: latest.event,
-      executionRef: executionRuntimeFingerprint(latest.executionId),
+      executionRef: latest.executionRef,
       mode: latest.mode,
       state: latest.state,
       phase: latest.phase,
-      submitState: latest.submitState
+      submitState: latest.submitState,
+      publicationStatus: latest.publicationStatus,
+      permalink: latest.publicationStatus === "VERIFIED" ? latest.permalink : null
     } : null,
     blockers,
     quarantine: { count: quarantined.length, immutable: true, executions: quarantined.slice(0, EXECUTION_RUNTIME_MAX_RECENT) },
-    recent
+    recent,
+    timeline: timeline.slice(0, EXECUTION_RUNTIME_MAX_TIMELINE),
+    timelineCount: timeline.length,
+    timelineTruncated: timeline.length > EXECUTION_RUNTIME_MAX_TIMELINE
   };
 }
 
@@ -1203,6 +1250,50 @@ export function projectAuthorizedAccountCandidates(state = {}, { campaignId = nu
 }
 
 /**
+ * Read-only account-pool advisory for Mission Control. Candidates are grouped
+ * by exact target and never rebound or promoted into execution authority. A
+ * target with more than one eligible account is intentionally left unselected
+ * until an explicit account policy resolves the ambiguity.
+ */
+export function projectAuthorizedAccountPool(state = {}, options = {}) {
+  const candidates = projectAuthorizedAccountCandidates(state, options);
+  const byTarget = new Map();
+  for (const candidate of candidates) {
+    const key = `${candidate.campaignId}\u0000${candidate.targetId}`;
+    const rows = byTarget.get(key) || new Map();
+    const prior = rows.get(candidate.candidateKey);
+    // Repeated exact destination rows are representation duplicates, not
+    // independent accounts. Keep the first deterministic candidate only.
+    if (!prior) rows.set(candidate.candidateKey, candidate);
+    byTarget.set(key, rows);
+  }
+  return [...byTarget.values()]
+    .map((rows) => [...rows.values()])
+    .sort((left, right) => `${left[0]?.campaignId || ""}\u0000${left[0]?.targetId || ""}`.localeCompare(`${right[0]?.campaignId || ""}\u0000${right[0]?.targetId || ""}`))
+    .map((rows) => {
+      const eligible = rows.filter((candidate) => candidate.eligibleForAutonomousExecution)
+        .sort((left, right) => String(left.candidateKey).localeCompare(String(right.candidateKey)));
+      const selected = eligible.length === 1 ? eligible[0] : null;
+      return {
+        campaignId: rows[0].campaignId,
+        targetId: rows[0].targetId,
+        candidateCount: rows.length,
+        eligibleCandidateCount: eligible.length,
+        selectionStatus: selected ? "UNIQUE_ELIGIBLE" : eligible.length > 1 ? "AMBIGUOUS_POOL" : "NO_ELIGIBLE_CANDIDATE",
+        selectionReason: selected ? null : eligible.length > 1 ? "multiple_eligible_accounts" : "no_eligible_account",
+        selectedCandidateKey: selected?.candidateKey || null,
+        candidateKeys: rows.map((candidate) => candidate.candidateKey).sort(),
+        eligibleAccounts: eligible.map((candidate) => ({
+          accountId: candidate.accountId,
+          profileFingerprint: candidate.profileFingerprint,
+          sessionMode: candidate.sessionMode,
+          authMode: candidate.authMode
+        })).sort((left, right) => `${left.accountId}\u0000${left.profileFingerprint || ""}`.localeCompare(`${right.accountId}\u0000${right.profileFingerprint || ""}`))
+      };
+    });
+}
+
+/**
  * Summarize the advisory authorized-account candidate projection by exact
  * campaign destination. This is read-only Mission Control context: it never
  * chooses a live account, rebinds a target, or creates execution authority.
@@ -1705,6 +1796,13 @@ export class SeedingService {
     const post = requireItem(snapshot.posts, postId, "Post");
     const authorization = requireItem(snapshot.campaignAuthorizations || [], post.campaignAuthorizationId, "Campaign authorization");
     if (!this.#standingAutonomousAuthorization(authorization)) return null;
+    const campaign = requireItem(snapshot.campaigns || [], post.campaignId, "Campaign");
+    if (campaign.status !== "active" || authorization.campaignId !== campaign.id ||
+        authorization.binding !== campaignAuthorizationFingerprint(authorization) ||
+        authorization.campaignBinding !== campaignScopeFingerprint(campaign) ||
+        post.campaignAuthorizationBinding !== authorization.binding) {
+      throw new Error("Standing delegation requires an exact current campaign authorization binding");
+    }
     if (unresolvedSubmission(snapshot, post)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
     if (["publishing", "processing", UNKNOWN_POST_STATUS, "published", "removed", "rejected"].includes(post.status)) return null;
     const target = requireItem(snapshot.targets, post.targetId, "Target");
@@ -1746,6 +1844,13 @@ export class SeedingService {
     const post = requireItem(snapshot.posts, postId, "Post");
     const authorization = requireItem(snapshot.campaignAuthorizations || [], post.campaignAuthorizationId, "Campaign authorization");
     if (!this.#standingAutonomousAuthorization(authorization)) return null;
+    const campaign = requireItem(snapshot.campaigns || [], post.campaignId, "Campaign");
+    if (campaign.status !== "active" || authorization.campaignId !== campaign.id ||
+        authorization.binding !== campaignAuthorizationFingerprint(authorization) ||
+        authorization.campaignBinding !== campaignScopeFingerprint(campaign) ||
+        post.campaignAuthorizationBinding !== authorization.binding) {
+      throw new Error("Standing delegation requires an exact current campaign authorization binding");
+    }
     const target = requireItem(snapshot.targets, post.targetId, "Target");
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
     const window = (snapshot.oneTimeExecutionWindows || []).find((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
@@ -2379,12 +2484,20 @@ export class SeedingService {
       }
       for (const claim of authorization.contentBoundary.approvedClaims) {
         for (const source of claim.sourceRefs) {
-          if (!verifiedSourceRefs.has(`${source.relativePath}#${source.sha256}`)) {
-            throw new Error(`Approved claim source is not bound to verified campaign grounding: ${source.relativePath}`);
-          }
           const currentSource = await readGroundingSource(productRepo, source.relativePath);
           if (currentSource.relativePath !== source.relativePath || currentSource.sha256 !== source.sha256) {
             throw new Error(`Approved claim source changed since grounding: ${source.relativePath}`);
+          }
+          // A standing template policy may establish its exact source
+          // lineage before the first autonomous queue tick. The queue then
+          // performs the bounded inspection and persists the handoff. Other
+          // authorization modes still require an already verified campaign
+          // grounding record.
+          const deferredStandingGrounding = authorization.executionMode === "standing_autonomous" &&
+            authorization.contentBoundary.mode === "approved_template_set" &&
+            authorization.contentBoundary.storyPolicy && inspectedSources.length === 0;
+          if (!verifiedSourceRefs.has(`${source.relativePath}#${source.sha256}`) && !deferredStandingGrounding) {
+            throw new Error(`Approved claim source is not bound to verified campaign grounding: ${source.relativePath}`);
           }
         }
       }
@@ -3111,6 +3224,41 @@ export class SeedingService {
     // campaign objective, URL or other unapproved field.
     if (authorization.contentBoundary.mode === "approved_template_set" && authorization.contentBoundary.storyPolicy) {
       try {
+        // If the campaign has no persisted intelligence yet, perform one
+        // bounded deterministic inspection using only the source files named
+        // by the standing authorization's approved claims. This keeps the
+        // autonomous queue useful without introducing a second product
+        // intelligence or authority path. An incomplete result remains
+        // fail-closed in deriveProductIntelligenceStory below.
+        const currentIntelligence = campaign.productIntelligence;
+        if (!currentIntelligence?.handoff || !currentIntelligence?.document) {
+          const approvedClaims = authorization.contentBoundary.approvedClaims || [];
+          const claims = approvedClaims.map((claim) => ({
+            id: claim.id,
+            text: claim.text,
+            field: claim.field,
+            evidenceRefs: (claim.sourceRefs || []).map((ref) => `repo:${ref.relativePath}`)
+          }));
+          const allowlist = [...new Set(approvedClaims.flatMap((claim) =>
+            (claim.sourceRefs || []).map((ref) => String(ref.relativePath || "").trim()).filter(Boolean)
+          ))];
+          if (!claims.length || !allowlist.length) throw new Error("standing story policy has no bounded product evidence");
+          // Validate the authorization's exact source lineage before
+          // persisting any inspection. A changed or missing approved file is
+          // a fail-closed source-drift condition, not a new intelligence
+          // record that can later be mistaken for an authorized handoff.
+          const boundedInspection = await inspectRepositoryEvidence(campaign.productRepo, { allowlist });
+          const recordsByLocator = new Map(boundedInspection.records.map((record) => [record.locator, record]));
+          for (const claim of approvedClaims) {
+            for (const source of claim.sourceRefs || []) {
+              const record = recordsByLocator.get(String(source.relativePath || "").trim());
+              if (!record || String(record.sha256 || "").toLowerCase() !== String(source.sha256 || "").toLowerCase()) {
+                throw new Error("standing story policy source lineage changed");
+              }
+            }
+          }
+          await this.inspectProductIntelligence(campaignId, { allowlist, claims }, actor);
+        }
         await this.deriveProductIntelligenceStory(campaignId, authorization.contentBoundary.storyPolicy, actor);
       } catch {
         // Missing/incomplete intelligence, stale source lineage or unsafe
@@ -5146,8 +5294,10 @@ export class SeedingService {
     state.communityMemberships ||= [];
     const accountRuntime = projectExecutionAccountRuntime(state);
     const authorizedAccountCandidates = projectAuthorizedAccountCandidates(state, { readinessTtlMs: this.readinessTtlMs });
+    const authorizedAccountPool = projectAuthorizedAccountPool(state, { readinessTtlMs: this.readinessTtlMs });
     const authorizedAccountPoolSummary = projectAuthorizedAccountPoolSummary(authorizedAccountCandidates);
     const engagementContext = projectEngagementContext(state, { now: new Date() });
+    const conversationContinuity = projectConversationContinuity(state, { now: new Date() });
     const executionRuntime = projectExecutionRuntime(state);
     const productFactorySandbox = await this.productFactorySandboxCapability();
     const latestMetrics = new Map();
@@ -5226,8 +5376,10 @@ export class SeedingService {
       accountRuntime,
       executionAccounts: accountRuntime,
       authorizedAccountCandidates,
+      authorizedAccountPool,
       authorizedAccountPoolSummary,
       engagementContext,
+      conversationContinuity,
       executionRuntime,
       productFactorySandbox,
       communityMemberships: state.communityMemberships,
