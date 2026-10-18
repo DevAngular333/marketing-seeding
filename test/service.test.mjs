@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import path from "node:path";
 import os from "node:os";
 import { JsonStore } from "../src/store.mjs";
-import { SeedingService, buildMetricCheckpoints, buildMetricCollectionPlan, buildTrafficPulse, normalizeKeywords } from "../src/service.mjs";
+import { SeedingService, buildMetricCheckpoints, buildMetricCollectionPlan, buildTrafficPulse, normalizeKeywords, projectExecutionRuntime } from "../src/service.mjs";
 import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
 import { buildProductIntelligence } from "../src/product-intelligence.mjs";
@@ -234,6 +234,165 @@ test("rehearsal handoff fails closed for malformed metadata and excludes unmarke
     return state;
   });
   assert.deepEqual(await f.service.handoffRehearsalCandidates(), { scanned: 0, results: [] });
+});
+
+test("execution runtime projection separates rehearsal, live and quarantined evidence", () => {
+  const at = "2026-10-18T10:00:00.000Z";
+  const permalink = "https://www.linkedin.com/feed/update/urn:li:activity:987654321/";
+  const contentHash = "a".repeat(64);
+  const state = {
+    campaigns: [{ id: "campaign-raw", contentCandidates: [{ rehearsalMetadata: { enabled: true } }] }],
+    posts: [{ id: "post-raw", rehearsalHandoff: true }],
+    executionRequests: [
+      {
+        executionId: "dry-execution-raw", jobId: "dry-post-raw", dryRun: true,
+        request: { dryRun: true }, state: "DRY_RUN_COMPLETE", submitState: "NOT_STARTED",
+        dryRunCompletedAt: at, reasonCode: "fixture_dry_run"
+      },
+      {
+        executionId: "live-execution-raw", jobId: "live-post-raw", dryRun: false,
+        request: { dryRun: false }, state: "CONFIRMED",
+        submitState: "CONFIRMED", lastReceiptAt: "2026-10-18T10:02:00.000Z"
+      },
+      {
+        executionId: "unknown-execution-raw", jobId: "unknown-post-raw", dryRun: false,
+        request: { dryRun: false }, state: "SUBMIT_RESULT_UNKNOWN",
+        submitState: "UNKNOWN", submitIntentAt: "2026-10-18T10:01:00.000Z"
+      }
+    ],
+    executionReceipts: [
+      {
+        executionId: "dry-execution-raw", receivedAt: at,
+        receipt: { dryRun: true, submitState: "NOT_STARTED", publicationUrl: null }
+      },
+      {
+        executionId: "live-execution-raw", receivedAt: "2026-10-18T10:02:00.000Z",
+        receipt: {
+          submitState: "CONFIRMED", publicationUrl: permalink,
+          publicationEvidence: {
+            verifiedAt: "2026-10-18T10:02:01.000Z", verificationMethod: "independent_fixture",
+            accountMatched: true, targetMatched: true, contentHashMatched: true,
+            verificationDetails: {
+              authorIdentity: { matched: true }, contentMatch: { matched: true },
+              candidate: { postId: "987654321", permalink, timestamp: "2026-10-18T10:02:00.500Z", timestampMatched: true }
+            }
+          }
+        }
+      }
+    ],
+    submissionUncertainties: [{ executionId: "unknown-execution-raw", status: "UNKNOWN" }]
+  };
+  const before = JSON.stringify(state);
+  const projection = projectExecutionRuntime(state);
+  assert.equal(projection.readOnly, true);
+  assert.equal(projection.counts.handoff, 1);
+  assert.equal(projection.counts.handoffCandidates, 1);
+  assert.equal(projection.counts.total, 3);
+  assert.deepEqual(projection.counts.byMode, { DRY_RUN: 1, LIVE: 2, UNKNOWN: 0 });
+  assert.equal(projection.counts.completed, 2);
+  assert.equal(projection.counts.unknown, 1);
+  assert.equal(projection.counts.verified, 1);
+  assert.equal(projection.counts.publicationUnverified, 1);
+  const dry = projection.recent.find((row) => row.mode === "DRY_RUN");
+  const live = projection.recent.find((row) => row.executionRef === createHash("sha256").update("live-execution-raw").digest("hex").slice(0, 16));
+  const unknown = projection.recent.find((row) => row.publicationStatus === "UNKNOWN");
+  assert.equal(dry.publicationStatus, "DRY_RUN_ONLY");
+  assert.equal(dry.submitState, "NOT_STARTED");
+  assert.equal(dry.permalink, null);
+  assert.equal(live.publicationStatus, "VERIFIED");
+  assert.equal(live.permalink, permalink);
+  assert.equal(unknown.permalink, null);
+  assert.equal(projection.quarantine.immutable, true);
+  assert.equal(projection.quarantine.count, 1);
+  assert.equal(projection.quarantine.executions[0].immutable, true);
+  assert.equal(projection.quarantine.executions[0].executionRef.includes("unknown-execution-raw"), false);
+  assert.equal(JSON.stringify(projection).includes("live-execution-raw"), false);
+  assert.equal(JSON.stringify(projection).includes(contentHash), false);
+  assert.equal(JSON.stringify(state), before);
+});
+
+test("execution runtime projection never exposes a permalink without independent verification", () => {
+  const projection = projectExecutionRuntime({
+    executionRequests: [{ executionId: "command-only", jobId: "post-1", dryRun: false, request: { dryRun: false }, state: "SUBMIT_SENT", submitState: "SUBMIT_SENT", createdAt: "2026-10-18T10:00:00.000Z" }, {
+      executionId: "acceptance-only", jobId: "post-2", dryRun: false, request: { dryRun: false }, state: "CONFIRMED", submitState: "CONFIRMED", createdAt: "2026-10-18T10:01:00.000Z"
+    }],
+    executionReceipts: [{ executionId: "command-only", receivedAt: "2026-10-18T10:00:01.000Z", receipt: { submitState: "SUBMIT_SENT", publicationUrl: "https://example.invalid/command" } }, {
+      executionId: "acceptance-only", receivedAt: "2026-10-18T10:01:01.000Z", receipt: { submitState: "CONFIRMED", publicationUrl: "https://example.invalid/accepted", publicationEvidence: { accountMatched: true, targetMatched: true, contentHashMatched: true } }
+    }],
+    submissionUncertainties: []
+  });
+  assert.equal(projection.counts.verified, 0);
+  assert.equal(projection.recent.every((row) => row.permalink === null), true);
+  assert.equal(projection.recent.find((row) => row.state === "SUBMIT_SENT").publicationStatus, "NOT_VERIFIED");
+});
+
+test("execution runtime projection is bounded and deterministically ordered", () => {
+  const requests = Array.from({ length: 20 }, (_, index) => ({
+    executionId: `execution-${index}`,
+    jobId: `post-${index}`,
+    state: index % 2 === 0 ? "FAILED" : "REQUEST_READY",
+    submitState: index % 2 === 0 ? "FAILED" : "NOT_STARTED",
+    reasonCode: `fixture_blocker_${index}`,
+    createdAt: `2026-10-18T10:${String(index).padStart(2, "0")}:00.000Z`
+  }));
+  const projection = projectExecutionRuntime({ executionRequests: requests, executionReceipts: [], submissionUncertainties: [] });
+  assert.equal(projection.recent.length, 12);
+  assert.equal(projection.blockers.length, 8);
+  assert.equal(projection.recent[0].actionAt, "2026-10-18T10:19:00.000Z");
+  assert.equal(projection.recent.at(-1).actionAt, "2026-10-18T10:08:00.000Z");
+  assert.equal(projection.blockers[0].code, "FIXTURE_BLOCKER_0");
+  assert.equal(projection.blockers[0].count, 1);
+});
+
+test("execution runtime projection retains legacy UNKNOWN rows without an execution id", () => {
+  const projection = projectExecutionRuntime({
+    executionRequests: [],
+    executionReceipts: [],
+    submissionUncertainties: [{ id: "legacy-uncertainty", jobId: "legacy-post", status: "UNKNOWN" }]
+  });
+  assert.equal(projection.counts.total, 0);
+  assert.equal(projection.quarantine.count, 1);
+  assert.equal(projection.quarantine.executions[0].executionRef, null);
+  assert.ok(projection.quarantine.executions[0].postRef);
+  assert.equal(projection.quarantine.executions[0].immutable, true);
+});
+
+test("execution runtime projection tolerates an absent or malformed source", () => {
+  assert.deepEqual(projectExecutionRuntime(null), projectExecutionRuntime({}));
+  const projection = projectExecutionRuntime({ executionRequests: [null, "bad"], executionReceipts: [null], campaigns: [null], posts: [null], submissionUncertainties: [null] });
+  assert.equal(projection.counts.total, 0);
+  assert.equal(projection.quarantine.count, 0);
+});
+
+test("execution runtime projection rejects malformed verified publication URLs and timestamps", () => {
+  const base = {
+    submitState: "CONFIRMED", publicationUrl: "https://example.invalid/post/1",
+    publicationEvidence: {
+      verifiedAt: "2026-10-18T10:02:01.000Z", verificationMethod: "fixture",
+      accountMatched: true, targetMatched: true, contentHashMatched: true,
+      verificationDetails: {
+        authorIdentity: { matched: true }, contentMatch: { matched: true },
+        candidate: { postId: "1", permalink: "https://example.invalid/post/1", timestamp: "2026-10-18T10:02:00.000Z", timestampMatched: true }
+      }
+    }
+  };
+  const malformedUrl = projectExecutionRuntime({ executionRequests: [{ executionId: "e1", dryRun: false, request: { dryRun: false }, state: "CONFIRMED" }], executionReceipts: [{ executionId: "e1", receipt: { ...base, publicationUrl: "javascript:bad" } }] });
+  const malformedTime = projectExecutionRuntime({ executionRequests: [{ executionId: "e2", dryRun: false, request: { dryRun: false }, state: "CONFIRMED" }], executionReceipts: [{ executionId: "e2", receipt: { ...base, publicationEvidence: { ...base.publicationEvidence, verifiedAt: "bad" } } }] });
+  assert.equal(malformedUrl.counts.verified, 0);
+  assert.equal(malformedTime.counts.verified, 0);
+});
+
+test("execution runtime projection rejects publication URLs carrying credentials", () => {
+  const projection = projectExecutionRuntime({
+    executionRequests: [{ executionId: "credential-url", dryRun: false, request: { dryRun: false }, state: "CONFIRMED" }],
+    executionReceipts: [{ executionId: "credential-url", receipt: {
+      submitState: "CONFIRMED", publicationUrl: "https://user:secret@example.invalid/post/1",
+      publicationEvidence: { verifiedAt: "2026-10-18T10:02:01.000Z", verificationMethod: "fixture", accountMatched: true, targetMatched: true, contentHashMatched: true,
+        verificationDetails: { authorIdentity: { matched: true }, contentMatch: { matched: true }, candidate: { postId: "1", permalink: "https://user:secret@example.invalid/post/1", timestamp: "2026-10-18T10:02:00.000Z", timestampMatched: true } } }
+    } }]
+  });
+  assert.equal(projection.counts.verified, 0);
+  assert.equal(projection.recent[0].permalink, null);
 });
 
 test("materialize content candidate rejects identity tampering and unbound targets", async () => {

@@ -76,6 +76,226 @@ const METRIC_CHECKPOINTS = Object.freeze([
   { key: "72h", offsetMs: 72 * 60 * 60 * 1000 }
 ]);
 
+const EXECUTION_RUNTIME_MAX_RECENT = 12;
+const EXECUTION_RUNTIME_MAX_BLOCKERS = 8;
+const EXECUTION_RUNTIME_STATES = new Set([
+  "REQUEST_READY", "EXECUTING", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED",
+  "CANCELLED_PRE_SUBMIT", "SUBMIT_SENT_INTENT", "SUBMIT_SENT",
+  "SUBMIT_RESULT_UNKNOWN", "CONFIRMED", "FAILED", "PROVEN_FAILED"
+]);
+const EXECUTION_RUNTIME_PHASES = new Set([
+  "REQUEST_READY", "EXECUTING", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED",
+  "CANCELLED_PRE_SUBMIT", "SUBMIT_SENT_INTENT", "SUBMIT_SENT",
+  "SUBMIT_RESULT_UNKNOWN", "VERIFIED", "FAILED", "PROVEN_FAILED"
+]);
+const EXECUTION_RUNTIME_SUBMIT_STATES = new Set(["NOT_STARTED", "SUBMIT_SENT", "CONFIRMED", "UNKNOWN", "FAILED"]);
+
+function executionRuntimeFingerprint(value) {
+  const text = String(value || "").trim();
+  return text ? createHash("sha256").update(text).digest("hex").slice(0, 16) : null;
+}
+
+function executionRuntimeBucket(value, allowed, fallback = "UNKNOWN") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return allowed.has(normalized) ? normalized : fallback;
+}
+
+function executionRuntimeTimestamp(...values) {
+  const candidates = values
+    .map((value) => String(value || "").trim())
+    .filter((value) => Number.isFinite(Date.parse(value)))
+    .map((value) => ({ value, at: Date.parse(value) }))
+    .sort((left, right) => right.at - left.at);
+  return candidates[0]?.value || null;
+}
+
+function executionRuntimeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.toString().length > 2048) return null;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function executionRuntimeVerifiedPublication(receipt) {
+  const row = receipt?.receipt || receipt || {};
+  if (row.dryRun === true) return false;
+  const evidence = row.publicationEvidence;
+  const details = evidence?.verificationDetails;
+  const candidate = details?.candidate;
+  return row.submitState === "CONFIRMED" && Boolean(executionRuntimeHttpUrl(row.publicationUrl)) &&
+    Number.isFinite(Date.parse(evidence?.verifiedAt || "")) && Boolean(evidence?.verificationMethod) &&
+    evidence?.accountMatched === true && evidence?.targetMatched === true &&
+    evidence?.contentHashMatched === true && details?.authorIdentity?.matched === true &&
+    details?.contentMatch?.matched === true && candidate?.timestampMatched === true &&
+    Boolean(candidate?.postId || candidate?.activityUrn) && Number.isFinite(Date.parse(candidate?.timestamp || "")) &&
+    executionRuntimeHttpUrl(candidate?.permalink) === executionRuntimeHttpUrl(row.publicationUrl);
+}
+
+function executionRuntimeMode(row) {
+  const top = row?.dryRun === true;
+  const nested = row?.request?.dryRun === true;
+  if (top && nested) return "DRY_RUN";
+  if (row?.dryRun === false && row?.request?.dryRun === false) return "LIVE";
+  return "UNKNOWN";
+}
+
+function incrementBucket(buckets, key) {
+  buckets[key] = (buckets[key] || 0) + 1;
+}
+
+function executionRuntimeBlockerCode(value) {
+  const code = String(value || "").trim().toUpperCase();
+  return /^[A-Z][A-Z0-9_.-]{0,79}$/.test(code) ? code : null;
+}
+
+/**
+ * Project bounded execution evidence for read-only Mission Control views.
+ * This never infers publication from a command or dry-run receipt and never
+ * mutates state. Raw execution payloads, content, profile material and IDs
+ * are intentionally excluded.
+ */
+export function projectExecutionRuntime(state = {}) {
+  const source = state && typeof state === "object" ? state : {};
+  const requests = Array.isArray(source.executionRequests) ? source.executionRequests : [];
+  const receipts = Array.isArray(source.executionReceipts) ? source.executionReceipts : [];
+  const uncertainties = Array.isArray(source.submissionUncertainties) ? source.submissionUncertainties : [];
+  const campaigns = Array.isArray(source.campaigns) ? source.campaigns : [];
+  const posts = Array.isArray(source.posts) ? source.posts : [];
+  const receiptsByExecution = new Map();
+  for (const row of receipts) {
+    if (!row || typeof row !== "object") continue;
+    const executionId = String(row.executionId || "");
+    if (!executionId) continue;
+    const prior = receiptsByExecution.get(executionId);
+    if (!prior || executionRuntimeTimestamp(row.receivedAt, row.receipt?.finishedAt) > executionRuntimeTimestamp(prior.receivedAt, prior.receipt?.finishedAt)) receiptsByExecution.set(executionId, row);
+  }
+  const rehearsalCandidateCount = campaigns.reduce((count, campaign) => count + (Array.isArray(campaign?.contentCandidates)
+    ? campaign.contentCandidates.filter((candidate) => {
+      const metadata = candidate?.rehearsalMetadata || candidate?.rehearsal;
+      return metadata && typeof metadata === "object" && (metadata.enabled === true || metadata.dryRun === true || metadata.mode === "DRY_RUN");
+    }).length
+    : 0), 0);
+  const rehearsalPostCount = posts.filter((post) => post?.rehearsalHandoff === true).length;
+  const counts = {
+    total: 0,
+    byMode: { DRY_RUN: 0, LIVE: 0, UNKNOWN: 0 },
+    byState: {},
+    byPhase: {},
+    bySubmitState: {},
+    handoff: rehearsalPostCount,
+    handoffCandidates: rehearsalCandidateCount,
+    requestReady: 0,
+    completed: 0,
+    failed: 0,
+    unknown: 0,
+    verified: 0,
+    publicationUnverified: 0
+  };
+  const blockerCounts = new Map();
+  const unknownUncertaintyRows = uncertainties.filter((item) => item?.status === "UNKNOWN");
+  const unknownExecutionIds = new Set(unknownUncertaintyRows.map((item) => String(item.executionId || "")).filter(Boolean));
+  const projectionRows = [];
+  const timeline = [];
+  for (const row of requests) {
+    if (!row || typeof row !== "object") continue;
+    const executionId = String(row.executionId || "");
+    if (!executionId) continue;
+    counts.total += 1;
+    const mode = executionRuntimeMode(row);
+    const stateName = executionRuntimeBucket(row.state, EXECUTION_RUNTIME_STATES);
+    const phase = executionRuntimeBucket(row.executionPhase || row.state, EXECUTION_RUNTIME_PHASES);
+    const receipt = receiptsByExecution.get(executionId);
+    const submitState = executionRuntimeBucket(row.submitState || receipt?.receipt?.submitState, EXECUTION_RUNTIME_SUBMIT_STATES);
+    const quarantined = unknownExecutionIds.has(executionId) || stateName === "SUBMIT_RESULT_UNKNOWN" || submitState === "UNKNOWN";
+    const verified = mode === "LIVE" && !quarantined && executionRuntimeVerifiedPublication(receipt);
+    if (mode === "DRY_RUN") counts.byMode.DRY_RUN += 1;
+    else if (mode === "LIVE") counts.byMode.LIVE += 1;
+    else counts.byMode.UNKNOWN += 1;
+    incrementBucket(counts.byState, stateName);
+    incrementBucket(counts.byPhase, phase);
+    incrementBucket(counts.bySubmitState, submitState);
+    if (stateName === "REQUEST_READY") counts.requestReady += 1;
+    if (stateName === "DRY_RUN_COMPLETE" || stateName === "CONFIRMED" || phase === "VERIFIED") counts.completed += 1;
+    if (stateName === "FAILED" || stateName === "DRY_RUN_FAILED" || stateName === "PROVEN_FAILED") counts.failed += 1;
+    if (quarantined) {
+      counts.unknown += 1;
+      unknownExecutionIds.add(executionId);
+    }
+    if (verified) counts.verified += 1;
+    else if (mode === "LIVE") counts.publicationUnverified += 1;
+    const reasonCodes = [row.reasonCode, row.request?.reasonCode, row.preSubmitFailure?.reasonCode, receipt?.receipt?.reasonCode, receipt?.receipt?.preSubmitFailure?.reasonCode]
+      .map(executionRuntimeBlockerCode).filter(Boolean);
+    for (const code of reasonCodes) blockerCounts.set(code, (blockerCounts.get(code) || 0) + 1);
+    const actionAt = executionRuntimeTimestamp(row.dryRunCompletedAt, row.lastReceiptAt, row.dispatchedAt, row.submitIntentAt, row.executionStartedAt, row.cancelledAt, row.createdAt);
+    const publicationStatus = quarantined ? "UNKNOWN" : verified ? "VERIFIED" : mode === "DRY_RUN" ? "DRY_RUN_ONLY" : "NOT_VERIFIED";
+    const projection = {
+      executionRef: executionRuntimeFingerprint(executionId),
+      postRef: executionRuntimeFingerprint(row.jobId),
+      mode,
+      state: stateName,
+      phase,
+      submitState,
+      attempt: Number.isSafeInteger(row.attempt) ? row.attempt : null,
+      actionAt,
+      publicationStatus,
+      permalink: verified ? executionRuntimeHttpUrl(receipt.receipt.publicationUrl) : null,
+      reasonCode: reasonCodes[0] || null
+    };
+    projectionRows.push(projection);
+    timeline.push({ at: actionAt, executionId, mode, state: stateName, phase, submitState, event: verified ? "publication_verified" : stateName === "DRY_RUN_COMPLETE" ? "dry_run_completed" : "execution_state" });
+  }
+  const quarantineRows = new Map();
+  for (const item of unknownUncertaintyRows) {
+    const executionId = String(item.executionId || "").trim();
+    const postId = String(item.jobId || item.postId || "").trim();
+    const key = executionId ? `execution:${executionId}` : postId ? `post:${postId}` : `uncertainty:${String(item.id || "unknown")}`;
+    quarantineRows.set(key, {
+      executionRef: executionId ? executionRuntimeFingerprint(executionId) : null,
+      postRef: postId ? executionRuntimeFingerprint(postId) : null,
+      immutable: true
+    });
+  }
+  for (const executionId of unknownExecutionIds) {
+    const key = `execution:${executionId}`;
+    if (!quarantineRows.has(key)) quarantineRows.set(key, { executionRef: executionRuntimeFingerprint(executionId), postRef: null, immutable: true });
+  }
+  const quarantined = [...quarantineRows.values()];
+  const blockers = [...blockerCounts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, EXECUTION_RUNTIME_MAX_BLOCKERS)
+    .map(([code, count]) => ({ code, count }));
+  const recent = projectionRows
+    .sort((left, right) => String(right.actionAt || "").localeCompare(String(left.actionAt || "")) || String(left.executionRef).localeCompare(String(right.executionRef)))
+    .slice(0, EXECUTION_RUNTIME_MAX_RECENT);
+  const latest = timeline
+    .filter((item) => item.at)
+    .sort((left, right) => String(right.at).localeCompare(String(left.at)) || String(left.executionId).localeCompare(String(right.executionId)))
+    .at(0);
+  return {
+    schemaVersion: 1,
+    readOnly: true,
+    publicationRule: "Only independent VERIFIED evidence exposes a permalink; COMMAND_COMPLETED and DRY_RUN_COMPLETE are not publication proof.",
+    counts,
+    latestAction: latest ? {
+      at: latest.at,
+      event: latest.event,
+      executionRef: executionRuntimeFingerprint(latest.executionId),
+      mode: latest.mode,
+      state: latest.state,
+      phase: latest.phase,
+      submitState: latest.submitState
+    } : null,
+    blockers,
+    quarantine: { count: quarantined.length, immutable: true, executions: quarantined.slice(0, EXECUTION_RUNTIME_MAX_RECENT) },
+    recent
+  };
+}
+
 function boundedQueueFailureReason(error) {
   const code = String(error?.code || "").trim();
   return /^[A-Z][A-Z0-9_.-]{0,79}$/.test(code) ? code : "campaign_queue_failed";
@@ -4643,6 +4863,7 @@ export class SeedingService {
     state.fixtureAutomationRuns ||= [];
     state.communityMemberships ||= [];
     const accountRuntime = projectExecutionAccountRuntime(state);
+    const executionRuntime = projectExecutionRuntime(state);
     const latestMetrics = new Map();
     for (const metric of state.metricSnapshots) {
       const current = latestMetrics.get(metric.postId);
@@ -4710,6 +4931,7 @@ export class SeedingService {
       postCount: state.posts.length,
       accountRuntime,
       executionAccounts: accountRuntime,
+      executionRuntime,
       communityMemberships: state.communityMemberships,
       statuses,
       totals,

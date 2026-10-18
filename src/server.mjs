@@ -3,7 +3,7 @@ import path from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { JsonStore } from "./store.mjs";
-import { SeedingService, pollConfiguredDiscoveries } from "./service.mjs";
+import { SeedingService, pollConfiguredDiscoveries, projectExecutionRuntime } from "./service.mjs";
 import { appRoot, autoGtmFeedFile, browserAutomationFile, dailyAutomationFile, dailyAutomationReceiptFile, publicRoot, stateFile } from "./paths.mjs";
 import { FixtureWorkerBridge } from "./fixture-worker-bridge.mjs";
 import { readAutoGtmFeed } from "./auto-gtm-feed.mjs";
@@ -489,6 +489,7 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, {
         ok: true, service: "global-seeding", stateFile,
         runtime: runtimeMetadata({ pid: process.pid, sourceCommit, sourceDirty, state }),
+        executionRuntime: projectExecutionRuntime(state),
         trafficCollector: trafficRuntime,
         campaignQueue: campaignQueueRuntime,
         controlCycle: controlCycleRuntime,

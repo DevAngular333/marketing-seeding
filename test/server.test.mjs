@@ -98,6 +98,11 @@ test("HTTP mutations require the local operator bearer token", async (context) =
     });
   });
   assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
+  const beforeReadOnlyGets = await readFile(path.join(dataDir, "state.json"), "utf8");
+  await fetch(`${baseUrl}/health`);
+  await fetch(`${baseUrl}/api/dashboard`);
+  const afterReadOnlyGets = await readFile(path.join(dataDir, "state.json"), "utf8");
+  assert.equal(afterReadOnlyGets, beforeReadOnlyGets);
   assert.equal((await fetch(`${baseUrl}/api/dashboard`)).status, 200);
   const leadFeedResponse = await fetch(`${baseUrl}/api/leads`);
   assert.equal(leadFeedResponse.status, 200);
@@ -235,6 +240,9 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal(health.dailyProduction.enabled, true);
   assert.equal(health.browserTracking.id, "browser-automation-fixture");
   assert.equal(health.browserTracking.mode, "browser_verified");
+  assert.equal(health.executionRuntime.readOnly, true);
+  assert.equal(health.executionRuntime.publicationRule.includes("COMMAND_COMPLETED"), true);
+  assert.ok(health.executionRuntime.counts);
   const dashboard = await (await fetch(`${baseUrl}/api/dashboard`)).json();
   assert.equal(dashboard.automation.controlCycle.enabled, false);
   assert.equal(dashboard.automation.campaignQueue.enabled, true);
@@ -243,4 +251,5 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.ok(dashboard.automation.campaignQueue.nextRunAt);
   assert.equal(dashboard.automation.dailyProduction.rrule, "FREQ=DAILY;BYHOUR=6;BYMINUTE=0");
   assert.equal(dashboard.automation.browserTracking.rrule, "30 23 * * *");
+  assert.deepEqual(dashboard.executionRuntime, health.executionRuntime);
 });

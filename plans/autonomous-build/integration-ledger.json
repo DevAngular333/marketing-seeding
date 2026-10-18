@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "d764783",
+  "checkpointCommit": "working-tree:execution-evidence-read-model",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -35,7 +35,8 @@
     "9ea1270 feat(metrics): make official collection idempotent",
     "28798e8 docs(metrics): record collector milestone evidence",
     "d764783 fix(jev): isolate autonomous dry-run reconciliation",
-    "working-tree seam: explicit rehearsal candidate → existing JEV dry-run queue handoff with strict lineage, readiness and idempotency"
+    "working-tree seam: explicit rehearsal candidate \u2192 existing JEV dry-run queue handoff with strict lineage, readiness and idempotency",
+    "working-tree seam: bounded read-only execution evidence projection for Mission Control dashboard and /health"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -1071,6 +1072,42 @@
       "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
       "protectedUnknownExecutions": 4,
       "protectedUnknownUncertainties": 4
+    },
+    {
+      "name": "execution_evidence_read_model_focused",
+      "result": "PASS",
+      "tests": 72,
+      "passed": 72,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs",
+      "report": "plans/autonomous-build/execution-evidence-read-model/test-results.md"
+    },
+    {
+      "name": "execution_evidence_read_model_static_ui",
+      "result": "PASS",
+      "command": "node --check src/service.mjs && node --check src/server.mjs && node --check test/service.test.mjs && node --check test/server.test.mjs && git diff --check && cd ui && npx tsc --noEmit && npm run build",
+      "report": "plans/autonomous-build/execution-evidence-read-model/test-results.md"
+    },
+    {
+      "name": "full_node_suite_after_execution_evidence_read_model",
+      "result": "PASS",
+      "tests": 456,
+      "passed": 454,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test",
+      "report": "plans/autonomous-build/execution-evidence-read-model/test-results.md"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_execution_evidence_read_model",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 1
     }
   ]
 }
