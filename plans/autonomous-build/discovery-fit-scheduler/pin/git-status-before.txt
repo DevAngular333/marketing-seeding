@@ -1,0 +1,9 @@
+ M plans/autonomous-build/current-state.md
+ M plans/autonomous-build/dependency-graph.md
+ M plans/autonomous-build/integration-ledger.json
+ M plans/autonomous-build/master-plan.md
+ M plans/autonomous-build/milestone-ledger.json
+ M plans/autonomous-build/worker-ledger.json
+ M src/service.mjs
+ M test/discovery-scheduler.test.mjs
+?? plans/autonomous-build/discovery-fit-scheduler/

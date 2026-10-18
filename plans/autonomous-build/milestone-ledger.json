@@ -210,6 +210,11 @@
       "id": "metric-provider-resilience",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "evidence": "Working-tree requestJson retry seam honors bounded numeric/HTTP-date Retry-After, rejects signed/malformed/oversized hints to bounded exponential fallback, and keeps non-retryable responses fail-fast; focused integrations/service/server 70/70, full npm test 444/442/0/2, syntax/diff pass, independent review PASS; no live provider, canonical, browser, ORCA, credential or social mutation"
+    },
+    {
+      "id": "discovery-fit-scheduler",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Campaign-owned bounded discoveryFit is normalized and persisted through existing create/update seams, forwarded only for configured campaigns by pollConfiguredDiscoveries, and kept outside campaignScopeFingerprint; focused discovery/service/strategy/server gate 90/90, full npm test 446/444/0/2, syntax/diff pass, independent review PASS (bounded); no authority, browser, provider, social or UNKNOWN-submission mutation"
     }
   ]
 }

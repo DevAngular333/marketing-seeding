@@ -19,7 +19,7 @@ JsonStore / schema / audit / writer lease
   │     ├─> Product Intelligence (bounded repository inspection + deterministic local field derivation + explicit claims + claim graph + versioned handoff persisted on campaign)
   │     │     └─> deterministic evidence-grounded draft story (READY handoff, source revalidation, draft-only)
   │     │           └─> queue-owned story derivation (explicit bounded storyPolicy + current authority/campaign bindings)
-  │     ├─> Discovery (caller observations + deterministic normalization/dedup/classification/score + advisory audience/channel/locale fit persisted on campaign)
+  │     ├─> Discovery (caller observations + deterministic normalization/dedup/classification/score + advisory audience/channel/locale fit persisted on campaign and forwarded by the opt-in scheduler)
   │     └─> Product Factory (safe local classification/commands + bounded candidate discovery + artifact hash + bounded persistent run lineage)
   │
   ├─> deterministic advisory strategy (reads product readiness, discovery, queue policy, UNKNOWN state and current learning context)

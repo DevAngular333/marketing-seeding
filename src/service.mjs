@@ -36,7 +36,9 @@ export async function pollConfiguredDiscoveries(service, { actor = "scheduled-di
     const urls = Array.isArray(campaign.discoverySources) ? campaign.discoverySources : [];
     if (!urls.length) continue;
     try {
-      const result = await service.observeDiscoveries(campaign.id, { urls }, actor);
+      const input = { urls };
+      if (campaign.discoveryFit) input.fit = campaign.discoveryFit;
+      const result = await service.observeDiscoveries(campaign.id, input, actor);
       results.push({ campaignId: campaign.id, requested: result.requested, accepted: result.persisted?.accepted || 0, unknown: (result.observations || []).filter((item) => item.observationStatus === "UNKNOWN").length });
     } catch (error) {
       results.push({ campaignId: campaign.id, ok: false, reason: String(error?.code || error?.message || "discovery_error").slice(0, 160) });
@@ -97,6 +99,42 @@ function normalizeDiscoverySources(value) {
     seen.add(normalized);
     return normalized;
   });
+}
+
+const MAX_DISCOVERY_FIT_TERMS = 20;
+const MAX_DISCOVERY_FIT_TERM_LENGTH = 64;
+const MAX_DISCOVERY_FIT_CHANNEL_LENGTH = 80;
+const MAX_DISCOVERY_FIT_LOCALE_LENGTH = 32;
+const DISCOVERY_FIT_SECRET_ASSIGNMENT = /(?:password|passphrase|secret|token|cookie|authorization|credential|api[_-]?key|session(?:[_ -]?token)?)\s*[:=]/i;
+const DISCOVERY_FIT_SECRET_VALUE = /(?:bearer\s+[a-z0-9._-]{6,}|sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9_]{12,})/i;
+
+function assertSafeDiscoveryFitText(value, label) {
+  if (DISCOVERY_FIT_SECRET_ASSIGNMENT.test(value) || DISCOVERY_FIT_SECRET_VALUE.test(value)) {
+    throw new Error(`${label} contains credential/session material`);
+  }
+}
+
+/** Normalize optional campaign-owned advisory discovery fit without changing execution scope. */
+export function normalizeDiscoveryFit(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("discoveryFit must be an object");
+  const rawTerms = value.audienceKeywords ?? value.audience ?? value.audienceTerms;
+  const terms = Array.isArray(rawTerms) ? rawTerms : (rawTerms == null ? [] : [rawTerms]);
+  const audienceKeywords = [...new Set(terms.map((term) => {
+    const normalized = String(term ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+    assertSafeDiscoveryFitText(normalized, "discoveryFit.audienceKeywords");
+    return normalized.slice(0, MAX_DISCOVERY_FIT_TERM_LENGTH);
+  }).filter(Boolean))].slice(0, MAX_DISCOVERY_FIT_TERMS);
+  const normalizeField = (raw, label, max) => {
+    const normalized = String(raw ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+    assertSafeDiscoveryFitText(normalized, label);
+    return normalized.slice(0, max);
+  };
+  const targetChannel = normalizeField(value.targetChannel ?? value.channelTarget, "discoveryFit.targetChannel", MAX_DISCOVERY_FIT_CHANNEL_LENGTH);
+  const targetLocale = normalizeField(value.targetLocale ?? value.locale, "discoveryFit.targetLocale", MAX_DISCOVERY_FIT_LOCALE_LENGTH);
+  if (!audienceKeywords.length && !targetChannel && !targetLocale) return null;
+  return { audienceKeywords, targetChannel, targetLocale };
 }
 
 const MAX_GROUNDING_BYTES = 2_000_000;
@@ -1543,6 +1581,7 @@ export class SeedingService {
   async createCampaign(input, actor = "operator") {
     const productRepo = await requireProductRepo(input.productRepo);
     const track = optionalProductTrack(input.track);
+    const discoveryFit = normalizeDiscoveryFit(input.discoveryFit);
     const result = await this.store.mutate(actor, "campaign_created", (state) => {
       const campaign = {
         id: randomUUID(),
@@ -1554,6 +1593,7 @@ export class SeedingService {
         keywords: normalizeKeywords(input.keywords),
         audience: Array.isArray(input.audience) ? input.audience : [],
         discoverySources: normalizeDiscoverySources(input.discoverySources) || [],
+        ...(discoveryFit ? { discoveryFit } : {}),
         status: "draft",
         createdAt: nowIso()
       };
@@ -3665,6 +3705,11 @@ export class SeedingService {
       if (input.keywords !== undefined) campaign.keywords = normalizeKeywords(input.keywords);
       if (input.audience !== undefined) campaign.audience = Array.isArray(input.audience) ? input.audience : [];
       if (input.discoverySources !== undefined) campaign.discoverySources = normalizeDiscoverySources(input.discoverySources);
+      if (input.discoveryFit !== undefined) {
+        const discoveryFit = normalizeDiscoveryFit(input.discoveryFit);
+        if (discoveryFit) campaign.discoveryFit = discoveryFit;
+        else delete campaign.discoveryFit;
+      }
       if (input.track !== undefined) campaign.track = optionalProductTrack(input.track);
       if (!campaign.name || !campaign.objective) throw new Error("Campaign name and objective are required");
       campaign.updatedAt = nowIso();

@@ -2,6 +2,13 @@
   "schemaVersion": 1,
   "workers": [
     {
+      "worker_id": "/root/audience_channel_review",
+      "role": "independent verifier",
+      "status": "PASS_BOUNDED",
+      "scope": "discovery-fit scheduler persistence and forwarding",
+      "evidence": "Read-only review confirms bounded fit normalization, legacy no-fit behavior, unchanged campaign authority fingerprint, and no execution/browser/provider/UNKNOWN path drift; focused 90/90, syntax/diff pass"
+    },
+    {
       "worker_id": "/root/integration_review",
       "role": "independent static reviewer",
       "status": "ACCEPT",

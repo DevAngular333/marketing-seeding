@@ -28,6 +28,7 @@
 - Repository inspection can now read a bounded allowlist of safe repository files, redact credential-like material, produce stable evidence hashes and persist metadata-only inspection lineage with the handoff.
 - Discovery observations are normalized, deduplicated, policy-classified, scored, persisted on campaigns and projected read-only by `/api/dashboard`; integration adds an opt-in public HTTP observer and 15-minute poller, which are not enabled in the canonical service.
 - Discovery fit metadata now evaluates caller-supplied audience terms, channel and locale hints as bounded `MATCHED`/`MISMATCHED`/`UNKNOWN` advisory evidence through the existing persistence path; it does not create authority or publication work.
+- Campaigns can now persist bounded advisory `discoveryFit` (`audienceKeywords`, `targetChannel`, `targetLocale`) and the existing opt-in scheduler forwards it to the observer; legacy campaigns without fit keep the no-fit shape, and changing fit does not change `campaignScopeFingerprint()` or execution authority.
 - Product factory runtime can classify/run the registered campaign repository with the bounded allowlist, discover bounded media/document candidates when paths are omitted, return local artifact hashes, persist a bounded 24-run campaign-owned lineage and project recent runs read-only; it reports `externalSideEffects: false` and does not create publication authority.
 - Product Factory project evidence is fail-closed: only relative `node --check` JavaScript manifest commands are eligible, and eligible probes run in temporary staging with bounded cleanup and artifact evidence. Arbitrary scripts, package managers, interpreters and build/render commands remain `NOT_EXECUTED_UNSAFE` until a separately audited sandbox exists.
 - Account runtime now has a deterministic read-only `accountRuntime`/`executionAccounts` dashboard projection with profile fingerprints, bounded readiness/blocker fields and bound-target counts; raw profile IDs, identity URLs, evidence and secret-like fields are excluded. This is an observability seam, not login, credential, selection or failover automation.
@@ -215,3 +216,19 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   diff checks pass; independent review is PASS_BOUNDED.
 - Evidence is synthetic/local only. No live provider request, credential,
   browser, ORCA, LinkedIn, social or canonical state mutation occurred.
+
+## Discovery fit scheduler (2026-10-18)
+
+- Campaign create/update now normalize and persist optional bounded
+  `discoveryFit`; null clears it. Fit text is lowercased, bounded and rejects
+  credential/session-like material.
+- `pollConfiguredDiscoveries()` forwards fit only for configured campaigns;
+  legacy campaigns retain `{ urls }`. The existing observer, persistence,
+  strategy fit gate and no-fit compatibility remain unchanged.
+- Focused discovery/service/strategy/server gate: 90 passed, 0 failed, 0
+  skipped. Full Node suite: 446 total, 444 passed, 0 failed, 2 skipped.
+  Syntax and diff checks pass; independent review is PASS_BOUNDED.
+- Canonical runtime remains schema 8, revision 194, SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`;
+  no live network, browser, ORCA, provider, credential, social or UNKNOWN
+  submission mutation occurred.

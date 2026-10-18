@@ -936,6 +936,46 @@
       "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
       "protectedUnknownExecutions": 4,
       "protectedUnknownUncertainties": 4
+    },
+    {
+      "name": "discovery_fit_scheduler_focused",
+      "result": "PASS",
+      "tests": 90,
+      "passed": 90,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/discovery-scheduler.test.mjs test/discovery.test.mjs test/strategy.test.mjs test/service.test.mjs test/server.test.mjs",
+      "report": "plans/autonomous-build/discovery-fit-scheduler/report.md"
+    },
+    {
+      "name": "discovery_fit_scheduler_independent_review",
+      "result": "PASS_BOUNDED",
+      "report": "plans/autonomous-build/discovery-fit-scheduler/report.md",
+      "notes": "Campaign fit normalization, scheduler forwarding, legacy no-fit compatibility and authority fingerprint immutability reviewed"
+    },
+    {
+      "name": "full_node_suite_after_discovery_fit_scheduler",
+      "result": "PASS",
+      "tests": 446,
+      "passed": 444,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "discovery_fit_scheduler_static",
+      "result": "PASS",
+      "command": "for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_discovery_fit_scheduler",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 4
     }
   ]
 }
