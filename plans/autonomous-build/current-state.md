@@ -150,3 +150,11 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   Full Node suite: 420 total, 418 passed, 0 failed, 2 skipped. Independent
   review: ACCEPT. No browser, ORCA, LinkedIn, social, canonical or historical
   UNKNOWN mutation occurred.
+
+## Discovery fit compatibility milestone (2026-10-18)
+
+- Fixed the optional-fit seam at the existing discovery pipeline. No-fit caller/scheduler observations no longer receive an all-UNKNOWN `fit` object, so they retain the legacy relevance path into advisory strategy.
+- Explicit audience/channel/locale hints still produce bounded `MATCHED`/`MISMATCHED`/`UNKNOWN` evidence and the existing strategy gate still excludes mismatch/unknown.
+- Commit: `3ac7937 fix: preserve no-fit discovery strategy compatibility`.
+- Focused gate: 77 passed, 0 failed, 0 skipped. Full Node suite: 422 total, 420 passed, 0 failed, 2 skipped. Independent review: PASS (bounded). Syntax and diff checks passed.
+- Canonical runtime remained schema 8, revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; no browser, ORCA, social, authority, or UNKNOWN mutation occurred.

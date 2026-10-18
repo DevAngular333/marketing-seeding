@@ -53,3 +53,7 @@ Reuse `JsonStore`, `SeedingService`, campaign authorization, one-time windows, l
 Runtime, source, tests and artifacts outrank README/plans. Synthetic/local evidence never counts as real platform proof. `COMMAND_COMPLETED` does not imply activation, acceptance or publication. Post-submit uncertainty remains quarantined. No live action without exact current authority.
 
 Latest local gate after item 25: `npm test` reports 420 total, 418 passed, 0 failed, 2 skipped; focused scheduler/story gate reports 52/52 and the broader product-intelligence/service/server gate reports 74/74; syntax and diff checks pass. No social action or canonical/UNKNOWN mutation occurred.
+
+27. Restore optional-fit compatibility at the discovery-to-strategy seam: no-fit observations retain legacy advisory selection while explicit fit remains fail-closed; no authority or execution semantics changed.
+
+Latest local gate after item 27: `npm test` reports 422 total, 420 passed, 0 failed, 2 skipped; discovery/service/strategy focused gate reports 77/77; independent fit compatibility review PASS (bounded); syntax and diff checks pass. Canonical runtime schema 8 revision 194 SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No social action/live publish took place.
