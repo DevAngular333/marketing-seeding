@@ -1119,6 +1119,22 @@ function MissionControlPanel({ data }: { data: R }) {
       ? account.ineligibilityReasons.map((reason: unknown) => String(reason)).filter(Boolean)
       : [],
   }))
+  const discoveryOpportunities = Array.isArray(data?.discoveryOpportunities)
+    ? data.discoveryOpportunities
+    : []
+  const engagementCandidates = Array.isArray(data?.engagementContext?.candidates)
+    ? data.engagementContext.candidates
+    : []
+  const productIntelligence = Array.isArray(data?.productIntelligence)
+    ? data.productIntelligence
+    : []
+  const readyProductIntelligence = productIntelligence.filter(
+    (item: R) => item?.handoff?.readinessStatus === "READY",
+  ).length
+  const executionBlockers = Array.isArray(data?.executionRuntime?.blockers)
+    ? data.executionRuntime.blockers
+    : []
+  const accountBlockers = accountRows.filter((account) => !account.eligible).length
   return (
     <section className="panel mission-control-panel full-span">
       <div className="panel-head">
@@ -1191,6 +1207,37 @@ function MissionControlPanel({ data }: { data: R }) {
         ) : (
           <div className="empty-state">Chưa có account runtime projection.</div>
         )}
+      </div>
+      <div className="mission-advisory-runtime">
+        <div className="mission-account-head">
+          <div>
+            <span className="mission-eyebrow">Distribution intelligence</span>
+            <small>Chỉ đọc · cơ hội và blocker không cấp quyền thực thi</small>
+          </div>
+          <span className="status">Advisory</span>
+        </div>
+        <div className="mission-advisory-grid">
+          <article>
+            <span className="mission-eyebrow">Discovery opportunities</span>
+            <strong>{discoveryOpportunities.length}</strong>
+            <small>{discoveryOpportunities.length ? "Có cơ hội đủ điều kiện để nghiên cứu hoặc cân nhắc engage" : "Chưa có cơ hội đủ điều kiện"}</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Engagement candidates</span>
+            <strong>{engagementCandidates.length}</strong>
+            <small>{engagementCandidates.length ? "Reply có grounding đang chờ policy/runtime" : "Chưa có hội thoại actionable"}</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Product intelligence</span>
+            <strong>{readyProductIntelligence}/{productIntelligence.length || 0} READY</strong>
+            <small>{productIntelligence.length ? "Readiness lấy từ handoff đã lưu" : "Chưa có product intelligence record"}</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Current blockers</span>
+            <strong>{executionBlockers.length + accountBlockers}</strong>
+            <small>{executionBlockers.length ? "Execution blocker được fail-closed" : accountBlockers ? "Account chưa đủ điều kiện" : "Chưa có blocker projection"}</small>
+          </article>
+        </div>
       </div>
     </section>
   )
