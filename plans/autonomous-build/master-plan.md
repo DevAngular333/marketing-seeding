@@ -37,7 +37,17 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 
 29. Add bounded post-level metric advisory context to the existing outcome/learning projection. Require explicit measured coverage for response claims, quarantine malformed measurements, validate advisory data by recomputation, and keep the bounded projection self-consistent under truncation; do not change action precedence or authority.
 
-Result: local implementation gates pass (latest full Node suite 428 total, 426 passed, 0 failed, 2 skipped); post-metrics advisory is 25/25 focused, 87/87 integrated, and independently reviewed PASS_BOUNDED. The scheduler story/content/service focused gate is 52/52, the broader story/product-intelligence/service/server gate is 74/74, the standing-template scheduler gate is 47/47, the template-binding focused service/server gate is 46/46, the queue failure-isolation gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler gate is 42/42, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, and outcome attribution is 42/42. UI typecheck and production build also pass from the prior release gate. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
+30. Make existing official metric collection idempotent by provider source and
+post while preserving collector-run observability, immutable changed snapshots,
+per-post failure isolation and explicit manual/unconfigured outcomes; do not add
+a collector store, provider router, scheduler, authority or live provider lane.
+
+31. Add bounded read-only `1h`/`24h`/`72h` metric checkpoint observability to the
+existing traffic pulse and dashboard using `publishedAt`, `metricSnapshots` and
+`collectorRuns`; do not add a scheduler, collector, authority or live provider
+lane.
+
+Result: local implementation gates pass (latest full Node suite 435 total, 433 passed, 0 failed, 2 skipped); post-metrics advisory is 25/25 focused, 87/87 integrated, and independently reviewed PASS_BOUNDED; official metrics collection is 58/58 focused and independently reviewed PASS (bounded); metric checkpoint observability is 59/59 focused and independently reviewed ACCEPT_BOUNDED. The scheduler story/content/service focused gate is 52/52, the broader story/product-intelligence/service/server gate is 74/74, the standing-template scheduler gate is 47/47, the template-binding focused service/server gate is 46/46, the queue failure-isolation gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler gate is 42/42, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, and outcome attribution is 42/42. UI typecheck and production build also pass from the prior release gate. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 
 ## Later waves (dependency order)
 
@@ -61,3 +71,7 @@ Latest local gate after item 25: `npm test` reports 420 total, 418 passed, 0 fai
 27. Restore optional-fit compatibility at the discovery-to-strategy seam: no-fit observations retain legacy advisory selection while explicit fit remains fail-closed; no authority or execution semantics changed.
 
 Latest local gate after item 27: `npm test` reports 422 total, 420 passed, 0 failed, 2 skipped; discovery/service/strategy focused gate reports 77/77; independent fit compatibility review PASS (bounded); syntax and diff checks pass. Canonical runtime schema 8 revision 194 SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No social action/live publish took place.
+
+Latest local gate after item 30: `node --test test/service.test.mjs test/server.test.mjs test/integrations.test.mjs` reports 58 passed, 0 failed, 0 skipped; `npm test` reports 430 total, 428 passed, 0 failed, 2 skipped; source syntax and diff checks pass. Independent review is PASS (bounded). Canonical runtime revision 194 and SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No live provider, browser, ORCA or social action took place.
+
+Latest local gate after item 31: `node --test test/service.test.mjs` reports 59 passed, 0 failed, 0 skipped; `npm test` reports 435 total, 433 passed, 0 failed, 2 skipped; source syntax and diff checks pass. Independent review is ACCEPT_BOUNDED. Canonical runtime revision 194 and SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No live provider, browser, ORCA or social action took place.

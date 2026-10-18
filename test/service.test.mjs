@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
 import path from "node:path";
 import os from "node:os";
 import { JsonStore } from "../src/store.mjs";
-import { SeedingService, buildTrafficPulse, normalizeKeywords } from "../src/service.mjs";
+import { SeedingService, buildMetricCheckpoints, buildTrafficPulse, normalizeKeywords } from "../src/service.mjs";
 import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
 import { buildProductIntelligence } from "../src/product-intelligence.mjs";
@@ -1442,6 +1442,24 @@ test("dashboard exposes recent metrics, interactions, replies, and audit history
   assert.ok(dashboard.recentAudit.length >= 6);
 });
 
+test("dashboard exposes bounded metric checkpoints through the existing traffic pulse", async () => {
+  const { service, post } = await fixture("seeding-dashboard-checkpoints-test-");
+  const publishedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const unknownAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  await service.store.mutate("test", "publish_checkpoint_fixture", (state) => {
+    const saved = state.posts.find((item) => item.id === post.id);
+    saved.status = "published";
+    saved.publishedAt = publishedAt;
+    saved.publicationUrl = "https://www.threads.net/@fixture/post/checkpoints";
+    state.collectorRuns.push({ id: "checkpoint-unknown", postId: post.id, channel: "threads", status: "unknown", at: unknownAt, reason: "not_authenticated" });
+  });
+  const dashboard = await service.dashboard();
+  const pulse = dashboard.trafficPulse.find((item) => item.postId === post.id);
+  assert.ok(pulse);
+  assert.deepEqual(pulse.checkpoints.map((item) => item.status), ["unknown", "pending", "pending"]);
+  assert.equal(pulse.checkpoints[0].collectorRunId, "checkpoint-unknown");
+});
+
 test("traffic pulse prioritizes open interactions and reports metric deltas", () => {
   const post = { id: "p1", publishedAt: "2026-10-06T00:00:00.000Z", status: "published" };
   const snapshots = [
@@ -1467,6 +1485,77 @@ test("traffic pulse handles a newly published post without metric snapshots", ()
   assert.equal(pulse.delta.impressions, null);
   assert.equal(pulse.priority, "watch");
   assert.match(pulse.recommendation, /snapshot traffic 1 giờ/);
+});
+
+test("metric checkpoints progress from pending to due to observed without changing rolling pulse semantics", () => {
+  const post = { id: "p-checkpoints", publishedAt: "2026-10-06T00:00:00.000Z", status: "published" };
+  const pending = buildMetricCheckpoints(post, [], [], new Date("2026-10-06T00:30:00.000Z"));
+  assert.deepEqual(pending.map((item) => item.status), ["pending", "pending", "pending"]);
+  assert.deepEqual(pending.map((item) => item.dueAt), [
+    "2026-10-06T01:00:00.000Z", "2026-10-07T00:00:00.000Z", "2026-10-09T00:00:00.000Z"
+  ]);
+
+  const due = buildMetricCheckpoints(post, [], [], new Date("2026-10-06T01:00:00.000Z"));
+  assert.deepEqual(due.map((item) => item.status), ["due", "pending", "pending"]);
+
+  const observed = buildMetricCheckpoints(post, [{
+    id: "metric-1h", postId: post.id, capturedAt: "2026-10-06T01:05:00.000Z", impressions: 10,
+    coverage: { impressions: "measured" }
+  }], [], new Date("2026-10-06T02:00:00.000Z"));
+  assert.equal(observed[0].status, "observed");
+  assert.equal(observed[0].snapshotId, "metric-1h");
+  assert.equal(observed[1].status, "pending");
+  assert.equal(observed[2].status, "pending");
+
+  const pulse = buildTrafficPulse(post, [], [], new Date("2026-10-06T02:00:00.000Z"));
+  assert.equal(pulse.nextReviewAt, "2026-10-06T01:00:00.000Z");
+  assert.deepEqual(pulse.checkpoints, buildMetricCheckpoints(post, [], [], new Date("2026-10-06T02:00:00.000Z")));
+});
+
+test("metric checkpoints ignore pre-publication snapshots and do not use an earlier snapshot for a later checkpoint", () => {
+  const post = { id: "p-checkpoint-order", publishedAt: "2026-10-06T00:00:00.000Z", status: "published" };
+  const checkpoints = buildMetricCheckpoints(post, [
+    { id: "before-publish", postId: post.id, capturedAt: "2026-10-05T23:59:00.000Z", impressions: 2 },
+    { id: "after-1h", postId: post.id, capturedAt: "2026-10-06T01:01:00.000Z", impressions: 3 }
+  ], [], new Date("2026-10-07T01:00:00.000Z"));
+  assert.equal(checkpoints[0].status, "observed");
+  assert.equal(checkpoints[0].snapshotId, "after-1h");
+  assert.equal(checkpoints[1].status, "missing");
+  assert.equal(checkpoints[1].snapshotId, null);
+  assert.equal(checkpoints[2].status, "pending");
+});
+
+test("metric checkpoints preserve unknown and unsupported collector evidence", () => {
+  const post = { id: "p-checkpoint-evidence", publishedAt: "2026-10-06T00:00:00.000Z", status: "published" };
+  const checkpoints = buildMetricCheckpoints(post, [], [
+    { id: "unknown-1h", postId: post.id, status: "unknown", at: "2026-10-06T01:10:00.000Z", reason: "login_required" },
+    { id: "unsupported-24h", postId: post.id, status: "not_applicable", at: "2026-10-07T00:10:00.000Z", reason: "manual_only" }
+  ], new Date("2026-10-07T01:00:00.000Z"));
+  assert.equal(checkpoints[0].status, "unknown");
+  assert.equal(checkpoints[0].collectorRunId, "unknown-1h");
+  assert.equal(checkpoints[0].reason, "login_required");
+  assert.equal(checkpoints[1].status, "unsupported");
+  assert.equal(checkpoints[1].collectorRunId, "unsupported-24h");
+  assert.equal(checkpoints[1].reason, "manual_only");
+  assert.equal(checkpoints[2].status, "pending");
+});
+
+test("metric checkpoints fail closed for invalid publication timestamps and resolve ties deterministically", () => {
+  const invalid = buildMetricCheckpoints({ id: "p-invalid", publishedAt: "not-a-date" }, [], [], new Date("2026-10-06T00:00:00.000Z"));
+  assert.deepEqual(invalid.map((item) => item.status), ["unknown", "unknown", "unknown"]);
+  assert.ok(invalid.every((item) => item.reason === "published_at_invalid" && item.dueAt === null));
+
+  const post = { id: "p-checkpoint-tie", publishedAt: "2026-10-06T00:00:00.000Z", status: "published" };
+  const checkpointsA = buildMetricCheckpoints(post, [
+    { id: "metric-b", postId: post.id, capturedAt: "2026-10-06T01:00:00.000Z", impressions: 2 },
+    { id: "metric-a", postId: post.id, capturedAt: "2026-10-06T01:00:00.000Z", impressions: 1 }
+  ], [], new Date("2026-10-06T02:00:00.000Z"));
+  const checkpointsB = buildMetricCheckpoints(post, [
+    { id: "metric-a", postId: post.id, capturedAt: "2026-10-06T01:00:00.000Z", impressions: 1 },
+    { id: "metric-b", postId: post.id, capturedAt: "2026-10-06T01:00:00.000Z", impressions: 2 }
+  ], [], new Date("2026-10-06T02:00:00.000Z"));
+  assert.deepEqual(checkpointsA, checkpointsB);
+  assert.equal(checkpointsA[0].snapshotId, "metric-b");
 });
 
 test("traffic pulse uses snapshot id as deterministic tie-breaker", () => {

@@ -68,6 +68,11 @@ const DYNAMIC_EXECUTION_REASONS = new Set([
 
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
 const METRIC_COVERAGE = new Set(["measured", "unknown", "unsupported"]);
+const METRIC_CHECKPOINTS = Object.freeze([
+  { key: "1h", offsetMs: 60 * 60 * 1000 },
+  { key: "24h", offsetMs: 24 * 60 * 60 * 1000 },
+  { key: "72h", offsetMs: 72 * 60 * 60 * 1000 }
+]);
 
 function boundedQueueFailureReason(error) {
   const code = String(error?.code || "").trim();
@@ -397,6 +402,112 @@ function compareMetricSnapshots(left, right) {
   return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
 }
 
+function compareMetricEvidence(left, right) {
+  if (left.at < right.at) return -1;
+  if (left.at > right.at) return 1;
+  if (left.kind < right.kind) return -1;
+  if (left.kind > right.kind) return 1;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+/**
+ * Project bounded post-relative metric checkpoints from existing observations.
+ * This is read-only observability: it does not schedule or collect metrics.
+ */
+export function buildMetricCheckpoints(post, snapshots = [], collectorRuns = [], now = new Date()) {
+  const requestedNowMs = now instanceof Date ? now.getTime() : Date.parse(String(now || ""));
+  const nowMs = Number.isFinite(requestedNowMs) ? requestedNowMs : Date.now();
+  const publishedMs = Date.parse(post?.publishedAt || "");
+  if (!Number.isFinite(publishedMs)) {
+    return METRIC_CHECKPOINTS.map(({ key }) => ({
+      key,
+      dueAt: null,
+      status: "unknown",
+      observedAt: null,
+      snapshotId: null,
+      collectorRunId: null,
+      reason: "published_at_invalid"
+    }));
+  }
+
+  const postSnapshots = (Array.isArray(snapshots) ? snapshots : [])
+    .filter((snapshot) => snapshot?.postId === post?.id)
+    .map((snapshot) => ({
+      kind: "snapshot",
+      id: String(snapshot.id || ""),
+      atMs: Date.parse(snapshot.capturedAt || ""),
+      snapshot
+    }))
+    .filter((event) => event.id && Number.isFinite(event.atMs) && event.atMs <= nowMs);
+  const postRuns = (Array.isArray(collectorRuns) ? collectorRuns : [])
+    .filter((run) => run?.postId === post?.id)
+    .map((run) => {
+      const status = String(run.status || "").toLowerCase();
+      const projectedStatus = status === "unsupported" || status === "not_applicable"
+        ? "unsupported"
+        : status === "unknown" || status === "failed"
+          ? "unknown"
+          : null;
+      return {
+        kind: "collector_run",
+        id: String(run.id || ""),
+        atMs: Date.parse(run.at || ""),
+        projectedStatus,
+        run
+      };
+    })
+    .filter((event) => event.id && event.projectedStatus && Number.isFinite(event.atMs) && event.atMs <= nowMs);
+
+  return METRIC_CHECKPOINTS.map(({ key, offsetMs }, checkpointIndex) => {
+    const dueMs = publishedMs + offsetMs;
+    if (!Number.isFinite(dueMs)) {
+      return {
+        key,
+        dueAt: null,
+        status: "unknown",
+        observedAt: null,
+        snapshotId: null,
+        collectorRunId: null,
+        reason: "checkpoint_due_at_invalid"
+      };
+    }
+    const dueAt = new Date(dueMs).toISOString();
+    const nextDueMs = METRIC_CHECKPOINTS[checkpointIndex + 1]
+      ? publishedMs + METRIC_CHECKPOINTS[checkpointIndex + 1].offsetMs
+      : Number.POSITIVE_INFINITY;
+    const evidence = [
+      ...postSnapshots
+        .filter((event) => event.atMs >= dueMs && event.atMs < nextDueMs)
+        .map((event) => ({ ...event, at: event.atMs, status: "observed" })),
+      ...postRuns
+        .filter((event) => event.atMs >= dueMs && event.atMs < nextDueMs)
+        .map((event) => ({ ...event, at: event.atMs, status: event.projectedStatus }))
+    ].sort(compareMetricEvidence);
+    const latest = evidence.at(-1);
+    if (latest) {
+      return {
+        key,
+        dueAt,
+        status: latest.status,
+        observedAt: new Date(latest.at).toISOString(),
+        snapshotId: latest.kind === "snapshot" ? latest.id : null,
+        collectorRunId: latest.kind === "collector_run" ? latest.id : null,
+        reason: latest.kind === "collector_run" ? String(latest.run.reason || latest.run.status || latest.status) : null
+      };
+    }
+    const status = nowMs < dueMs ? "pending" : nowMs === dueMs ? "due" : "missing";
+    return {
+      key,
+      dueAt,
+      status,
+      observedAt: null,
+      snapshotId: null,
+      collectorRunId: null,
+      reason: status === "pending" ? "checkpoint_not_due" : "no_post_due_evidence"
+    };
+  });
+}
+
 function metricReadingsMatchSnapshot(snapshot, readings) {
   if (!snapshot) return false;
   return METRIC_FIELDS.every((field) => {
@@ -650,7 +761,7 @@ function metricTotals(metric = {}) {
   return Object.fromEntries(METRIC_FIELDS.map((field) => [field, Number.isSafeInteger(snapshot[field]) ? snapshot[field] : null]));
 }
 
-export function buildTrafficPulse(post, snapshots = [], interactions = [], now = new Date()) {
+export function buildTrafficPulse(post, snapshots = [], interactions = [], now = new Date(), collectorRuns = []) {
   const metrics = snapshots
     .filter((snapshot) => snapshot.postId === post.id)
     .sort((left, right) => compareMetricSnapshots(right, left));
@@ -701,6 +812,7 @@ export function buildTrafficPulse(post, snapshots = [], interactions = [], now =
     latest,
     previous,
     delta,
+    checkpoints: buildMetricCheckpoints(post, snapshots, collectorRuns, now),
     openInteractions,
     nextReviewAt: new Date(nextReviewAt).toISOString(),
     recommendation,
@@ -4374,7 +4486,7 @@ export class SeedingService {
     }));
     const trafficPulse = state.posts
       .filter((post) => post.status === "published")
-      .map((post) => buildTrafficPulse(post, state.metricSnapshots, state.interactions));
+      .map((post) => buildTrafficPulse(post, state.metricSnapshots, state.interactions, new Date(), state.collectorRuns));
     const browserWindowMinutes = 24 * 60;
     const browserWindowStartedAt = Date.now() - browserWindowMinutes * 60 * 1000;
     const publishedPosts = state.posts.filter((post) => post.status === "published" && post.publicationUrl);

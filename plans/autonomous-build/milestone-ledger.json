@@ -1,44 +1,210 @@
 {
   "schemaVersion": 1,
   "milestones": [
-    {"id":"baseline-and-journal","status":"COMPLETE","evidence":"Pinned runtime state, source inspection, journal and read-only health evidence"},
-    {"id":"standing-campaign-delegation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"c4fb42f plus integrated service/authorization/kill-switch/provider-fence tests; no live authority"},
-    {"id":"product-intelligence","status":"COMPLETE_LOCAL_VERIFIED","evidence":"2428606 + 30de649; product-intelligence evidence/claim graph, versioned handoff, campaign persistence and dashboard projection tests"},
-    {"id":"product-understanding-autoderivation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"3781bbb + 682c749; deterministic bounded field derivation from normalized local evidence, package metadata fallback, explicit-claim precedence, unsupported-claim quarantine and field-specific ranking; focused 67/67; no authority/browser/provider mutation"},
-    {"id":"discovery-foundation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"f4527af plus service persistence/projection; caller-supplied normalization, deduplication, relevance scoring and fail-closed policy tests"},
-    {"id":"product-factory","status":"COMPLETE_LOCAL_VERIFIED","evidence":"a72d231 plus integrated lineage seam; safe command allowlist, artifact hashing, bounded 24-run persistence and restart tests"},
-    {"id":"product-lineage","status":"COMPLETE_LOCAL_VERIFIED","evidence":"bounded repository inspection, credential redaction, symlink containment, product-intelligence inspection endpoint, persistent factory run history; independent verifier attempt 2 PASS (bounded)"},
-    {"id":"strategy-foundation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"a36d7a0, bd94db3, 09d2c4b; deterministic advisory publish/engage/research/wait/do_nothing decisions, bounded restart-safe history, UNKNOWN identity quarantine regression; independent review ACCEPT (bounded)"},
-    {"id":"strategy-fit-gate","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Existing advisory strategy now fails closed for explicit mismatched/unknown audience-channel-locale fit; explicit matched fit and legacy no-fit records remain compatible; focused 36/36, full 381 total (379 passed, 0 failed, 2 skipped); independent review ACCEPT (bounded)"},
-    {"id":"content-foundation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"6a7a112, 60ec249, df396e7, 3ab68ab, 07c3722, 70202e6; deterministic evidence-grounded draft candidates, campaign-bound target scoping, restart persistence, raw bounds and credential fail-closed regressions; independent review ACCEPT (bounded)"},
-    {"id":"browser-transport-certification","status":"LOCAL_CERTIFIED_ORCA_UNPROVEN_LIVE","evidence":"10-trial local fixture 100% activation; ORCA transport boundary and pointer implementation tested; no real final submit"},
-    {"id":"live-linkedin-proof","status":"BLOCKED","evidence":"No active exact LIVE authorization/window/grant; no fresh execution created"},
-    {"id":"discovery-runtime-and-scheduler","status":"COMPLETE_LOCAL_VERIFIED","evidence":"b5d9e03, 0e024b9, 81c2027 plus current observer hardening; bounded SSRF-aware public observer, DNS/body timeout bounds, opt-in 15-minute scheduler, campaign error isolation, 50 focused tests; no authority/browser/provider side effects"},
-    {"id":"audience-channel-intelligence","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Working-tree seam in src/discovery.mjs and src/service.mjs; bounded caller-supplied audience/channel/locale fit persisted through existing discovery state; independent review PASS (bounded), focused 39/39 and full suite 362 total, 360 passed, 0 failed, 2 skipped"},
-    {"id":"product-factory-artifact-evidence","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Working-tree seam in src/product-factory.mjs and src/service.mjs; deterministic bounded media/document candidate discovery and existing SHA-256 evidence collector; independent review ACCEPT (bounded), focused product-factory gate 40/40 and full suite 364 total, 362 passed, 0 failed, 2 skipped"},
-    {"id":"distribution-handoff-foundation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"e470f32 plus restart/no-side-effect regression; provider-neutral DRY_RUN-only handoff validates exact product/content/media/target identity, persists idempotently and projects read-only; independent review ACCEPT (bounded), focused 33/33; no upstream live wiring"},
-    {"id":"account-runtime-projection","status":"COMPLETE_LOCAL_VERIFIED","evidence":"b06ca32 plus bounded blocker/enum hardening; focused 3/3; independent release verifier PASS (bounded); read-only dashboard projection, redaction, restart equality and no-mutation tests; no login/credential/selector/failover"},
-    {"id":"account-runtime-readiness-projection","status":"COMPLETE_LOCAL_VERIFIED_WITH_CONCERNS","evidence":"c607e1e; focused 5/5, combined projection/service/server 34/34, full 374 total (372 passed, 0 failed, 2 skipped), independent verifier PASS (bounded); adds SESSION_REUSE/MANUAL_AUTH labels and fail-closed eligibility reasons only; live session/recovery/selection/failover unverified"},
-    {"id":"account-runtime-mission-control","status":"COMPLETE_LOCAL_VERIFIED_WITH_CONCERNS","evidence":"6dcebf9; existing GET-only Mission Control renders bounded account/session readiness, eligibility and blocker reasons; UI typecheck/build pass; independent verifier PASS (bounded); no action controls or backend changes; live/browser unverified"},
-    {"id":"product-factory-project-evidence","status":"COMPLETE_LOCAL_VERIFIED_WITH_SAFETY_BOUNDARY","evidence":"Working-tree Product Factory seam; strict relative node --check manifest allowlist, temporary staging, bounded timeout/output, artifact hashes and truthful NOT_EXECUTED_UNSAFE; focused 45/45, full 379 total (377 passed, 0 failed, 2 skipped), independent verifier PASS (bounded); arbitrary build/render execution intentionally unsupported"},
-    {"id":"mission-control-read-model","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Read-only existing-dashboard projection; UI typecheck and Vite build pass; independent review PASS (bounded); no route/store/approval/execution mutation"},
-    {"id":"integration-regression-gate","status":"PASS","evidence":"384 full tests, 382 passed, 0 failed, 2 skipped; UI typecheck/build pass; learning-aware strategy gate 49 passed; strategy fit gate 36 passed; Product Factory project-evidence focused 45 passed; combined projection/service/server 34 passed; focused discovery/service/server 50 passed; audience-fit 39 passed; observer subset 17 passed; node check and diff check passed"},
-    {"id":"outcome-learning-strategy-context","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Fail-closed current learning/outcome context is attached to advisory strategy decisions without changing publish/discovery/wait precedence or UNKNOWN quarantine; focused strategy/control-cycle/learning/outcome/service/server 49/49, full 384 total (382 passed, 0 failed, 2 skipped), independent review ACCEPT (bounded)"},
-    {"id":"outcome-attribution","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Pure bounded explicit-link-only postAttributions appended to existing outcome summary; UNKNOWN > VERIFIED > PARTIAL > UNOBSERVED; campaign-only conversions remain unassigned; focused 42/42, full 388 total (386 passed, 0 failed, 2 skipped), syntax/diff pass, independent review ACCEPT (bounded), canonical runtime schema 8 revision 194 and four protected UNKNOWN records unchanged"},
-    {"id":"post-attribution-learning-context","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Existing learning/strategy now consumes a bounded campaign-aware post attribution context for explanation only; late UNKNOWN rows are retained under the cap, global counts remain deterministic, and foreign/target-drift identity fails closed; focused 20/20, combined 56/56, full 393 total (391 passed, 0 failed, 2 skipped), syntax/diff pass, independent review rework findings resolved; no authority/browser/provider/social/UNKNOWN mutation"},
-    {"id":"metrics-observability-hardening","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Closed metric coverage vocabulary, fail-closed contradictory coverage/value inputs, deterministic capture-time plus snapshot-ID selection shared by traffic pulse and dashboard, and bounded coverage projection; focused service/outcome 39/39, independent service/outcome/control-cycle review 41/41, full Node suite 397 total (395 passed, 0 failed, 2 skipped), syntax/diff pass; no authority/browser/provider/social/UNKNOWN mutation"},
-    {"id":"content-candidate-materialization","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Working-tree seam in src/service.mjs/content-foundation.mjs/server.mjs; exact candidate identity, grounding revalidation, idempotent post lineage and automation route; focused content/service/server 44/44; full suite 403/401/0/2; no external side effects"},
-    {"id":"content-candidate-authorization-binding","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Exact active standing approved-copy authority binds candidate through existing queue/readiness/request/window/grant path; paused/revoked/expired regressions remain draft-only; no UNKNOWN/canonical mutation"},
-    {"id":"integration-regression-gate-latest","status":"PASS","evidence":"Full Node suite 406 total (404 passed, 0 failed, 2 skipped), service/server focused 42/42, node syntax check and git diff check pass; canonical runtime SHA unchanged"},
-    {"id":"authorized-content-candidate-scheduler","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Queue-only automatic materialization for one exact active standing approved-copy authorization; inactive campaign, missing/inactive/template authorization stay draft-only; repeated ticks/restart remain idempotent; reviewer ACCEPT with campaign-state hardening; focused 42/42 and full 406 total (404 passed, 0 failed, 2 skipped); no canonical/social/UNKNOWN mutation"},
-    {"id":"campaign-queue-runtime-observability","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Existing queue timer now projects bounded read-only enabled/running/timestamps/next-run/counts/error reason through /health and the existing dashboard; focused server/service/lifecycle gate 46/46 and full 406 total (404 passed, 0 failed, 2 skipped); independent review ACCEPT; no authority, browser, canonical or UNKNOWN mutation"},
-    {"id":"campaign-queue-failure-isolation","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Per-campaign candidate-materialization and queue failures return bounded codes while subsequent campaigns continue; successful result shape preserved; focused service/server/lifecycle gate 47/47; independent review ACCEPT; no authority, browser, canonical or UNKNOWN mutation"},
-    {"id":"template-candidate-binding","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Versioned deterministic approved_template_set candidates bind exact template fingerprint, claim IDs, source hashes and authorization; tamper regressions cover contract/fingerprint/authorization/claim/source/render/target drift; existing queue/readiness/request/window/grant/lease/idempotency/UNKNOWN controls reused; focused service/server 46/46, full 410/408/0/2; independent review ACCEPT; no browser/social/canonical/UNKNOWN mutation"}
-    ,{"id":"standing-template-candidate-scheduler","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Queue-only derivation from persisted stories under one exact active standing approved_template_set authority; focused 47/47, full 412/410/0/2; independent review ACCEPT; no browser/social/canonical/UNKNOWN mutation"}
-    ,{"id":"product-intelligence-story-draft","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Deterministic READY-handoff story derivation with four supported evidence-grounded fields, current source revalidation, bounded CTA/disclosure, idempotent draft-only persistence and no execution artifacts; focused 67/67, full 417/415/0/2; independent review ACCEPT; no browser/social/canonical/UNKNOWN mutation"}
-    ,{"id":"story-scheduler","status":"COMPLETE_LOCAL_VERIFIED","evidence":"Queue-owned deterministic draft story derivation behind explicit bounded storyPolicy; current authorization and campaign fingerprints required before derivation; stale/ambiguous/source-drift/incomplete paths fail closed; focused 52/52, broader 74/74, full 420/418/0/2; independent review ACCEPT; no browser/social/canonical/UNKNOWN mutation"}
-    ,{"id":"discovery-fit-compatibility","status":"COMPLETE_LOCAL_VERIFIED","evidence":"3ac7937; no-fit discovery records retain legacy shape and remain strategy-actionable, explicit fit remains fail-closed; focused 77/77, full 422 total (420 passed, 0 failed, 2 skipped), independent review PASS (bounded), syntax/diff pass; canonical runtime schema 8 revision 194 SHA unchanged; no browser/social/UNKNOWN mutation"}
-    ,{"id":"product-factory-artifact-promotion","status":"COMPLETE_LOCAL_VERIFIED","evidence":"86800a3; operator-only exact successful Product Factory run/path/hash/current-source promotion into existing artifact schema; restart idempotency, role boundary, secret-safe metadata and artifact-only side effects; focused independent review 72/72, full 424/422/0/2, syntax/diff pass; canonical schema 8 revision 194 SHA unchanged; no browser/social/UNKNOWN mutation"},
-    {"id":"post-metrics-advisory","status":"COMPLETE_LOCAL_VERIFIED","evidence":"b988ffd + f3c21ec; deterministic bounded metric assessments and fail-closed advisory validator; focused 25/25, integration 87/87, full npm test 428 total (426 passed, 0 failed, 2 skipped), syntax/diff pass, independent review PASS_BOUNDED; canonical schema 8 revision 194 SHA unchanged and protected UNKNOWN records immutable; no authority/browser/provider/social mutation"}
+    {
+      "id": "baseline-and-journal",
+      "status": "COMPLETE",
+      "evidence": "Pinned runtime state, source inspection, journal and read-only health evidence"
+    },
+    {
+      "id": "standing-campaign-delegation",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "c4fb42f plus integrated service/authorization/kill-switch/provider-fence tests; no live authority"
+    },
+    {
+      "id": "product-intelligence",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "2428606 + 30de649; product-intelligence evidence/claim graph, versioned handoff, campaign persistence and dashboard projection tests"
+    },
+    {
+      "id": "product-understanding-autoderivation",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "3781bbb + 682c749; deterministic bounded field derivation from normalized local evidence, package metadata fallback, explicit-claim precedence, unsupported-claim quarantine and field-specific ranking; focused 67/67; no authority/browser/provider mutation"
+    },
+    {
+      "id": "discovery-foundation",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "f4527af plus service persistence/projection; caller-supplied normalization, deduplication, relevance scoring and fail-closed policy tests"
+    },
+    {
+      "id": "product-factory",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "a72d231 plus integrated lineage seam; safe command allowlist, artifact hashing, bounded 24-run persistence and restart tests"
+    },
+    {
+      "id": "product-lineage",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "bounded repository inspection, credential redaction, symlink containment, product-intelligence inspection endpoint, persistent factory run history; independent verifier attempt 2 PASS (bounded)"
+    },
+    {
+      "id": "strategy-foundation",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "a36d7a0, bd94db3, 09d2c4b; deterministic advisory publish/engage/research/wait/do_nothing decisions, bounded restart-safe history, UNKNOWN identity quarantine regression; independent review ACCEPT (bounded)"
+    },
+    {
+      "id": "strategy-fit-gate",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Existing advisory strategy now fails closed for explicit mismatched/unknown audience-channel-locale fit; explicit matched fit and legacy no-fit records remain compatible; focused 36/36, full 381 total (379 passed, 0 failed, 2 skipped); independent review ACCEPT (bounded)"
+    },
+    {
+      "id": "content-foundation",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "6a7a112, 60ec249, df396e7, 3ab68ab, 07c3722, 70202e6; deterministic evidence-grounded draft candidates, campaign-bound target scoping, restart persistence, raw bounds and credential fail-closed regressions; independent review ACCEPT (bounded)"
+    },
+    {
+      "id": "browser-transport-certification",
+      "status": "LOCAL_CERTIFIED_ORCA_UNPROVEN_LIVE",
+      "evidence": "10-trial local fixture 100% activation; ORCA transport boundary and pointer implementation tested; no real final submit"
+    },
+    {
+      "id": "live-linkedin-proof",
+      "status": "BLOCKED",
+      "evidence": "No active exact LIVE authorization/window/grant; no fresh execution created"
+    },
+    {
+      "id": "discovery-runtime-and-scheduler",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "b5d9e03, 0e024b9, 81c2027 plus current observer hardening; bounded SSRF-aware public observer, DNS/body timeout bounds, opt-in 15-minute scheduler, campaign error isolation, 50 focused tests; no authority/browser/provider side effects"
+    },
+    {
+      "id": "audience-channel-intelligence",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Working-tree seam in src/discovery.mjs and src/service.mjs; bounded caller-supplied audience/channel/locale fit persisted through existing discovery state; independent review PASS (bounded), focused 39/39 and full suite 362 total, 360 passed, 0 failed, 2 skipped"
+    },
+    {
+      "id": "product-factory-artifact-evidence",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Working-tree seam in src/product-factory.mjs and src/service.mjs; deterministic bounded media/document candidate discovery and existing SHA-256 evidence collector; independent review ACCEPT (bounded), focused product-factory gate 40/40 and full suite 364 total, 362 passed, 0 failed, 2 skipped"
+    },
+    {
+      "id": "distribution-handoff-foundation",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "e470f32 plus restart/no-side-effect regression; provider-neutral DRY_RUN-only handoff validates exact product/content/media/target identity, persists idempotently and projects read-only; independent review ACCEPT (bounded), focused 33/33; no upstream live wiring"
+    },
+    {
+      "id": "account-runtime-projection",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "b06ca32 plus bounded blocker/enum hardening; focused 3/3; independent release verifier PASS (bounded); read-only dashboard projection, redaction, restart equality and no-mutation tests; no login/credential/selector/failover"
+    },
+    {
+      "id": "account-runtime-readiness-projection",
+      "status": "COMPLETE_LOCAL_VERIFIED_WITH_CONCERNS",
+      "evidence": "c607e1e; focused 5/5, combined projection/service/server 34/34, full 374 total (372 passed, 0 failed, 2 skipped), independent verifier PASS (bounded); adds SESSION_REUSE/MANUAL_AUTH labels and fail-closed eligibility reasons only; live session/recovery/selection/failover unverified"
+    },
+    {
+      "id": "account-runtime-mission-control",
+      "status": "COMPLETE_LOCAL_VERIFIED_WITH_CONCERNS",
+      "evidence": "6dcebf9; existing GET-only Mission Control renders bounded account/session readiness, eligibility and blocker reasons; UI typecheck/build pass; independent verifier PASS (bounded); no action controls or backend changes; live/browser unverified"
+    },
+    {
+      "id": "product-factory-project-evidence",
+      "status": "COMPLETE_LOCAL_VERIFIED_WITH_SAFETY_BOUNDARY",
+      "evidence": "Working-tree Product Factory seam; strict relative node --check manifest allowlist, temporary staging, bounded timeout/output, artifact hashes and truthful NOT_EXECUTED_UNSAFE; focused 45/45, full 379 total (377 passed, 0 failed, 2 skipped), independent verifier PASS (bounded); arbitrary build/render execution intentionally unsupported"
+    },
+    {
+      "id": "mission-control-read-model",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Read-only existing-dashboard projection; UI typecheck and Vite build pass; independent review PASS (bounded); no route/store/approval/execution mutation"
+    },
+    {
+      "id": "integration-regression-gate",
+      "status": "PASS",
+      "evidence": "384 full tests, 382 passed, 0 failed, 2 skipped; UI typecheck/build pass; learning-aware strategy gate 49 passed; strategy fit gate 36 passed; Product Factory project-evidence focused 45 passed; combined projection/service/server 34 passed; focused discovery/service/server 50 passed; audience-fit 39 passed; observer subset 17 passed; node check and diff check passed"
+    },
+    {
+      "id": "outcome-learning-strategy-context",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Fail-closed current learning/outcome context is attached to advisory strategy decisions without changing publish/discovery/wait precedence or UNKNOWN quarantine; focused strategy/control-cycle/learning/outcome/service/server 49/49, full 384 total (382 passed, 0 failed, 2 skipped), independent review ACCEPT (bounded)"
+    },
+    {
+      "id": "outcome-attribution",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Pure bounded explicit-link-only postAttributions appended to existing outcome summary; UNKNOWN > VERIFIED > PARTIAL > UNOBSERVED; campaign-only conversions remain unassigned; focused 42/42, full 388 total (386 passed, 0 failed, 2 skipped), syntax/diff pass, independent review ACCEPT (bounded), canonical runtime schema 8 revision 194 and four protected UNKNOWN records unchanged"
+    },
+    {
+      "id": "post-attribution-learning-context",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Existing learning/strategy now consumes a bounded campaign-aware post attribution context for explanation only; late UNKNOWN rows are retained under the cap, global counts remain deterministic, and foreign/target-drift identity fails closed; focused 20/20, combined 56/56, full 393 total (391 passed, 0 failed, 2 skipped), syntax/diff pass, independent review rework findings resolved; no authority/browser/provider/social/UNKNOWN mutation"
+    },
+    {
+      "id": "metrics-observability-hardening",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Closed metric coverage vocabulary, fail-closed contradictory coverage/value inputs, deterministic capture-time plus snapshot-ID selection shared by traffic pulse and dashboard, and bounded coverage projection; focused service/outcome 39/39, independent service/outcome/control-cycle review 41/41, full Node suite 397 total (395 passed, 0 failed, 2 skipped), syntax/diff pass; no authority/browser/provider/social/UNKNOWN mutation"
+    },
+    {
+      "id": "content-candidate-materialization",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Working-tree seam in src/service.mjs/content-foundation.mjs/server.mjs; exact candidate identity, grounding revalidation, idempotent post lineage and automation route; focused content/service/server 44/44; full suite 403/401/0/2; no external side effects"
+    },
+    {
+      "id": "content-candidate-authorization-binding",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Exact active standing approved-copy authority binds candidate through existing queue/readiness/request/window/grant path; paused/revoked/expired regressions remain draft-only; no UNKNOWN/canonical mutation"
+    },
+    {
+      "id": "integration-regression-gate-latest",
+      "status": "PASS",
+      "evidence": "Full Node suite 406 total (404 passed, 0 failed, 2 skipped), service/server focused 42/42, node syntax check and git diff check pass; canonical runtime SHA unchanged"
+    },
+    {
+      "id": "authorized-content-candidate-scheduler",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Queue-only automatic materialization for one exact active standing approved-copy authorization; inactive campaign, missing/inactive/template authorization stay draft-only; repeated ticks/restart remain idempotent; reviewer ACCEPT with campaign-state hardening; focused 42/42 and full 406 total (404 passed, 0 failed, 2 skipped); no canonical/social/UNKNOWN mutation"
+    },
+    {
+      "id": "campaign-queue-runtime-observability",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Existing queue timer now projects bounded read-only enabled/running/timestamps/next-run/counts/error reason through /health and the existing dashboard; focused server/service/lifecycle gate 46/46 and full 406 total (404 passed, 0 failed, 2 skipped); independent review ACCEPT; no authority, browser, canonical or UNKNOWN mutation"
+    },
+    {
+      "id": "campaign-queue-failure-isolation",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Per-campaign candidate-materialization and queue failures return bounded codes while subsequent campaigns continue; successful result shape preserved; focused service/server/lifecycle gate 47/47; independent review ACCEPT; no authority, browser, canonical or UNKNOWN mutation"
+    },
+    {
+      "id": "template-candidate-binding",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Versioned deterministic approved_template_set candidates bind exact template fingerprint, claim IDs, source hashes and authorization; tamper regressions cover contract/fingerprint/authorization/claim/source/render/target drift; existing queue/readiness/request/window/grant/lease/idempotency/UNKNOWN controls reused; focused service/server 46/46, full 410/408/0/2; independent review ACCEPT; no browser/social/canonical/UNKNOWN mutation"
+    },
+    {
+      "id": "standing-template-candidate-scheduler",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Queue-only derivation from persisted stories under one exact active standing approved_template_set authority; focused 47/47, full 412/410/0/2; independent review ACCEPT; no browser/social/canonical/UNKNOWN mutation"
+    },
+    {
+      "id": "product-intelligence-story-draft",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Deterministic READY-handoff story derivation with four supported evidence-grounded fields, current source revalidation, bounded CTA/disclosure, idempotent draft-only persistence and no execution artifacts; focused 67/67, full 417/415/0/2; independent review ACCEPT; no browser/social/canonical/UNKNOWN mutation"
+    },
+    {
+      "id": "story-scheduler",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Queue-owned deterministic draft story derivation behind explicit bounded storyPolicy; current authorization and campaign fingerprints required before derivation; stale/ambiguous/source-drift/incomplete paths fail closed; focused 52/52, broader 74/74, full 420/418/0/2; independent review ACCEPT; no browser/social/canonical/UNKNOWN mutation"
+    },
+    {
+      "id": "discovery-fit-compatibility",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "3ac7937; no-fit discovery records retain legacy shape and remain strategy-actionable, explicit fit remains fail-closed; focused 77/77, full 422 total (420 passed, 0 failed, 2 skipped), independent review PASS (bounded), syntax/diff pass; canonical runtime schema 8 revision 194 SHA unchanged; no browser/social/UNKNOWN mutation"
+    },
+    {
+      "id": "product-factory-artifact-promotion",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "86800a3; operator-only exact successful Product Factory run/path/hash/current-source promotion into existing artifact schema; restart idempotency, role boundary, secret-safe metadata and artifact-only side effects; focused independent review 72/72, full 424/422/0/2, syntax/diff pass; canonical schema 8 revision 194 SHA unchanged; no browser/social/UNKNOWN mutation"
+    },
+    {
+      "id": "post-metrics-advisory",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "b988ffd + f3c21ec; deterministic bounded metric assessments and fail-closed advisory validator; focused 25/25, integration 87/87, full npm test 428 total (426 passed, 0 failed, 2 skipped), syntax/diff pass, independent review PASS_BOUNDED; canonical schema 8 revision 194 SHA unchanged and protected UNKNOWN records immutable; no authority/browser/provider/social mutation"
+    },
+    {
+      "id": "official-metrics-collection",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "9ea1270 + 28798e8; existing official collection deduplicates unchanged readings by post/provider source, preserves append-only collector runs, appends changed immutable snapshots, isolates per-post failures, and keeps manual/unconfigured outcomes explicit; focused 58/58, full 430/428/0/2, syntax/diff pass, independent review PASS (bounded); canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; no live/browser/ORCA/social/UNKNOWN mutation"
+    },
+    {
+      "id": "metric-checkpoint-observability",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Working-tree bounded buildMetricCheckpoints projection; exactly three 1h/24h/72h windows from publishedAt, interval-isolated deterministic evidence selection, explicit pending/due/missing/unknown/unsupported states, invalid timestamp fail-closed behavior and existing traffic-pulse/dashboard exposure; focused 59/59, full 435/433/0/2, syntax/diff pass, independent review ACCEPT_BOUNDED; canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; no live/browser/ORCA/social/UNKNOWN mutation"
+    }
   ]
 }

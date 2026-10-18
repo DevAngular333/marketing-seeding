@@ -36,6 +36,7 @@
 - Advisory strategy now accepts only current, structurally valid learning feedback linked to the current outcome summary and records bounded learning/outcome evidence plus normalized post-attribution context; campaign-aware post/target/channel identity is checked before exposure and account/profile values are fingerprinted in the advisory projection. Action precedence and UNKNOWN quarantine remain unchanged. It does not perform outcome rerouting or execution.
 - Outcome summaries now also expose bounded explicit-link-only `postAttributions` with `UNKNOWN` > `VERIFIED` > `PARTIAL` > `UNOBSERVED` precedence, canonical publication evidence checks, deterministic latest metrics and unassigned campaign-only conversions. This is advisory evidence only and does not reroute strategy or create authority.
 - Metric observability now accepts only the `measured`/`unknown`/`unsupported` coverage vocabulary, and dashboard/traffic-pulse latest snapshot selection uses the same deterministic capture-time plus snapshot-ID ordering as outcome summaries. Invalid persisted coverage is normalized into a bounded dashboard bucket; no metric collection or authority semantics changed.
+- Official metric collection now deduplicates unchanged readings by post and official provider source while preserving an append-only `collectorRuns` record for every attempt. Changed readings append one immutable snapshot, per-post failures are isolated by `collectAllMetrics`, and manual-only/unconfigured providers remain explicit snapshot-free outcomes. This is locally verified with injected fixtures only; no live provider or LinkedIn metric collection is enabled.
 - Content candidates can now be materialized idempotently with exact story/source/content lineage. The campaign queue automatically handles candidates only under one exact active `standing_autonomous` authorization with approved-copy or versioned approved-template scope, and only while the campaign itself is active; inactive, missing, ambiguous, paused, revoked, expired or malformed template candidates remain draft-only. Existing readiness/request/one-time-window/live-grant controls are reused.
 - The campaign queue now exposes a bounded read-only runtime projection at `/health.campaignQueue` and `/api/dashboard.automation.campaignQueue`: enabled state, fixed interval, running state, start/completion timestamps, next run and bounded cycle counts/error reason. It reuses the existing scheduler and queue service seam and adds no authority or external side effect.
 - Queue evaluation now isolates candidate-materialization and per-campaign queue failures, continues healthy campaigns, preserves the successful `{ campaignId, decisions }` result shape, and reports bounded failure codes through the existing queue projection. Shared expiry/store failures remain fail-closed at the cycle boundary.
@@ -54,6 +55,8 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; Product Factory project-evidence/runtime/service gate 45/45; distribution-handoff/service/server gate 33/33. Content candidate materialization/authorization focused gate: 44 passed before scheduler, then 42 service/server tests passed with inactive-campaign hardening; template candidate binding service/server gate 46/46.
 - Full suite after learning-aware strategy context: 384 total, 382 passed, 0 failed, 2 skipped; exit 0. The focused strategy/control-cycle/learning/outcome/service/server gate is 49/49.
 - Post-metrics advisory gate: learning/strategy 25 passed, integration learning/strategy/outcome/control-cycle/service/server 87 passed, full Node suite 428 total, 426 passed, 0 failed, 2 skipped; source syntax and diff checks pass; independent review PASS_BOUNDED.
+- Official metrics collection gate: service/server/integration 58 passed, 0 failed, 0 skipped; latest full Node suite 430 total, 428 passed, 0 failed, 2 skipped; source syntax and diff checks pass; independent review PASS (bounded). No live provider, browser, ORCA, credential, canonical or social action occurred.
+- Metric checkpoint observability gate: 59 service tests passed, 0 failed, 0 skipped; latest full Node suite 435 total, 433 passed, 0 failed, 2 skipped; source syntax and `git diff --check` pass; independent review ACCEPT_BOUNDED. Checkpoints are read-only `1h`/`24h`/`72h` projections over existing snapshots and collector runs; no live provider, browser, ORCA, credential, canonical or social action occurred.
 - Metrics observability hardening gate: service/outcome 39 passed, 0 failed, 0 skipped; the pre-materialization full Node suite was 397 total, 395 passed, 0 failed, 2 skipped. Latest full Node suite is 410 total, 408 passed, 0 failed, 2 skipped; latest edited-file syntax checks and `git diff --check` passed.
 - Outcome attribution gate: focused outcome/control-cycle/learning/service 42 passed, 0 failed, 0 skipped; full suite 388 total, 386 passed, 0 failed, 2 skipped; independent review ACCEPT (bounded).
 - Post-attribution learning context gate: focused learning/strategy 20 passed, combined strategy/control-cycle/learning/outcome/service/server 56 passed, full suite 393 total, 391 passed, 0 failed, 2 skipped; independent review rework findings resolved with late-UNKNOWN retention and campaign-aware identity checks.
@@ -85,6 +88,37 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 ## Live proof
 
 `LIVE_PROOF_BLOCKED`: no fresh exact LIVE campaign authorization, one-time window, execution-scoped grant, lease, or explicit harmless test content/session input exists. ORCA is unavailable in this shell. No browser mutation or social mutation occurred.
+
+## Official metrics collection idempotence (2026-10-18)
+
+- Reused `SeedingService.collectMetrics` / `collectAllMetrics`, existing
+  `metricSnapshots` and `collectorRuns`, and the existing traffic collector
+  guard.
+- Unchanged readings return `metricsChanged: false` and no new snapshot while
+  still recording a collector run; changed readings append one snapshot and
+  retain earlier snapshots.
+- A failed provider call is recorded with a bounded error and does not stop
+  later published posts in the batch. Manual-only and unconfigured providers
+  record explicit `not_applicable` / `unknown` runs without snapshots.
+- Evidence is `SYNTHETIC` provider responses plus `LOCAL_REAL` isolated
+  temporary-store persistence testing. The live metric/API lane remains
+  unverified.
+
+## Metric checkpoint observability (2026-10-18)
+
+- The existing traffic pulse/dashboard now projects exactly three bounded
+  post-relative checkpoints: `1h`, `24h`, and `72h` from valid `publishedAt`.
+- Evidence is selected only inside `[dueAt, nextDueAt)`. The latest qualifying
+  event wins after deterministic timestamp/kind/ID ordering, so a later
+  observed snapshot can reconcile an earlier unknown run without satisfying a
+  later checkpoint.
+- Missing evidence is `pending`, `due`, or `missing` by time; unknown/failed
+  collector runs remain `unknown`; `not_applicable`/unsupported runs remain
+  `unsupported`; invalid publication time yields bounded `unknown` rows.
+- This is read-only observability. It adds no scheduler, collector, authority,
+  retry, browser, publication, provider, or state-machine behavior.
+- Focused 59/59, full 435/433/0/2, syntax/diff checks pass. Independent review
+  `ACCEPT_BOUNDED`: `plans/autonomous-build/reports/verify-20261018-metric-checkpoint-observability.md`.
 
 ## Mission Control read-model milestone
 

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "56ea34e",
+  "checkpointCommit": "28798e8",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -31,105 +31,871 @@
     "working-tree seam: exact content-candidate materialization and approved-copy standing authorization binding with inactive-authority regressions",
     "working-tree seam: versioned approved-template candidate binding with claim/source/render revalidation and HTTP role coverage",
     "b988ffd fix: fail closed post metrics advisory",
-    "f3c21ec fix: quarantine mixed malformed metric assessments"
+    "f3c21ec fix: quarantine mixed malformed metric assessments",
+    "9ea1270 feat(metrics): make official collection idempotent",
+    "28798e8 docs(metrics): record collector milestone evidence"
   ],
   "rejectedCommits": [],
   "gates": [
-    {"name":"independent_static_review","result":"ACCEPT","notes":"No blocking findings; bounded residual is duck-typed transport contract"},
-    {"name":"focused_integrated_tests","result":"PASS","tests":242,"passed":242,"failed":0,"skipped":0,"command":"node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs test/campaign-authorization.test.mjs test/standing-campaign-delegation.test.mjs test/one-time-execution-window.test.mjs test/live-execution-grant.test.mjs test/readiness-execution.test.mjs test/independent-audit.test.mjs test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/discovery.test.mjs test/service.test.mjs"},
-    {"name":"product_lineage_focused_tests","result":"PASS","tests":41,"passed":41,"failed":0,"skipped":0,"command":"node --test test/product-repository-inspection.test.mjs test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs"},
-    {"name":"full_node_suite","result":"PASS","tests":362,"passed":360,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"discovery_observer_scheduler","result":"PASS","tests":50,"passed":50,"failed":0,"skipped":0,"command":"node --test test/discovery-observer.test.mjs test/discovery-scheduler.test.mjs test/discovery.test.mjs test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs --test-name-pattern='observer|discovery|scheduler'"},
-    {"name":"observer_hardening_focused","result":"PASS","tests":17,"passed":17,"failed":0,"skipped":0,"command":"node --test test/discovery-observer.test.mjs test/discovery-scheduler.test.mjs test/discovery.test.mjs"},
-    {"name":"syntax_and_diff_check","result":"PASS","nodeCheck":"passed","gitDiffCheck":"passed"},
-    {"name":"canonical_runtime_immutability","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6"},
-    {"name":"strategy_focused_gate","result":"PASS","tests":35,"passed":35,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/service.test.mjs test/server-lifecycle.test.mjs"},
-    {"name":"content_focused_gate","result":"PASS","tests":33,"passed":33,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/service.test.mjs --test-name-pattern=content"},
-    {"name":"audience_channel_fit_review","result":"PASS_BOUNDED","tests":39,"passed":39,"failed":0,"skipped":0,"command":"node --test test/discovery.test.mjs test/discovery-scheduler.test.mjs test/service.test.mjs"},
-    {"name":"canonical_runtime_immutability_recheck","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4},
-    {"name":"product_factory_artifact_evidence","result":"PASS_BOUNDED","tests":40,"passed":40,"failed":0,"skipped":0,"command":"node --test test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs"},
-    {"name":"product_factory_independent_review","result":"ACCEPT","tests":12,"passed":12,"failed":0,"skipped":0,"notes":"No authority/browser/social/UNKNOWN semantic changes"},
-    {"name":"full_node_suite_after_factory_evidence","result":"PASS","tests":364,"passed":362,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"}
-    ,{"name":"distribution_handoff_regression","result":"PASS_BOUNDED","tests":33,"passed":33,"failed":0,"skipped":0,"command":"node --test test/distribution-handoff.test.mjs test/service.test.mjs test/server.test.mjs"},
-    {"name":"account_runtime_projection","result":"PASS_BOUNDED","tests":3,"passed":3,"failed":0,"skipped":0,"command":"node --test test/account-runtime-projection.test.mjs","notes":"Read-only dashboard projection; profile fingerprint/redaction, blocker priority, restart equality, no canonical mutation"},
-    {"name":"full_node_suite_after_account_projection","result":"PASS","tests":367,"passed":365,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"account_runtime_projection_independent_release_review","result":"PASS_BOUNDED","tests":3,"passed":3,"failed":0,"skipped":0,"report":"plans/autonomous-build/reports/verify-20261017-account-runtime-projection-release.md"},
-    {"name":"mission_control_read_model","result":"PASS_BOUNDED","notes":"Read-only dashboard projection; UI typecheck/build pass; independent review PASS; no canonical state or external mutation"},
-    {"name":"full_node_suite_after_mission_control","result":"PASS","tests":370,"passed":368,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"ui_typecheck_and_build","result":"PASS","command":"cd ui && npx tsc --noEmit && npm run build","notes":"Existing Vite config warnings only"},
-    {"name":"account_runtime_readiness_projection","result":"PASS_BOUNDED","tests":5,"passed":5,"failed":0,"skipped":0,"command":"node --test test/account-runtime-projection.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-account-runtime-readiness-projection.md"},
-    {"name":"account_runtime_projection_service_server_review","result":"PASS_BOUNDED","tests":34,"passed":34,"failed":0,"skipped":0,"command":"node --test test/account-runtime-projection.test.mjs test/service.test.mjs test/server.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-account-runtime-readiness-projection.md"},
-    {"name":"full_node_suite_after_account_runtime_readiness","result":"PASS","tests":374,"passed":372,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"account_runtime_readiness_syntax_diff","result":"PASS","command":"node --check src/service.mjs && node --check test/account-runtime-projection.test.mjs && git diff --check"},
-    {"name":"account_runtime_mission_control_ui","result":"PASS_BOUNDED","command":"cd ui && npx tsc --noEmit && npm run build","report":"plans/autonomous-build/reports/verify-20261018-account-runtime-mission-control.md","notes":"Read-only account/session projection; existing Vite config warnings only; Node suite unchanged"},
-    {"name":"product_factory_project_evidence","result":"PASS_BOUNDED","tests":45,"passed":45,"failed":0,"skipped":0,"command":"node --test test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-product-factory-project-evidence.md","notes":"Strict manifest syntax-check allowlist, staging isolation and bounded lineage; no arbitrary project scripts executed"},
-    {"name":"full_node_suite_after_product_factory_project_evidence","result":"PASS","tests":379,"passed":377,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"strategy_fit_gate","result":"PASS_BOUNDED","tests":36,"passed":36,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/service.test.mjs test/server.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-strategy-fit-gate.md"},
-    {"name":"full_node_suite_after_strategy_fit_gate","result":"PASS","tests":381,"passed":379,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"outcome_learning_strategy_context","result":"PASS_BOUNDED","tests":49,"passed":49,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/outcome.test.mjs test/service.test.mjs test/server.test.mjs","report":"plans/autonomous-build/outcome-learning-strategy/report.md"},
-    {"name":"full_node_suite_after_outcome_learning_strategy","result":"PASS","tests":384,"passed":382,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"outcome_attribution_focused","result":"PASS_BOUNDED","tests":42,"passed":42,"failed":0,"skipped":0,"command":"node --test test/outcome.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/service.test.mjs"},
-    {"name":"outcome_attribution_independent_review","result":"ACCEPT","report":"plans/autonomous-build/reports/verify-20261018-outcome-attribution.md","notes":"Explicit-link-only attribution, VERIFIED requires canonical identity evidence, UNKNOWN dominates, stable bounded metrics and evidence, campaign-only conversions unassigned"},
-    {"name":"full_node_suite_after_outcome_attribution","result":"PASS","tests":388,"passed":386,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"outcome_attribution_syntax_diff","result":"PASS","command":"node --check src/outcome.mjs && git diff --check"},
-    {"name":"canonical_runtime_immutability_after_outcome_attribution","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4},
-    {"name":"post_attribution_learning_focused","result":"PASS_BOUNDED","tests":20,"passed":20,"failed":0,"skipped":0,"command":"node --test test/learning.test.mjs test/strategy.test.mjs"},
-    {"name":"post_attribution_learning_integration","result":"PASS_BOUNDED","tests":56,"passed":56,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/outcome.test.mjs test/service.test.mjs test/server.test.mjs"},
-    {"name":"full_node_suite_after_post_attribution_learning","result":"PASS","tests":393,"passed":391,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"post_attribution_learning_static","result":"PASS","command":"node --check src/learning.mjs && node --check src/strategy.mjs && git diff --check"},
-    {"name":"metrics_observability_focused","result":"PASS_BOUNDED","tests":39,"passed":39,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/outcome.test.mjs","report":"plans/autonomous-build/metrics-observability-hardening/report.md"},
-    {"name":"metrics_observability_independent_review","result":"ACCEPT_BOUNDED","tests":41,"passed":41,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/outcome.test.mjs test/control-cycle.test.mjs","notes":"Rework addressed contradictory coverage/value semantics; dashboard and traffic pulse share deterministic snapshot ordering; no authority/browser/UNKNOWN drift"},
-    {"name":"full_node_suite_after_metrics_observability","result":"PASS","tests":397,"passed":395,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"metrics_observability_static","result":"PASS","command":"node --check src/service.mjs && git diff --check"},
-    {"name":"content_candidate_materialization_authorization","result":"PASS_BOUNDED","tests":44,"passed":44,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/service.test.mjs test/server.test.mjs","notes":"Exact candidate/source/content lineage; approved-copy standing binding; paused/revoked/expired authority remains draft-only; no external side effects"},
-    {"name":"full_node_suite_after_content_authorization","result":"PASS","tests":403,"passed":401,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"content_authorization_static_and_runtime_immutability","result":"PASS","command":"node --check src/*.mjs && git diff --check","notes":"Canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6; protected UNKNOWN execution IDs unchanged"},
-    {"name":"authorized_content_candidate_scheduler_focused","result":"PASS_BOUNDED","tests":42,"passed":42,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs","notes":"Queue-only approved-copy standing materialization; inactive campaign stale-authority regression; repeated/restart idempotency; reviewer ACCEPT with recommendation implemented"},
-    {"name":"full_node_suite_after_authorized_candidate_scheduler","result":"PASS","tests":406,"passed":404,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"},
-    {"name":"authorized_candidate_scheduler_static","result":"PASS","command":"node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"},
-    {"name":"campaign_queue_observability_focused","result":"PASS_BOUNDED","tests":46,"passed":46,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs","notes":"Read-only /health and dashboard queue projection; lifecycle and redaction assertions; no authority/browser/canonical/UNKNOWN mutation"},
-    {"name":"campaign_queue_observability_static","result":"PASS","command":"node --check src/server.mjs && node --check test/server.test.mjs && node --check test/server-lifecycle.test.mjs && git diff --check"},
-    {"name":"full_node_suite_after_campaign_queue_observability","result":"PASS","tests":406,"passed":404,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"},
-    {"name":"campaign_queue_failure_isolation_focused","result":"PASS_BOUNDED","tests":47,"passed":47,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs","notes":"One failing campaign does not starve the next; bounded failure reason; no authority/browser/canonical/UNKNOWN mutation"},
-    {"name":"campaign_queue_failure_isolation_static","result":"PASS","command":"node --check src/service.mjs && node --check src/server.mjs && node --check test/service.test.mjs && git diff --check"},
-    {"name":"template_candidate_binding_focused","result":"PASS_BOUNDED","tests":46,"passed":46,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs","notes":"Deterministic approved_template_set rendering, fingerprint/source/claim/authorization binding, contract/fingerprint/authorization/claim/source/render/target tamper rejection, queue/restart idempotency and operator-only HTTP route"},
-    {"name":"template_candidate_binding_static","result":"PASS","command":"node --check src/content-foundation.mjs && node --check src/service.mjs && node --check src/server.mjs && git diff --check"},
-    {"name":"template_candidate_binding_independent_review","result":"ACCEPT","notes":"HTTP auth reachability gap closed; no safety or acceptance findings"},
-    {"name":"full_node_suite_after_template_candidate_binding","result":"PASS","tests":410,"passed":408,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"},
-    {"name":"canonical_runtime_immutability_after_template_candidate_binding","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
-    ,{"name":"standing_template_candidate_scheduler_focused","result":"PASS_BOUNDED","tests":47,"passed":47,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs","notes":"Queue-only derivation from persisted stories; active standing authority; paused/ambiguous/inactive fail-closed; restart/idempotency; source/render/tamper safety"}
-    ,{"name":"standing_template_candidate_scheduler_static","result":"PASS","command":"node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"}
-    ,{"name":"standing_template_candidate_scheduler_independent_review","result":"ACCEPT","notes":"No blocking safety, authority, idempotency or UNKNOWN immutability findings; malformed sibling template behavior recorded as residual policy advisory"}
-    ,{"name":"full_node_suite_after_standing_template_scheduler","result":"PASS","tests":412,"passed":410,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
-    ,{"name":"canonical_runtime_immutability_after_standing_template_scheduler","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
-    ,{"name":"product_intelligence_story_draft_focused","result":"PASS_BOUNDED","tests":67,"passed":67,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/service.test.mjs test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs","notes":"READY handoff, four-field claim/evidence binding, source drift, forged lineage, unsafe disclosure, restart/idempotency and draft-only execution-state invariants"}
-    ,{"name":"product_intelligence_story_draft_static","result":"PASS","command":"node --check src/content-foundation.mjs && node --check src/service.mjs && node --check test/content-foundation.test.mjs && node --check test/service.test.mjs && git diff --check"}
-    ,{"name":"product_intelligence_story_draft_independent_review","result":"ACCEPT","notes":"No blocking findings after handoff, source-lineage and disclosure rework; local/synthetic only"}
-    ,{"name":"full_node_suite_after_product_intelligence_story_draft","result":"PASS","tests":417,"passed":415,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
-    ,{"name":"canonical_runtime_immutability_after_product_intelligence_story_draft","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
-    ,{"name":"story_scheduler_focused","result":"PASS_BOUNDED","tests":52,"passed":52,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs --test-name-pattern='queue story derivation|queue derives one deterministic product story'","notes":"Explicit storyPolicy; current authorization/campaign binding; ambiguous/stale/source-drift fail-closed; zero execution artifacts"}
-    ,{"name":"story_scheduler_broader_focused","result":"PASS_BOUNDED","tests":74,"passed":74,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs","notes":"Story/content/product-intelligence/service/server integration"}
-    ,{"name":"story_scheduler_independent_review","result":"ACCEPT","notes":"Stale authorization and campaign bindings are rejected before story derivation; no candidates/posts/requests/windows/grants/leases; UNKNOWN/idempotency preserved"}
-    ,{"name":"full_node_suite_after_story_scheduler","result":"PASS","tests":420,"passed":418,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
-    ,{"name":"story_scheduler_static","result":"PASS","command":"node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"}
-    ,{"name":"product_understanding_autoderivation_focused","result":"PASS_BOUNDED","tests":67,"passed":67,"failed":0,"skipped":0,"command":"node --test test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs test/product-repository-inspection.test.mjs test/service.test.mjs","notes":"Deterministic local evidence derivation, explicit precedence, unsupported quarantine, redaction, handoff and service persistence"}
-    ,{"name":"product_understanding_autoderivation_static","result":"PASS","command":"node --check src/product-intelligence.mjs && node --check test/product-intelligence.test.mjs && node --check test/product-intelligence-runtime.test.mjs && node --check test/product-repository-inspection.test.mjs && git diff --check"}
-    ,{"name":"product_understanding_autoderivation_runtime_immutability","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
-    ,{"name":"discovery_fit_compatibility_focused","result":"PASS_BOUNDED","tests":77,"passed":77,"failed":0,"skipped":0,"command":"node --test test/discovery.test.mjs test/strategy.test.mjs test/discovery-scheduler.test.mjs test/service.test.mjs","report":"plans/autonomous-build/reports/verify-20261018-discovery-fit-compatibility-final.md"}
-    ,{"name":"discovery_fit_compatibility_independent_review","result":"PASS_BOUNDED","report":"plans/autonomous-build/reports/verify-20261018-discovery-fit-compatibility-final.md","notes":"No-fit fit metadata is opt-in; explicit mismatch/unknown remains excluded; no execution or authority source changes"}
-    ,{"name":"full_node_suite_after_discovery_fit_compatibility","result":"PASS","tests":422,"passed":420,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
-    ,{"name":"discovery_fit_compatibility_static","result":"PASS","command":"for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"}
-    ,{"name":"canonical_runtime_immutability_after_discovery_fit_compatibility","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
-    ,{"name":"product_factory_artifact_promotion_independent_review","result":"PASS_BOUNDED","report":"plans/autonomous-build/reports/verify-20261018-product-factory-artifact-promotion.md","notes":"Exact run/campaign/path/hash/current-source binding; operator-only route; restart idempotency; no authority, publication, browser or UNKNOWN effects"}
-    ,{"name":"full_node_suite_after_product_factory_artifact_promotion","result":"PASS","tests":424,"passed":422,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
-    ,{"name":"product_factory_artifact_promotion_static","result":"PASS","command":"for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"}
-    ,{"name":"canonical_runtime_immutability_after_product_factory_artifact_promotion","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknownExecutions":4,"protectedUnknownUncertainties":4}
-    ,{"name":"post_metrics_advisory_focused","result":"PASS_BOUNDED","tests":25,"passed":25,"failed":0,"skipped":0,"command":"node --test test/learning.test.mjs test/strategy.test.mjs","report":"plans/autonomous-build/post-metrics-advisory/report.md"}
-    ,{"name":"post_metrics_advisory_integration","result":"PASS","tests":87,"passed":87,"failed":0,"skipped":0,"command":"node --test test/learning.test.mjs test/strategy.test.mjs test/outcome.test.mjs test/control-cycle.test.mjs test/service.test.mjs test/server.test.mjs"}
-    ,{"name":"post_metrics_advisory_full_suite","result":"PASS","tests":428,"passed":426,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
-    ,{"name":"post_metrics_advisory_static","result":"PASS","command":"for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"}
-    ,{"name":"post_metrics_advisory_independent_review","result":"PASS_BOUNDED","report":"plans/autonomous-build/reports/verify-20261018-post-metrics-advisory.md","notes":"Bounded projection, tamper checks, invalid/unsupported/mixed metric fail-closed behavior; no side effects"}
-    ,{"name":"canonical_runtime_immutability_after_post_metrics_advisory","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknownExecutions":4,"protectedUnknownUncertainties":4}
-
+    {
+      "name": "independent_static_review",
+      "result": "ACCEPT",
+      "notes": "No blocking findings; bounded residual is duck-typed transport contract"
+    },
+    {
+      "name": "focused_integrated_tests",
+      "result": "PASS",
+      "tests": 242,
+      "passed": 242,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs test/campaign-authorization.test.mjs test/standing-campaign-delegation.test.mjs test/one-time-execution-window.test.mjs test/live-execution-grant.test.mjs test/readiness-execution.test.mjs test/independent-audit.test.mjs test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/discovery.test.mjs test/service.test.mjs"
+    },
+    {
+      "name": "product_lineage_focused_tests",
+      "result": "PASS",
+      "tests": 41,
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/product-repository-inspection.test.mjs test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs"
+    },
+    {
+      "name": "full_node_suite",
+      "result": "PASS",
+      "tests": 362,
+      "passed": 360,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "discovery_observer_scheduler",
+      "result": "PASS",
+      "tests": 50,
+      "passed": 50,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/discovery-observer.test.mjs test/discovery-scheduler.test.mjs test/discovery.test.mjs test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs --test-name-pattern='observer|discovery|scheduler'"
+    },
+    {
+      "name": "observer_hardening_focused",
+      "result": "PASS",
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/discovery-observer.test.mjs test/discovery-scheduler.test.mjs test/discovery.test.mjs"
+    },
+    {
+      "name": "syntax_and_diff_check",
+      "result": "PASS",
+      "nodeCheck": "passed",
+      "gitDiffCheck": "passed"
+    },
+    {
+      "name": "canonical_runtime_immutability",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6"
+    },
+    {
+      "name": "strategy_focused_gate",
+      "result": "PASS",
+      "tests": 35,
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/strategy.test.mjs test/service.test.mjs test/server-lifecycle.test.mjs"
+    },
+    {
+      "name": "content_focused_gate",
+      "result": "PASS",
+      "tests": 33,
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/content-foundation.test.mjs test/service.test.mjs --test-name-pattern=content"
+    },
+    {
+      "name": "audience_channel_fit_review",
+      "result": "PASS_BOUNDED",
+      "tests": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/discovery.test.mjs test/discovery-scheduler.test.mjs test/service.test.mjs"
+    },
+    {
+      "name": "canonical_runtime_immutability_recheck",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknowns": 4
+    },
+    {
+      "name": "product_factory_artifact_evidence",
+      "result": "PASS_BOUNDED",
+      "tests": 40,
+      "passed": 40,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs"
+    },
+    {
+      "name": "product_factory_independent_review",
+      "result": "ACCEPT",
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "notes": "No authority/browser/social/UNKNOWN semantic changes"
+    },
+    {
+      "name": "full_node_suite_after_factory_evidence",
+      "result": "PASS",
+      "tests": 364,
+      "passed": 362,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "distribution_handoff_regression",
+      "result": "PASS_BOUNDED",
+      "tests": 33,
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/distribution-handoff.test.mjs test/service.test.mjs test/server.test.mjs"
+    },
+    {
+      "name": "account_runtime_projection",
+      "result": "PASS_BOUNDED",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/account-runtime-projection.test.mjs",
+      "notes": "Read-only dashboard projection; profile fingerprint/redaction, blocker priority, restart equality, no canonical mutation"
+    },
+    {
+      "name": "full_node_suite_after_account_projection",
+      "result": "PASS",
+      "tests": 367,
+      "passed": 365,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "account_runtime_projection_independent_release_review",
+      "result": "PASS_BOUNDED",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "report": "plans/autonomous-build/reports/verify-20261017-account-runtime-projection-release.md"
+    },
+    {
+      "name": "mission_control_read_model",
+      "result": "PASS_BOUNDED",
+      "notes": "Read-only dashboard projection; UI typecheck/build pass; independent review PASS; no canonical state or external mutation"
+    },
+    {
+      "name": "full_node_suite_after_mission_control",
+      "result": "PASS",
+      "tests": 370,
+      "passed": 368,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "ui_typecheck_and_build",
+      "result": "PASS",
+      "command": "cd ui && npx tsc --noEmit && npm run build",
+      "notes": "Existing Vite config warnings only"
+    },
+    {
+      "name": "account_runtime_readiness_projection",
+      "result": "PASS_BOUNDED",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/account-runtime-projection.test.mjs",
+      "report": "plans/autonomous-build/reports/verify-20261018-account-runtime-readiness-projection.md"
+    },
+    {
+      "name": "account_runtime_projection_service_server_review",
+      "result": "PASS_BOUNDED",
+      "tests": 34,
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/account-runtime-projection.test.mjs test/service.test.mjs test/server.test.mjs",
+      "report": "plans/autonomous-build/reports/verify-20261018-account-runtime-readiness-projection.md"
+    },
+    {
+      "name": "full_node_suite_after_account_runtime_readiness",
+      "result": "PASS",
+      "tests": 374,
+      "passed": 372,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "account_runtime_readiness_syntax_diff",
+      "result": "PASS",
+      "command": "node --check src/service.mjs && node --check test/account-runtime-projection.test.mjs && git diff --check"
+    },
+    {
+      "name": "account_runtime_mission_control_ui",
+      "result": "PASS_BOUNDED",
+      "command": "cd ui && npx tsc --noEmit && npm run build",
+      "report": "plans/autonomous-build/reports/verify-20261018-account-runtime-mission-control.md",
+      "notes": "Read-only account/session projection; existing Vite config warnings only; Node suite unchanged"
+    },
+    {
+      "name": "product_factory_project_evidence",
+      "result": "PASS_BOUNDED",
+      "tests": 45,
+      "passed": 45,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/product-factory.test.mjs test/product-factory-runtime.test.mjs test/service.test.mjs",
+      "report": "plans/autonomous-build/reports/verify-20261018-product-factory-project-evidence.md",
+      "notes": "Strict manifest syntax-check allowlist, staging isolation and bounded lineage; no arbitrary project scripts executed"
+    },
+    {
+      "name": "full_node_suite_after_product_factory_project_evidence",
+      "result": "PASS",
+      "tests": 379,
+      "passed": 377,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "strategy_fit_gate",
+      "result": "PASS_BOUNDED",
+      "tests": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/strategy.test.mjs test/service.test.mjs test/server.test.mjs",
+      "report": "plans/autonomous-build/reports/verify-20261018-strategy-fit-gate.md"
+    },
+    {
+      "name": "full_node_suite_after_strategy_fit_gate",
+      "result": "PASS",
+      "tests": 381,
+      "passed": 379,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "outcome_learning_strategy_context",
+      "result": "PASS_BOUNDED",
+      "tests": 49,
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/strategy.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/outcome.test.mjs test/service.test.mjs test/server.test.mjs",
+      "report": "plans/autonomous-build/outcome-learning-strategy/report.md"
+    },
+    {
+      "name": "full_node_suite_after_outcome_learning_strategy",
+      "result": "PASS",
+      "tests": 384,
+      "passed": 382,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "outcome_attribution_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 42,
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/outcome.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/service.test.mjs"
+    },
+    {
+      "name": "outcome_attribution_independent_review",
+      "result": "ACCEPT",
+      "report": "plans/autonomous-build/reports/verify-20261018-outcome-attribution.md",
+      "notes": "Explicit-link-only attribution, VERIFIED requires canonical identity evidence, UNKNOWN dominates, stable bounded metrics and evidence, campaign-only conversions unassigned"
+    },
+    {
+      "name": "full_node_suite_after_outcome_attribution",
+      "result": "PASS",
+      "tests": 388,
+      "passed": 386,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "outcome_attribution_syntax_diff",
+      "result": "PASS",
+      "command": "node --check src/outcome.mjs && git diff --check"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_outcome_attribution",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknowns": 4
+    },
+    {
+      "name": "post_attribution_learning_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/learning.test.mjs test/strategy.test.mjs"
+    },
+    {
+      "name": "post_attribution_learning_integration",
+      "result": "PASS_BOUNDED",
+      "tests": 56,
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/strategy.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/outcome.test.mjs test/service.test.mjs test/server.test.mjs"
+    },
+    {
+      "name": "full_node_suite_after_post_attribution_learning",
+      "result": "PASS",
+      "tests": 393,
+      "passed": 391,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "post_attribution_learning_static",
+      "result": "PASS",
+      "command": "node --check src/learning.mjs && node --check src/strategy.mjs && git diff --check"
+    },
+    {
+      "name": "metrics_observability_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/outcome.test.mjs",
+      "report": "plans/autonomous-build/metrics-observability-hardening/report.md"
+    },
+    {
+      "name": "metrics_observability_independent_review",
+      "result": "ACCEPT_BOUNDED",
+      "tests": 41,
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/outcome.test.mjs test/control-cycle.test.mjs",
+      "notes": "Rework addressed contradictory coverage/value semantics; dashboard and traffic pulse share deterministic snapshot ordering; no authority/browser/UNKNOWN drift"
+    },
+    {
+      "name": "full_node_suite_after_metrics_observability",
+      "result": "PASS",
+      "tests": 397,
+      "passed": 395,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "metrics_observability_static",
+      "result": "PASS",
+      "command": "node --check src/service.mjs && git diff --check"
+    },
+    {
+      "name": "content_candidate_materialization_authorization",
+      "result": "PASS_BOUNDED",
+      "tests": 44,
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/content-foundation.test.mjs test/service.test.mjs test/server.test.mjs",
+      "notes": "Exact candidate/source/content lineage; approved-copy standing binding; paused/revoked/expired authority remains draft-only; no external side effects"
+    },
+    {
+      "name": "full_node_suite_after_content_authorization",
+      "result": "PASS",
+      "tests": 403,
+      "passed": 401,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "node --test test/*.test.mjs"
+    },
+    {
+      "name": "content_authorization_static_and_runtime_immutability",
+      "result": "PASS",
+      "command": "node --check src/*.mjs && git diff --check",
+      "notes": "Canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6; protected UNKNOWN execution IDs unchanged"
+    },
+    {
+      "name": "authorized_content_candidate_scheduler_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 42,
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs",
+      "notes": "Queue-only approved-copy standing materialization; inactive campaign stale-authority regression; repeated/restart idempotency; reviewer ACCEPT with recommendation implemented"
+    },
+    {
+      "name": "full_node_suite_after_authorized_candidate_scheduler",
+      "result": "PASS",
+      "tests": 406,
+      "passed": 404,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "authorized_candidate_scheduler_static",
+      "result": "PASS",
+      "command": "node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"
+    },
+    {
+      "name": "campaign_queue_observability_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 46,
+      "passed": 46,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs",
+      "notes": "Read-only /health and dashboard queue projection; lifecycle and redaction assertions; no authority/browser/canonical/UNKNOWN mutation"
+    },
+    {
+      "name": "campaign_queue_observability_static",
+      "result": "PASS",
+      "command": "node --check src/server.mjs && node --check test/server.test.mjs && node --check test/server-lifecycle.test.mjs && git diff --check"
+    },
+    {
+      "name": "full_node_suite_after_campaign_queue_observability",
+      "result": "PASS",
+      "tests": 406,
+      "passed": 404,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "campaign_queue_failure_isolation_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 47,
+      "passed": 47,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs",
+      "notes": "One failing campaign does not starve the next; bounded failure reason; no authority/browser/canonical/UNKNOWN mutation"
+    },
+    {
+      "name": "campaign_queue_failure_isolation_static",
+      "result": "PASS",
+      "command": "node --check src/service.mjs && node --check src/server.mjs && node --check test/service.test.mjs && git diff --check"
+    },
+    {
+      "name": "template_candidate_binding_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 46,
+      "passed": 46,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs",
+      "notes": "Deterministic approved_template_set rendering, fingerprint/source/claim/authorization binding, contract/fingerprint/authorization/claim/source/render/target tamper rejection, queue/restart idempotency and operator-only HTTP route"
+    },
+    {
+      "name": "template_candidate_binding_static",
+      "result": "PASS",
+      "command": "node --check src/content-foundation.mjs && node --check src/service.mjs && node --check src/server.mjs && git diff --check"
+    },
+    {
+      "name": "template_candidate_binding_independent_review",
+      "result": "ACCEPT",
+      "notes": "HTTP auth reachability gap closed; no safety or acceptance findings"
+    },
+    {
+      "name": "full_node_suite_after_template_candidate_binding",
+      "result": "PASS",
+      "tests": 410,
+      "passed": 408,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_template_candidate_binding",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknowns": 4
+    },
+    {
+      "name": "standing_template_candidate_scheduler_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 47,
+      "passed": 47,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs",
+      "notes": "Queue-only derivation from persisted stories; active standing authority; paused/ambiguous/inactive fail-closed; restart/idempotency; source/render/tamper safety"
+    },
+    {
+      "name": "standing_template_candidate_scheduler_static",
+      "result": "PASS",
+      "command": "node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"
+    },
+    {
+      "name": "standing_template_candidate_scheduler_independent_review",
+      "result": "ACCEPT",
+      "notes": "No blocking safety, authority, idempotency or UNKNOWN immutability findings; malformed sibling template behavior recorded as residual policy advisory"
+    },
+    {
+      "name": "full_node_suite_after_standing_template_scheduler",
+      "result": "PASS",
+      "tests": 412,
+      "passed": 410,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_standing_template_scheduler",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknowns": 4
+    },
+    {
+      "name": "product_intelligence_story_draft_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 67,
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/content-foundation.test.mjs test/service.test.mjs test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs",
+      "notes": "READY handoff, four-field claim/evidence binding, source drift, forged lineage, unsafe disclosure, restart/idempotency and draft-only execution-state invariants"
+    },
+    {
+      "name": "product_intelligence_story_draft_static",
+      "result": "PASS",
+      "command": "node --check src/content-foundation.mjs && node --check src/service.mjs && node --check test/content-foundation.test.mjs && node --check test/service.test.mjs && git diff --check"
+    },
+    {
+      "name": "product_intelligence_story_draft_independent_review",
+      "result": "ACCEPT",
+      "notes": "No blocking findings after handoff, source-lineage and disclosure rework; local/synthetic only"
+    },
+    {
+      "name": "full_node_suite_after_product_intelligence_story_draft",
+      "result": "PASS",
+      "tests": 417,
+      "passed": 415,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_product_intelligence_story_draft",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknowns": 4
+    },
+    {
+      "name": "story_scheduler_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 52,
+      "passed": 52,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs --test-name-pattern='queue story derivation|queue derives one deterministic product story'",
+      "notes": "Explicit storyPolicy; current authorization/campaign binding; ambiguous/stale/source-drift fail-closed; zero execution artifacts"
+    },
+    {
+      "name": "story_scheduler_broader_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 74,
+      "passed": 74,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/content-foundation.test.mjs test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs",
+      "notes": "Story/content/product-intelligence/service/server integration"
+    },
+    {
+      "name": "story_scheduler_independent_review",
+      "result": "ACCEPT",
+      "notes": "Stale authorization and campaign bindings are rejected before story derivation; no candidates/posts/requests/windows/grants/leases; UNKNOWN/idempotency preserved"
+    },
+    {
+      "name": "full_node_suite_after_story_scheduler",
+      "result": "PASS",
+      "tests": 420,
+      "passed": 418,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "story_scheduler_static",
+      "result": "PASS",
+      "command": "node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"
+    },
+    {
+      "name": "product_understanding_autoderivation_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 67,
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs test/product-repository-inspection.test.mjs test/service.test.mjs",
+      "notes": "Deterministic local evidence derivation, explicit precedence, unsupported quarantine, redaction, handoff and service persistence"
+    },
+    {
+      "name": "product_understanding_autoderivation_static",
+      "result": "PASS",
+      "command": "node --check src/product-intelligence.mjs && node --check test/product-intelligence.test.mjs && node --check test/product-intelligence-runtime.test.mjs && node --check test/product-repository-inspection.test.mjs && git diff --check"
+    },
+    {
+      "name": "product_understanding_autoderivation_runtime_immutability",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknowns": 4
+    },
+    {
+      "name": "discovery_fit_compatibility_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 77,
+      "passed": 77,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/discovery.test.mjs test/strategy.test.mjs test/discovery-scheduler.test.mjs test/service.test.mjs",
+      "report": "plans/autonomous-build/reports/verify-20261018-discovery-fit-compatibility-final.md"
+    },
+    {
+      "name": "discovery_fit_compatibility_independent_review",
+      "result": "PASS_BOUNDED",
+      "report": "plans/autonomous-build/reports/verify-20261018-discovery-fit-compatibility-final.md",
+      "notes": "No-fit fit metadata is opt-in; explicit mismatch/unknown remains excluded; no execution or authority source changes"
+    },
+    {
+      "name": "full_node_suite_after_discovery_fit_compatibility",
+      "result": "PASS",
+      "tests": 422,
+      "passed": 420,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "discovery_fit_compatibility_static",
+      "result": "PASS",
+      "command": "for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_discovery_fit_compatibility",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknowns": 4
+    },
+    {
+      "name": "product_factory_artifact_promotion_independent_review",
+      "result": "PASS_BOUNDED",
+      "report": "plans/autonomous-build/reports/verify-20261018-product-factory-artifact-promotion.md",
+      "notes": "Exact run/campaign/path/hash/current-source binding; operator-only route; restart idempotency; no authority, publication, browser or UNKNOWN effects"
+    },
+    {
+      "name": "full_node_suite_after_product_factory_artifact_promotion",
+      "result": "PASS",
+      "tests": 424,
+      "passed": 422,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "product_factory_artifact_promotion_static",
+      "result": "PASS",
+      "command": "for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_product_factory_artifact_promotion",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 4
+    },
+    {
+      "name": "post_metrics_advisory_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/learning.test.mjs test/strategy.test.mjs",
+      "report": "plans/autonomous-build/post-metrics-advisory/report.md"
+    },
+    {
+      "name": "post_metrics_advisory_integration",
+      "result": "PASS",
+      "tests": 87,
+      "passed": 87,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/learning.test.mjs test/strategy.test.mjs test/outcome.test.mjs test/control-cycle.test.mjs test/service.test.mjs test/server.test.mjs"
+    },
+    {
+      "name": "post_metrics_advisory_full_suite",
+      "result": "PASS",
+      "tests": 428,
+      "passed": 426,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "post_metrics_advisory_static",
+      "result": "PASS",
+      "command": "for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"
+    },
+    {
+      "name": "post_metrics_advisory_independent_review",
+      "result": "PASS_BOUNDED",
+      "report": "plans/autonomous-build/reports/verify-20261018-post-metrics-advisory.md",
+      "notes": "Bounded projection, tamper checks, invalid/unsupported/mixed metric fail-closed behavior; no side effects"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_post_metrics_advisory",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 4
+    },
+    {
+      "name": "official_metrics_collection_focused",
+      "result": "PASS_BOUNDED",
+      "tests": 58,
+      "passed": 58,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs test/integrations.test.mjs",
+      "report": "plans/autonomous-build/official-metrics-collection/report.md"
+    },
+    {
+      "name": "official_metrics_collection_independent_review",
+      "result": "PASS_BOUNDED",
+      "report": "plans/autonomous-build/reports/verify-20261018-official-metrics-collection.md",
+      "notes": "Idempotence, immutable changed snapshots, failure isolation, manual/unconfigured outcomes and no safety drift reviewed; external response-envelope compatibility caveat recorded"
+    },
+    {
+      "name": "full_node_suite_after_official_metrics_collection",
+      "result": "PASS",
+      "tests": 430,
+      "passed": 428,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "official_metrics_collection_static",
+      "result": "PASS",
+      "command": "for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_official_metrics_collection",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknowns": 4
+    },
+    {
+      "name": "metric_checkpoint_observability_focused",
+      "result": "ACCEPT_BOUNDED",
+      "tests": 59,
+      "passed": 59,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs",
+      "report": "plans/autonomous-build/metric-checkpoint-observability/report.md"
+    },
+    {
+      "name": "metric_checkpoint_observability_independent_review",
+      "result": "ACCEPT_BOUNDED",
+      "report": "plans/autonomous-build/reports/verify-20261018-metric-checkpoint-observability.md",
+      "notes": "Evidence is interval-isolated to [dueAt,nextDueAt), latest qualifying evidence wins deterministically; no authority/browser/provider/UNKNOWN drift"
+    },
+    {
+      "name": "full_node_suite_after_metric_checkpoint_observability",
+      "result": "PASS",
+      "tests": 435,
+      "passed": 433,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "metric_checkpoint_observability_static",
+      "result": "PASS",
+      "command": "node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_metric_checkpoint_observability",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 4
+    }
   ]
 }

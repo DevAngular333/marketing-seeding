@@ -27,10 +27,26 @@
       "status": "OPEN",
       "owner_worker": "master",
       "remediation": "Retain fail-closed transport policy; collect repeatable reversible-control activation evidence in an authorized ORCA session before considering irreversible transport certification.",
-      "verification": "Local 10-trial fixture reports 10/10 activation; source tests validate ORCA accessibility and pointer command paths. ORCA CLI is unavailable in this shell and no live action was performed.",
+      "verification": "Local fixture certification and official metrics local gates pass; ORCA CLI unavailable in this shell and no live action was performed.",
       "resolved_at": null,
       "resume_point": "A permitted read-only/reversible ORCA calibration session with positive structural activation evidence and unchanged canonical runtime.",
       "external_dependency": "ORCA runtime/session available in a controlled browser lane",
+      "last_checked_at": "2026-10-18T00:00:00Z"
+    },
+    {
+      "blocker_id": "METRICS-CHECKPOINT-LIVE-001",
+      "classification": "OBSERVABILITY_BLOCKER",
+      "milestone": "metric-checkpoint-observability",
+      "root_cause": "Checkpoint projection can classify persisted evidence but cannot schedule exact-time collection or establish live provider authenticity.",
+      "affected_scope": "exact cadence and live metrics proof",
+      "detected_at": "2026-10-18T00:00:00Z",
+      "status": "QUARANTINED",
+      "owner_worker": "master",
+      "remediation": "Keep checkpoint projection read-only and require a separately authorized live provider lane before claiming exact cadence or live metric proof.",
+      "verification": "Focused 59/59, full 435/433/0/2, syntax/diff checks and independent ACCEPT_BOUNDED review.",
+      "resolved_at": null,
+      "resume_point": "Authorized provider credentials/network and a durable collection cadence policy.",
+      "external_dependency": "Live provider access and policy authorization",
       "last_checked_at": "2026-10-18T00:00:00Z"
     }
   ]
