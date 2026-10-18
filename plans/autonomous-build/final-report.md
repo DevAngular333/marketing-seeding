@@ -20,6 +20,7 @@ The integration branch now contains local, tested foundations for bounded standi
 
 - Exact campaign/account/profile/target/content/visibility authorization with quotas, cadence, concurrency, idempotency, readiness and kill-switch fencing.
 - Standing campaign authorization can derive bounded one-time execution controls without routine per-post approval, subject to existing operator-created campaign authority.
+- Queue-driven approved-copy candidates can enter that standing path automatically only for an active campaign and one exact active standing authorization; repeated ticks/restart remain idempotent and template/inactive/ambiguous cases stay draft-only.
 - Product intelligence emits evidence/claim hashes, supported/unsupported claims and a versioned handoff; integration branch persists/projects it read-only.
 - Product factory classifies a repository, executes only the strict fail-closed `node --check` manifest plan in temporary staging with bounds and optional artifact hashes, persists a bounded campaign-owned run lineage and has no external side effect. Arbitrary project scripts and build/render commands remain explicitly unexecuted.
 - Discovery normalizes, deduplicates, policy-classifies and scores observations; the opt-in public HTTP observer and 15-minute scheduler persist only bounded successful observations, isolate campaign errors, and do not create publish authority.
@@ -37,7 +38,7 @@ The integration branch now contains local, tested foundations for bounded standi
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
- Full Node suite: latest 403 total, 401 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: latest 406 total, 404 passed, 0 failed, 2 skipped; exit 0
  Product Factory project-evidence/runtime/service gate: 45 passed, 0 failed, 0 skipped; independent safety review PASS (bounded)
  UI typecheck: `cd ui && npx tsc --noEmit` → PASS
  UI production build: `cd ui && npm run build` → PASS (existing Vite config warnings only)
@@ -73,5 +74,5 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 - Exact evidence-grounded candidate materialization now rereads grounding bytes, recomputes identity/content hash, and persists one idempotent post lineage.
 - An exact active `standing_autonomous` authorization with `approved_copy_set` can bind the candidate to the existing queue/readiness/request/one-time-window/live-grant path without a per-post approval step.
 - Paused, revoked and expired authorizations remain draft-only and create no execution artifacts. Multiple active or mismatched authority fails closed. `approved_template_set` remains draft-only in this path.
-- Focused content candidate gate: 44 passed, 0 failed, 0 skipped. Full Node suite: 403 total, 401 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
+- The queue now materializes exact approved-copy candidates only for an active campaign with one exact active standing authorization; inactive campaign, ambiguous/inactive authority and template-set cases stay draft-only. Focused scheduler/service/server gate: 42 passed, 0 failed, 0 skipped. Full Node suite: 406 total, 404 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
 - Canonical runtime remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; no social mutation and no historical UNKNOWN mutation occurred.

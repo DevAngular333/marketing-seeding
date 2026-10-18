@@ -1861,6 +1861,7 @@ export class SeedingService {
   async materializeContentCandidate(campaignId, input = {}, actor = "automation") {
     const candidateId = String(input.contentId || input.candidateId || "").trim();
     const candidateIdentity = String(input.contentIdentity || "").trim();
+    const requireStandingAuthorization = input.requireStandingAuthorization === true;
     if (!candidateId || !candidateIdentity) throw new Error("Exact content candidate identity is required");
     let shouldPrepareExecution = false;
     const result = await this.store.mutate(actor, "content_candidate_materialized", async (state) => {
@@ -1903,7 +1904,7 @@ export class SeedingService {
       const destination = authorization?.destinations?.find((item) => item.targetId === target.id && item.platform === target.channel && item.accountId === target.accountId && item.profileId === target.profileId && item.targetUrl === target.url);
       const boundary = authorization?.contentBoundary || {};
       const candidateFitsStandingAuthorization = Boolean(
-        authorization && authorization.executionMode === "standing_autonomous" && authorization.allowLiveExecution === true &&
+        campaign.status === "active" && authorization && authorization.executionMode === "standing_autonomous" && authorization.allowLiveExecution === true &&
         authorization.binding === campaignAuthorizationFingerprint(authorization) &&
         authorization.campaignBinding === campaignScopeFingerprint(campaign) &&
         Number.isFinite(Date.parse(authorization.validFrom)) && now >= new Date(authorization.validFrom) &&
@@ -1912,6 +1913,9 @@ export class SeedingService {
         authorization.audienceRules?.allowedAudiences?.includes(String(story.audience || "").trim()) &&
         (authorization.publicationVisibilityRules?.allowedVisibilities || ["PUBLIC"]).includes("PUBLIC")
       );
+      if (requireStandingAuthorization && !candidateFitsStandingAuthorization) {
+        throw new Error("Content candidate does not fit one exact active standing authorization");
+      }
       const existing = state.posts.find((post) => post.idempotencyKey === identityKey || publicationIdentityKeysForPost(post, state).includes(identityKey));
       if (existing) {
         if (existing.campaignId !== campaignId || existing.targetId !== target.id || existing.contentId !== candidate.contentId || existing.contentIdentity !== candidate.contentIdentity ||
@@ -1999,6 +2003,50 @@ export class SeedingService {
     return result.result;
   }
 
+  /**
+   * Materialize only exact approved-copy candidates during the autonomous queue
+   * pass. This is deliberately separate from the advisory control cycle: the
+   * queue owns authority side effects and reuses the existing materialization,
+   * readiness, request, window and grant contracts.
+   */
+  async materializeAuthorizedContentCandidates(campaignId, actor = "campaign-queue-scheduler") {
+    const snapshot = await this.store.read();
+    const campaign = requireItem(snapshot.campaigns, campaignId, "Campaign");
+    const activeAuthorizations = (snapshot.campaignAuthorizations || [])
+      .filter((item) => item.campaignId === campaignId && item.status === "active");
+    const authorization = activeAuthorizations.length === 1 ? activeAuthorizations[0] : null;
+    if (!authorization || authorization.executionMode !== "standing_autonomous" || authorization.allowLiveExecution !== true || authorization.contentBoundary?.mode !== "approved_copy_set") {
+      return { campaignId, materialized: [], skipped: (campaign.contentCandidates || []).filter((item) => item.status === "draft").length, reason: "standing_approved_copy_authorization_not_uniquely_active" };
+    }
+    const results = [];
+    for (const candidate of (campaign.contentCandidates || []).filter((item) => item.status === "draft")) {
+      const existing = snapshot.posts.filter((post) => post.campaignId === campaignId && post.targetId === candidate.targetId && post.contentId === candidate.contentId);
+      if (existing.length > 1) {
+        results.push({ contentId: candidate.contentId, status: "blocked", reason: "duplicate_candidate_posts" });
+        continue;
+      }
+      if (existing[0] && !["draft", "blocked", "queued"].includes(existing[0].status)) {
+        // A terminal or uncertain post is never replayed from a still-draft
+        // candidate. UNKNOWN remains quarantined and immutable.
+        results.push({ contentId: candidate.contentId, status: "skipped", reason: "existing_post_terminal_or_uncertain" });
+        continue;
+      }
+      try {
+        const post = await this.materializeContentCandidate(campaignId, {
+          contentId: candidate.contentId,
+          contentIdentity: candidate.contentIdentity,
+          requireStandingAuthorization: true
+        }, actor);
+        results.push({ contentId: candidate.contentId, postId: post.id, status: post.status });
+      } catch (error) {
+        // One malformed or stale candidate must not prevent other campaigns or
+        // candidates from being evaluated on the next bounded queue tick.
+        results.push({ contentId: candidate.contentId, status: "blocked", reason: String(error?.message || "candidate_materialization_failed").slice(0, 160) });
+      }
+    }
+    return { campaignId, materialized: results.filter((item) => item.postId), results };
+  }
+
   async queueAuthorizedCampaignJobs(campaignId, actor = "scheduler") {
     const snapshot = await this.store.read();
     const candidates = snapshot.posts.filter((post) => {
@@ -2029,6 +2077,12 @@ export class SeedingService {
     await this.expireLiveExecutionGrants(actor);
     await this.expireOneTimeExecutionWindows(actor);
     await this.expireCampaignAuthorizations(actor);
+    const candidateSnapshot = await this.store.read();
+    for (const campaign of candidateSnapshot.campaigns || []) {
+      if ((campaign.contentCandidates || []).some((candidate) => candidate.status === "draft")) {
+        await this.materializeAuthorizedContentCandidates(campaign.id, actor);
+      }
+    }
     const state = await this.store.read();
     const now = Date.now();
     const campaignIds = [...new Set(state.posts

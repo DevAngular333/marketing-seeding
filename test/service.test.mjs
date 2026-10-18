@@ -203,6 +203,162 @@ test("materialize content candidate binds only to an exact standing authorizatio
   assert.equal(state.posts.filter((item) => item.idempotencyKey === materialized.idempotencyKey).length, 1);
 });
 
+test("queue scheduler materializes exact standing approved-copy candidates idempotently across ticks and restart", async () => {
+  const { directory, service, campaign, productRepo, target } = await fixture("seeding-content-candidate-scheduler-test-");
+  const profileId = "threads-scheduled-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, {
+    title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+    groundingSources: ["README.md"], claimIds: ["what"]
+  }, "automation");
+  const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-content-candidate-scheduler-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(candidate.content)] },
+    audienceRules: { allowedAudiences: ["builders"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true,
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "fixture-standing-content-candidate-scheduler"
+  }, "operator");
+
+  await service.queueDueCampaignJobs("fixture-scheduler");
+  const first = await service.snapshot();
+  const firstPost = first.posts.find((item) => item.contentId === candidate.contentId);
+  assert.ok(firstPost);
+  assert.equal(firstPost.status, "queued");
+  assert.equal(first.executionRequests.filter((item) => item.jobId === firstPost.id).length, 1);
+  assert.equal(first.oneTimeExecutionWindows.filter((item) => item.jobId === firstPost.id).length, 1);
+  assert.equal(first.liveExecutionGrants.filter((item) => item.jobId === firstPost.id).length, 1);
+
+  await service.queueDueCampaignJobs("fixture-scheduler");
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  await restarted.queueDueCampaignJobs("fixture-scheduler-after-restart");
+  const after = await restarted.snapshot();
+  assert.equal(after.posts.filter((item) => item.idempotencyKey === firstPost.idempotencyKey).length, 1);
+  assert.equal(after.executionRequests.filter((item) => item.jobId === firstPost.id).length, 1);
+  assert.equal(after.oneTimeExecutionWindows.filter((item) => item.jobId === firstPost.id).length, 1);
+  assert.equal(after.liveExecutionGrants.filter((item) => item.jobId === firstPost.id).length, 1);
+  assert.equal(after.submissionUncertainties.length, 0);
+});
+
+test("queue scheduler leaves candidates without exact approved-copy standing authority draft-only", async () => {
+  for (const mode of ["none", "approved_template_set"]) {
+    const { service, campaign, productRepo, target } = await fixture(`seeding-content-candidate-scheduler-${mode}-test-`);
+    const profileId = `threads-scheduler-${mode}-profile`;
+    await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+    await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+      state: "ready", checkedAt: new Date().toISOString(),
+      checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+    } }, "operator");
+    const document = buildProductIntelligence({
+      productId: "fixture-product",
+      evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+      claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+    });
+    await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+    const story = await service.createStory(campaign.id, {
+      title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+      groundingSources: ["README.md"], claimIds: ["what"]
+    }, "automation");
+    const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+    if (mode === "approved_template_set") {
+      const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+      await service.authorizeCampaign(campaign.id, {
+        id: `standing-content-candidate-scheduler-${mode}-auth`,
+        validFrom: new Date(Date.now() - 60_000).toISOString(),
+        validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+        destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+        approvedAssets: [],
+        contentBoundary: {
+          mode,
+          approvedClaims: [{ id: "what", text: "A bounded product runtime.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+          templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}}" }]
+        },
+        audienceRules: { allowedAudiences: ["builders"] },
+        publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+        schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+        rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+        allowLiveExecution: true,
+        executionMode: "standing_autonomous",
+        standingAuthorizationReference: `fixture-standing-content-candidate-scheduler-${mode}`
+      }, "operator");
+    }
+    const before = await service.snapshot();
+    await service.queueDueCampaignJobs("fixture-scheduler");
+    const after = await service.snapshot();
+    assert.equal(after.campaigns.find((item) => item.id === campaign.id).contentCandidates.find((item) => item.contentId === candidate.contentId).status, "draft", mode);
+    assert.equal(after.posts.filter((item) => item.campaignId === campaign.id && item.contentId === candidate.contentId).length, 0, mode);
+    assert.equal(after.executionRequests.length, before.executionRequests.length, mode);
+    assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length, mode);
+    assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length, mode);
+  }
+});
+
+test("queue scheduler leaves candidates draft-only when campaign is inactive even if authority state is stale", async () => {
+  const { service, campaign, productRepo, target } = await fixture("seeding-content-candidate-scheduler-inactive-campaign-test-");
+  const profileId = "threads-inactive-campaign-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, {
+    title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+    groundingSources: ["README.md"], claimIds: ["what"]
+  }, "automation");
+  const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-content-candidate-inactive-campaign-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(candidate.content)] },
+    audienceRules: { allowedAudiences: ["builders"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true,
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "fixture-standing-content-candidate-inactive-campaign"
+  }, "operator");
+  await service.store.mutate("fixture", "stale_inactive_campaign_authority", (state) => {
+    state.campaigns.find((item) => item.id === campaign.id).status = "paused";
+    return state;
+  });
+  await service.queueDueCampaignJobs("fixture-scheduler");
+  const after = await service.snapshot();
+  assert.equal(after.campaigns.find((item) => item.id === campaign.id).contentCandidates.find((item) => item.contentId === candidate.contentId).status, "draft");
+  assert.equal(after.posts.filter((item) => item.campaignId === campaign.id && item.contentId === candidate.contentId).length, 0);
+  assert.equal(after.executionRequests.length, 0);
+  assert.equal(after.oneTimeExecutionWindows.length, 0);
+  assert.equal(after.liveExecutionGrants.length, 0);
+});
+
 test("materialize content candidate revalidates grounding source bytes before creating a post", async () => {
   const { service, campaign, productRepo } = await fixture("seeding-content-materialize-grounding-test-");
   const document = buildProductIntelligence({

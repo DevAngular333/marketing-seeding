@@ -80,6 +80,9 @@
     {"name":"metrics_observability_static","result":"PASS","command":"node --check src/service.mjs && git diff --check"},
     {"name":"content_candidate_materialization_authorization","result":"PASS_BOUNDED","tests":44,"passed":44,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/service.test.mjs test/server.test.mjs","notes":"Exact candidate/source/content lineage; approved-copy standing binding; paused/revoked/expired authority remains draft-only; no external side effects"},
     {"name":"full_node_suite_after_content_authorization","result":"PASS","tests":403,"passed":401,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"content_authorization_static_and_runtime_immutability","result":"PASS","command":"node --check src/*.mjs && git diff --check","notes":"Canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6; protected UNKNOWN execution IDs unchanged"}
+    {"name":"content_authorization_static_and_runtime_immutability","result":"PASS","command":"node --check src/*.mjs && git diff --check","notes":"Canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6; protected UNKNOWN execution IDs unchanged"},
+    {"name":"authorized_content_candidate_scheduler_focused","result":"PASS_BOUNDED","tests":42,"passed":42,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs","notes":"Queue-only approved-copy standing materialization; inactive campaign stale-authority regression; repeated/restart idempotency; reviewer ACCEPT with recommendation implemented"},
+    {"name":"full_node_suite_after_authorized_candidate_scheduler","result":"PASS","tests":406,"passed":404,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"},
+    {"name":"authorized_candidate_scheduler_static","result":"PASS","command":"node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"}
   ]
 }
