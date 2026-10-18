@@ -51,6 +51,7 @@ function canonicalizeHandoff(input) {
   const requiredObject = (record, field, label) => {
     if (!record[field] || typeof record[field] !== "object" || Array.isArray(record[field])) throw new Error(`${label}.${field} must be an object`);
   };
+  if (input.handoffVersion !== 1) throw new Error("canonical handoffVersion must be 1");
   if (!productRun || typeof productRun !== "object" || Array.isArray(productRun)) throw new Error("productRun is required for canonical handoff");
   if (!intent || typeof intent !== "object" || Array.isArray(intent)) throw new Error("distributionIntent is required for canonical handoff");
   if (!Array.isArray(productArtifacts) || !Array.isArray(mediaArtifacts) || !Array.isArray(contentVariants)) throw new Error("canonical artifact collections must be arrays");
@@ -132,6 +133,7 @@ function canonicalizeHandoff(input) {
   if (mediaArtifactIds.size !== mediaArtifacts.length || mediaArtifacts.length !== intentMediaRefs.length || [...mediaArtifactIds].some((ref) => !intentMediaRefs.includes(ref))) throw new Error("canonical media references must resolve exactly");
   return {
     ...input,
+    handoffVersion: 1,
     productId,
     content: { contentId, contentIdentity, sha256: contentSha256 },
     media,
@@ -170,7 +172,7 @@ export function validateDistributionHandoff(input = {}, { state, campaignId } = 
   if (targetId && !(state?.targets || []).some((target) => target.id === targetId && (campaign?.contentCandidates || []).some((candidateItem) => candidateItem.targetId === targetId))) errors.push("target is not campaign bound");
   if (errors.length) return { ok: false, errors };
   const sanitized = {
-    schemaVersion: 1, mode: "DRY_RUN", campaignId: campaign.id, productId,
+    schemaVersion: 1, handoffVersion: 1, mode: "DRY_RUN", campaignId: campaign.id, productId,
     content: { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity, sha256: content.sha256 },
     media: media.map((ref) => ({ artifactId: ref.artifactId, sha256: ref.sha256 })),
     platform: targetId ? { targetId } : null,

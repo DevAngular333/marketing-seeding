@@ -22,7 +22,7 @@ async function fixture() {
 function input(f, extra = {}) { return { mode: "DRY_RUN", campaignId: f.campaign.id, productId: f.campaign.id, content: { contentId: f.candidate.contentId, contentIdentity: f.candidate.contentIdentity, sha256: createHash("sha256").update(f.content).digest("hex") }, platform: { targetId: f.target.id }, ...extra }; }
 function canonicalInput(f, extra = {}) {
   return {
-    mode: "DRY_RUN", campaignId: f.campaign.id, productRun: { productId: f.campaign.id, objective: "O", status: "COMPLETED", pipelineIds: ["pipeline-1"], artifactRefs: ["product-1"], mediaRefs: [f.artifact.id], contentVariantRefs: [f.candidate.contentId], campaignRefs: [f.campaign.id], distributionIntentRefs: ["intent-1"], metadata: {}, createdAt: "2026-10-17T00:00:00Z" },
+    mode: "DRY_RUN", campaignId: f.campaign.id, handoffVersion: 1, productRun: { productId: f.campaign.id, objective: "O", status: "COMPLETED", pipelineIds: ["pipeline-1"], artifactRefs: ["product-1"], mediaRefs: [f.artifact.id], contentVariantRefs: [f.candidate.contentId], campaignRefs: [f.campaign.id], distributionIntentRefs: ["intent-1"], metadata: {}, createdAt: "2026-10-17T00:00:00Z" },
     productArtifacts: [{ artifactId: "product-1", productId: f.campaign.id, producerModuleId: "fixture", producerStepId: "step-1", pipelineId: "pipeline-1", productType: "text", files: ["README.md"], previewAssets: [], metadata: {}, technicalSpecs: {}, createdAt: "2026-10-17T00:00:00Z" }],
     mediaArtifacts: [{ mediaArtifactId: f.artifact.id, productId: f.campaign.id, pipelineId: "pipeline-1", producerModuleId: "fixture", producerStepId: "step-1", mediaType: f.artifact.mediaType, fileRef: "README.md", metadata: { sha256: f.artifact.sha256 }, sourceArtifactRefs: ["product-1"], createdAt: "2026-10-17T00:00:00Z" }],
     contentVariants: [{ contentVariantId: f.candidate.contentId, productId: f.campaign.id, pipelineId: "pipeline-1", sourceArtifactRefs: ["product-1"], sourceMediaRefs: [f.artifact.id], format: "text", angle: "evidence", audience: "general", platformHints: ["threads"], text: f.content, mediaRefs: [f.artifact.id], metadata: { contentIdentity: f.candidate.contentIdentity }, provenance: {}, producerModuleId: "fixture", producerStepId: "step-1", createdAt: "2026-10-17T00:00:00Z" }],
@@ -72,6 +72,13 @@ test("canonical envelope rejects identity, integrity and execution internals bef
   await assert.rejects(f.service.attachDistributionHandoff(f.campaign.id, canonicalInput(f, { mediaArtifacts: [{ ...canonicalInput(f).mediaArtifacts[0], metadata: { sha256: "0".repeat(64) } }] })), /sha256 mismatch/);
   await assert.rejects(f.service.attachDistributionHandoff(f.campaign.id, canonicalInput(f, { productRun: { ...canonicalInput(f).productRun, metadata: { browserProfile: "forbidden" } } })), /forbidden/);
   const state = await f.service.snapshot(); assert.equal(state.campaigns.find((item) => item.id === f.campaign.id).distributionHandoffs?.length || 0, 0);
+});
+
+test("canonical envelope requires the provider-neutral version contract", async () => {
+  const f = await fixture(); const base = canonicalInput(f);
+  await assert.rejects(f.service.attachDistributionHandoff(f.campaign.id, { ...base, handoffVersion: 2 }), /handoffVersion/);
+  const result = await f.service.attachDistributionHandoff(f.campaign.id, base);
+  assert.equal(result.handoff.handoffVersion, 1);
 });
 
 test("canonical envelope rejects duplicate or unresolved references and bounded violations", async () => {

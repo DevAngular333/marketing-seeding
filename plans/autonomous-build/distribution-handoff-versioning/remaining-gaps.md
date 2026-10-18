@@ -1,0 +1,2 @@
+- Upstream System-Agentic producer and version negotiation remain unimplemented.
+- No live authority or execution semantics are added by this milestone.

@@ -1,0 +1,2 @@
+- `src/distribution-handoff.mjs`: require and normalize canonical `handoffVersion: 1`; include it in sanitized persisted handoff.
+- `test/distribution-handoff.test.mjs`: canonical fixture version and fail-closed version regression test.
