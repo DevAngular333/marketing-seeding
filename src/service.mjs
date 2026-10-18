@@ -67,6 +67,7 @@ const DYNAMIC_EXECUTION_REASONS = new Set([
 ]);
 
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
+const METRIC_COVERAGE = new Set(["measured", "unknown", "unsupported"]);
 
 const MAX_DISCOVERY_SOURCES = 20;
 function normalizeDiscoverySources(value) {
@@ -356,10 +357,39 @@ function metricValue(input, field) {
 }
 
 function metricReading(input, field) {
-  if (!Object.prototype.hasOwnProperty.call(input, field) || input[field] === null || input[field] === undefined) {
-    return { value: null, status: input.coverage?.[field] || "unknown" };
+  const explicitCoverage = input && input.coverage && Object.prototype.hasOwnProperty.call(input.coverage, field)
+    ? String(input.coverage[field] || "").toLowerCase()
+    : null;
+  if (explicitCoverage !== null && !METRIC_COVERAGE.has(explicitCoverage)) {
+    throw new Error(`${field} coverage must be measured, unknown, or unsupported`);
   }
-  return { value: metricValue(input, field), status: input.coverage?.[field] || "measured" };
+  const hasValue = Object.prototype.hasOwnProperty.call(input, field) && input[field] !== null && input[field] !== undefined;
+  if (explicitCoverage === "measured" && !hasValue) {
+    throw new Error(`${field} measured coverage requires a value`);
+  }
+  if ((explicitCoverage === "unknown" || explicitCoverage === "unsupported") && hasValue) {
+    throw new Error(`${field} ${explicitCoverage} coverage cannot include a value`);
+  }
+  if (!hasValue) {
+    return { value: null, status: explicitCoverage || "unknown" };
+  }
+  return { value: metricValue(input, field), status: explicitCoverage || "measured" };
+}
+
+function metricCoverageStatus(snapshot, field) {
+  const explicit = String(snapshot?.coverage?.[field] || "").toLowerCase();
+  if (explicit) return METRIC_COVERAGE.has(explicit) ? explicit : "unknown";
+  return Number.isSafeInteger(snapshot?.[field]) ? "measured" : "unknown";
+}
+
+function compareMetricSnapshots(left, right) {
+  const leftCapturedAt = String(left?.capturedAt || "");
+  const rightCapturedAt = String(right?.capturedAt || "");
+  if (leftCapturedAt < rightCapturedAt) return -1;
+  if (leftCapturedAt > rightCapturedAt) return 1;
+  const leftId = String(left?.id || "");
+  const rightId = String(right?.id || "");
+  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
 }
 
 function metricReadingsMatchSnapshot(snapshot, readings) {
@@ -589,7 +619,7 @@ function metricTotals(metric = {}) {
 export function buildTrafficPulse(post, snapshots = [], interactions = [], now = new Date()) {
   const metrics = snapshots
     .filter((snapshot) => snapshot.postId === post.id)
-    .sort((left, right) => String(right.capturedAt || "").localeCompare(String(left.capturedAt || "")));
+    .sort((left, right) => compareMetricSnapshots(right, left));
   const latest = metrics[0] || null;
   const previous = metrics[1] || null;
   const latestTotals = metricTotals(latest);
@@ -3724,14 +3754,14 @@ export class SeedingService {
     const latestMetrics = new Map();
     for (const metric of state.metricSnapshots) {
       const current = latestMetrics.get(metric.postId);
-      if (!current || metric.capturedAt > current.capturedAt) latestMetrics.set(metric.postId, metric);
+      if (!current || compareMetricSnapshots(metric, current) > 0) latestMetrics.set(metric.postId, metric);
     }
     const metricCoverage = Object.fromEntries(METRIC_FIELDS.map((field) => [field, { measured: 0, unknown: 0, unsupported: 0 }]));
     const totals = [...latestMetrics.values()].reduce((sum, metric) => {
       for (const key of METRIC_FIELDS) {
-        const status = metric.coverage?.[key] || (Number.isSafeInteger(metric[key]) ? "measured" : "unknown");
+        const status = metricCoverageStatus(metric, key);
         metricCoverage[key][status] = (metricCoverage[key][status] || 0) + 1;
-        if (Number.isSafeInteger(metric[key])) sum[key] += metric[key];
+        if (status === "measured" && Number.isSafeInteger(metric[key])) sum[key] += metric[key];
       }
       return sum;
     }, { impressions: 0, reactions: 0, comments: 0, shares: 0, clicks: 0, leads: 0 });

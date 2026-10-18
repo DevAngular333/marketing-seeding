@@ -28,6 +28,7 @@ JsonStore / schema / audit / writer lease
   └─> metrics/interaction/reply/conversion collections and dashboard projections
         ├─> bounded explicit-link-only post outcome attribution (canonical evidence/metrics/conversions)
         └─> learning-aware advisory context (current outcome-summary linkage, bounded reason evidence and campaign-aware post attribution)
+        └─> deterministic metric observability projections (closed coverage vocabulary, stable latest-snapshot selection)
         └─> read-only account runtime projection (profile fingerprint, health/readiness, blocker, bound-target count)
 
 SYSTEM_AGENTIC_AI Core (frozen, read-only)
@@ -37,7 +38,7 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 ## Dependency status
 
 - **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, downstream DRY_RUN distribution-handoff validation/persistence, deterministic discovery persistence/projection, bounded caller-supplied audience/channel/locale fit metadata, safe product factory execution with bounded candidate discovery and persistent run lineage.
-- **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, project-specific product factory orchestration and artifact lifecycle.
+- **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, project-specific product factory orchestration and artifact lifecycle. Metric projection is deterministic locally, but live metric evidence and LinkedIn collection remain absent.
 - **Implemented/local verified:** read-only account runtime projection reusing existing account/profile/readiness state; no login, credential broker, account selector or failover.
 - **Implemented/local verified:** deterministic advisory strategy decisions, evidence-grounded draft candidates, outcome summaries with bounded explicit-link-only post attribution, campaign-aware post attribution context in advisory learning/strategy, opt-in control-cycle scheduling, and bounded public HTTP discovery polling with campaign error isolation; all are non-authoritative.
 - **Design-only/not implemented:** upstream live System-Agentic handoff producer/consumer, autonomous audience search, platform search/community-rule crawler, outcome-driven adaptive authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery. Post attribution and learning context are advisory evidence only; caller-supplied fit is implemented as advisory evidence.

@@ -72,6 +72,10 @@
     {"name":"post_attribution_learning_focused","result":"PASS_BOUNDED","tests":20,"passed":20,"failed":0,"skipped":0,"command":"node --test test/learning.test.mjs test/strategy.test.mjs"},
     {"name":"post_attribution_learning_integration","result":"PASS_BOUNDED","tests":56,"passed":56,"failed":0,"skipped":0,"command":"node --test test/strategy.test.mjs test/control-cycle.test.mjs test/learning.test.mjs test/outcome.test.mjs test/service.test.mjs test/server.test.mjs"},
     {"name":"full_node_suite_after_post_attribution_learning","result":"PASS","tests":393,"passed":391,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"post_attribution_learning_static","result":"PASS","command":"node --check src/learning.mjs && node --check src/strategy.mjs && git diff --check"}
+    {"name":"post_attribution_learning_static","result":"PASS","command":"node --check src/learning.mjs && node --check src/strategy.mjs && git diff --check"},
+    {"name":"metrics_observability_focused","result":"PASS_BOUNDED","tests":39,"passed":39,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/outcome.test.mjs","report":"plans/autonomous-build/metrics-observability-hardening/report.md"},
+    {"name":"metrics_observability_independent_review","result":"ACCEPT_BOUNDED","tests":41,"passed":41,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/outcome.test.mjs test/control-cycle.test.mjs","notes":"Rework addressed contradictory coverage/value semantics; dashboard and traffic pulse share deterministic snapshot ordering; no authority/browser/UNKNOWN drift"},
+    {"name":"full_node_suite_after_metrics_observability","result":"PASS","tests":397,"passed":395,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
+    {"name":"metrics_observability_static","result":"PASS","command":"node --check src/service.mjs && git diff --check"}
   ]
 }

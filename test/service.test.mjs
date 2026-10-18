@@ -456,6 +456,32 @@ test("metric snapshots accept only finite nonnegative safe integers", async () =
   assert.equal(spoofed.provenance.kind, "verified_manual");
 });
 
+test("metric coverage rejects unknown status values and preserves explicit supported states", async () => {
+  const { service, post } = await fixture("seeding-metrics-coverage-contract-test-");
+  await assert.rejects(
+    service.recordMetrics(post.id, { impressions: 1, coverage: { impressions: "guessed" } }),
+    /coverage must be measured, unknown, or unsupported/
+  );
+  await assert.rejects(
+    service.recordMetrics(post.id, { clicks: 1, coverage: { clicks: "unsupported" } }),
+    /unsupported coverage cannot include a value/
+  );
+  await assert.rejects(
+    service.recordMetrics(post.id, { clicks: 1, coverage: { clicks: "unknown" } }),
+    /unknown coverage cannot include a value/
+  );
+  await assert.rejects(
+    service.recordMetrics(post.id, { coverage: { leads: "measured" } }),
+    /measured coverage requires a value/
+  );
+  const unsupported = await service.recordMetrics(post.id, { coverage: { clicks: "unsupported" } });
+  assert.equal(unsupported.clicks, null);
+  assert.equal(unsupported.coverage.clicks, "unsupported");
+  const measured = await service.recordMetrics(post.id, { impressions: 2, coverage: { impressions: "MEASURED" } });
+  assert.equal(measured.impressions, 2);
+  assert.equal(measured.coverage.impressions, "measured");
+});
+
 test("browser observations require permalink evidence and preserve unknown metrics", async () => {
   const { directory, service, post } = await fixture("seeding-browser-observation-test-");
   await service.approvePost(post.id, "operator");
@@ -589,6 +615,46 @@ test("traffic pulse handles a newly published post without metric snapshots", ()
   assert.equal(pulse.delta.impressions, null);
   assert.equal(pulse.priority, "watch");
   assert.match(pulse.recommendation, /snapshot traffic 1 giờ/);
+});
+
+test("traffic pulse uses snapshot id as deterministic tie-breaker", () => {
+  const post = { id: "p-tie", publishedAt: "2026-10-06T00:00:00.000Z", status: "published" };
+  const first = { id: "metric-a", postId: post.id, capturedAt: "2026-10-07T00:00:00.000Z", impressions: 100, clicks: 2 };
+  const second = { id: "metric-b", postId: post.id, capturedAt: "2026-10-07T00:00:00.000Z", impressions: 220, clicks: 8 };
+  const pulseA = buildTrafficPulse(post, [first, second], [], new Date("2026-10-07T00:30:00.000Z"));
+  const pulseB = buildTrafficPulse(post, [second, first], [], new Date("2026-10-07T00:30:00.000Z"));
+  assert.equal(pulseA.latest.id, "metric-b");
+  assert.equal(pulseA.previous.id, "metric-a");
+  assert.deepEqual(pulseB, pulseA);
+});
+
+test("dashboard uses the same deterministic metric tie-break and bounded coverage", async () => {
+  const { service, post } = await fixture("seeding-dashboard-metric-tie-test-");
+  const snapshots = [
+    { id: "metric-a", postId: post.id, capturedAt: "2026-10-07T00:00:00.000Z", impressions: 100, coverage: { impressions: "measured", clicks: "rogue" } },
+    { id: "metric-b", postId: post.id, capturedAt: "2026-10-07T00:00:00.000Z", impressions: 220, coverage: { impressions: "measured", clicks: "rogue" } }
+  ];
+  await service.store.mutate("test", "metric_tie_fixture", (state) => { state.metricSnapshots = snapshots; });
+  const dashboardA = await service.dashboard();
+  await service.store.mutate("test", "metric_tie_fixture_reversed", (state) => { state.metricSnapshots = snapshots.slice().reverse(); });
+  const dashboardB = await service.dashboard();
+  assert.equal(dashboardA.latestMetrics[post.id].id, "metric-b");
+  assert.equal(dashboardB.latestMetrics[post.id].id, "metric-b");
+  assert.deepEqual(dashboardA.metricCoverage, dashboardB.metricCoverage);
+  assert.equal(Object.prototype.hasOwnProperty.call(dashboardA.metricCoverage.clicks, "rogue"), false);
+});
+
+test("dashboard does not total numeric values marked non-measured", async () => {
+  const { service, post } = await fixture("seeding-dashboard-metric-coverage-total-test-");
+  await service.store.mutate("test", "metric_coverage_fixture", (state) => {
+    state.metricSnapshots = [{
+      id: "metric-legacy-rogue", postId: post.id, capturedAt: "2026-10-07T00:00:00.000Z",
+      impressions: 999, coverage: { impressions: "rogue" }
+    }];
+  });
+  const dashboard = await service.dashboard();
+  assert.equal(dashboard.metricCoverage.impressions.unknown, 1);
+  assert.equal(dashboard.totals.impressions, 0);
 });
 
 test("campaign keywords are normalized, persisted and expose latest performance", async () => {

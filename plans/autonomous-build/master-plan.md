@@ -23,16 +23,18 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 15. Add a fail-closed learning-aware advisory strategy context: current outcome/learning identifiers and allowlisted reasons are visible to strategy/Mission Control without changing action precedence or creating authority.
 16. Add a bounded explicit-link-only per-post outcome attribution projection to the existing outcome summary; keep UNKNOWN dominance, canonical publication evidence requirements, campaign-only conversions unassigned and all learning/strategy behavior advisory.
 17. Consume that attribution as bounded campaign-aware explanation context in existing learning/strategy decisions; retain high-risk rows under the context cap and fail closed on foreign or drifted post/target identity.
+18. Harden metric observability with a closed coverage vocabulary and deterministic latest-snapshot projection shared by traffic pulse and dashboard.
 
-Result: local implementation gates pass (393 total, 391 passed, 0 failed, 2 skipped); post-attribution learning/strategy gate is 20/20 and combined gate is 56/56, while the outcome attribution gate remains 42/42. UI typecheck and production build also pass. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
+Result: local implementation gates pass (397 total, 395 passed, 0 failed, 2 skipped); metrics observability gate is 39/39, post-attribution learning/strategy gate is 20/20 and combined gate is 56/56, while the outcome attribution gate remains 42/42. UI typecheck and production build also pass from the prior release gate. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 
 ## Later waves (dependency order)
 
 1. **Unblock controlled live M1** only when a fresh authorized account/profile/target/content/session and harmless post policy are supplied; execute once through existing JEV/LinkedIn path, independently verify, then freeze the proven contract.
 2. Versioned upstream System-Agentic → marketing domain handoff; the downstream DRY_RUN validator/persistence seam exists locally, but upstream live producer/consumer wiring remains.
-3. Expand Product Factory into project-specific build/run/render/media workflow only after a separately audited sandbox; current manifest probe intentionally supports syntax checks only and candidate discovery remains evidence-only.
-4. Extend the local deterministic discovery and advisory strategy foundations into continuous authorized observation, audience/channel/community eligibility, outcome-driven NBA and grounded content generation; per-post attribution and bounded learning context now exist as advisory evidence, while authority rerouting remains unimplemented.
-5. Add contextual engagement, account/session registry/recovery, metrics learning, restart/24-7 hardening and deeper Mission Control projections; the current account view exposes session/auth mode and eligibility read-only but does not select, fail over or execute accounts; certify platforms incrementally.
+3. Materialize exact evidence-grounded content candidates into idempotent draft-only posts, without queue/readiness/authority side effects, so the existing advisory strategy can see a real draft candidate.
+4. Expand Product Factory into project-specific build/run/render/media workflow only after a separately audited sandbox; current manifest probe intentionally supports syntax checks only and candidate discovery remains evidence-only.
+5. Extend the local deterministic discovery and advisory strategy foundations into continuous authorized observation, audience/channel/community eligibility, outcome-driven NBA and grounded content generation; per-post attribution and bounded learning context now exist as advisory evidence, while authority rerouting remains unimplemented.
+6. Add contextual engagement, account/session registry/recovery, metrics learning, restart/24-7 hardening and deeper Mission Control projections; the current account view exposes session/auth mode and eligibility read-only but does not select, fail over or execute accounts; certify platforms incrementally.
 
 ## Frozen seams
 
