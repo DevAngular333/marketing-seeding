@@ -245,6 +245,11 @@
       "id": "product-factory-sandbox-preflight",
       "status": "COMPLETE_LOCAL_FAIL_CLOSED",
       "evidence": "Added versioned probeFactorySandboxCapability() with explicit backend/profile/check status and fail-closed executionEligible; macOS sandbox-exec harmless invocation passed but profile, network/filesystem/process/timeout/resource limits remain UNSUPPORTED; focused Product Factory/runtime/service/server gate 94/94, full npm test 464/462/0/2, node syntax and diff checks pass; no arbitrary project command, browser, ORCA, network, social, canonical or UNKNOWN mutation; artifacts in plans/autonomous-build/product-factory-sandbox-preflight/"
+    },
+    {
+      "id": "product-factory-safety-observability",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Read-only cached Product Factory sandbox capability projection added to dashboard and /health with sanitized checks, limits, eligibility and NOT_EXECUTED_UNSAFE disposition; Mission Control renders the blocker without controls; focused service/server/Product Factory gate 91/91, UI typecheck/build, syntax and diff checks pass; no project command, browser, ORCA, network, social, canonical or UNKNOWN mutation; artifacts in plans/autonomous-build/product-factory-safety-observability/"
     }
   ]
 }

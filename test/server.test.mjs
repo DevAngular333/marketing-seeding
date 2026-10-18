@@ -262,6 +262,10 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal(health.executionRuntime.readOnly, true);
   assert.equal(health.executionRuntime.publicationRule.includes("COMMAND_COMPLETED"), true);
   assert.ok(health.executionRuntime.counts);
+  assert.equal(health.productFactorySandbox.status, "UNSUPPORTED");
+  assert.equal(health.productFactorySandbox.executionEligible, false);
+  assert.equal(health.productFactorySandbox.unsafeCommandDisposition, "NOT_EXECUTED_UNSAFE");
+  assert.equal(health.productFactorySandbox.checks.resourceLimits, "UNSUPPORTED");
   const dashboard = await (await fetch(`${baseUrl}/api/dashboard`)).json();
   assert.equal(dashboard.automation.controlCycle.enabled, false);
   assert.equal(dashboard.automation.campaignQueue.enabled, true);
@@ -271,4 +275,5 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal(dashboard.automation.dailyProduction.rrule, "FREQ=DAILY;BYHOUR=6;BYMINUTE=0");
   assert.equal(dashboard.automation.browserTracking.rrule, "30 23 * * *");
   assert.deepEqual(dashboard.executionRuntime, health.executionRuntime);
+  assert.deepEqual(dashboard.productFactorySandbox, health.productFactorySandbox);
 });

@@ -108,6 +108,45 @@ test("product intelligence handoff is persisted on the campaign and projected re
   assert.equal(dashboard.productIntelligence[0].handoff.readinessStatus, "INCOMPLETE");
 });
 
+test("Product Factory sandbox capability projection is bounded, cached and fail-closed", async () => {
+  const { service } = await fixture("seeding-product-factory-sandbox-projection-test-");
+  let calls = 0;
+  service.productFactorySandboxProbe = async () => {
+    calls += 1;
+    return {
+      version: 1,
+      backend: "/private/host/path",
+      profile: { id: "factory-sandbox-v1", version: 1, status: "UNSUPPORTED" },
+      status: "UNSUPPORTED",
+      checks: { backendInvocation: "PASS", profileIntegrity: "UNSUPPORTED", networkDenied: "UNSUPPORTED" },
+      limits: { network: "UNSUPPORTED" },
+      executionEligible: true,
+      unsafeCommandDisposition: "WRONG"
+    };
+  };
+  const before = await service.snapshot();
+  const first = await service.productFactorySandboxCapability();
+  const second = await service.productFactorySandboxCapability();
+  assert.deepEqual(second, first);
+  assert.equal(calls, 1);
+  assert.equal(first.backend, "unknown");
+  assert.equal(first.status, "UNSUPPORTED");
+  assert.equal(first.executionEligible, false);
+  assert.equal(first.unsafeCommandDisposition, "NOT_EXECUTED_UNSAFE");
+  assert.equal(first.checks.backendInvocation, "PASS");
+  assert.equal(first.checks.childProcessPolicy, "UNSUPPORTED");
+  assert.deepEqual(await service.snapshot(), before);
+});
+
+test("Product Factory sandbox capability projection falls closed on probe failure", async () => {
+  const { service } = await fixture("seeding-product-factory-sandbox-failure-test-");
+  service.productFactorySandboxProbe = async () => { throw new Error("probe failed"); };
+  const result = await service.productFactorySandboxCapability({ force: true });
+  assert.equal(result.status, "UNAVAILABLE");
+  assert.equal(result.executionEligible, false);
+  assert.equal(result.unsafeCommandDisposition, "NOT_EXECUTED_UNSAFE");
+});
+
 test("content candidates scope normal targets through campaign posts and survive restart without authority side effects", async () => {
   const { directory, service, campaign, productRepo, target } = await fixture("seeding-content-candidate-runtime-test-");
   const document = buildProductIntelligence({

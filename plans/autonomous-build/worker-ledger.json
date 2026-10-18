@@ -494,6 +494,13 @@
       "status": "COMPLETE_LOCAL_FAIL_CLOSED",
       "scope": "Product Factory sandbox capability/profile preflight",
       "evidence": "Probe tests and host capability report pass fail-closed; focused 94/94, full npm test 464/462/0/2, syntax/diff pass; sandbox-exec invocation detected but no audited profile or resource limits; arbitrary commands remain NOT_EXECUTED_UNSAFE; no external, canonical, browser, ORCA, social or UNKNOWN mutation"
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "scope": "Product Factory safety observability",
+      "evidence": "Cached sanitized capability projection is exposed read-only in dashboard/health and Mission Control; focused 91/91, UI typecheck/build, syntax/diff pass; no state mutation or external action"
     }
   ]
 }

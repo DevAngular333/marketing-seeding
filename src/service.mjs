@@ -19,7 +19,7 @@ import { buildProductIntelligence, normalizeEvidenceRecords, serializeProductInt
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
 import { observePublicUrls } from "./discovery-observer.mjs";
-import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe } from "./product-factory.mjs";
+import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe, probeFactorySandboxCapability } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { canonicalTemplateSourceRefs, contentCandidateIdentity, deriveContentCandidates, deriveProductIntelligenceStory, deriveTemplateContentCandidates, renderApprovedTemplate, templateCandidateBinding, templateClaimIds, TEMPLATE_CANDIDATE_CONTRACT_VERSION } from "./content-foundation.mjs";
@@ -962,6 +962,24 @@ function accountProfileFingerprint(profileId) {
 
 const ACCOUNT_RUNTIME_READINESS_STATES = new Set(["READY", "BLOCKED", "HUMAN_REQUIRED", "UNKNOWN"]);
 const ACCOUNT_RUNTIME_RECOVERY_STATES = new Set(["RECOVERABLE", "HUMAN_REQUIRED", "UNKNOWN", "NONE"]);
+const PRODUCT_FACTORY_SANDBOX_CHECKS = Object.freeze([
+  "backendInvocation", "profileIntegrity", "networkDenied", "filesystemScope",
+  "childProcessPolicy", "timeoutCleanup", "resourceLimits"
+]);
+const PRODUCT_FACTORY_SANDBOX_LIMITS = Object.freeze([
+  "network", "filesystem", "childProcesses", "timeoutCleanup", "resourceLimits"
+]);
+const PRODUCT_FACTORY_SANDBOX_STATUSES = new Set(["PASS", "FAIL", "UNSUPPORTED", "UNAVAILABLE"]);
+
+function safeProductFactorySandboxToken(value, fallback) {
+  const token = String(value || "").trim();
+  return /^[A-Za-z0-9_.:-]{1,64}$/.test(token) ? token : fallback;
+}
+
+function safeProductFactorySandboxStatus(value) {
+  const status = String(value || "").trim().toUpperCase();
+  return PRODUCT_FACTORY_SANDBOX_STATUSES.has(status) ? status : "UNSUPPORTED";
+}
 
 function safeAccountRuntimeReason(value) {
   const reason = String(value || "").trim().toLowerCase();
@@ -1116,6 +1134,11 @@ export class SeedingService {
       : new ReadinessProviderRegistry(options.readinessProviders || {});
     this.readinessTimeoutMs = options.readinessTimeoutMs ?? 20_000;
     this.readinessInFlight = new Set();
+    this.productFactorySandboxProbe = typeof options.productFactorySandboxProbe === "function"
+      ? options.productFactorySandboxProbe
+      : probeFactorySandboxCapability;
+    this.productFactorySandboxProbeTtlMs = Math.min(60_000, Math.max(1_000, Number(options.productFactorySandboxProbeTtlMs) || 15_000));
+    this.productFactorySandboxProbeCache = null;
   }
 
   async init() {
@@ -1151,6 +1174,54 @@ export class SeedingService {
 
   async snapshot() {
     return this.store.read();
+  }
+
+  /** Read-only, short-lived Product Factory sandbox capability projection. */
+  async productFactorySandboxCapability({ force = false } = {}) {
+    const now = Date.now();
+    if (!force && this.productFactorySandboxProbeCache && now - this.productFactorySandboxProbeCache.checkedAt < this.productFactorySandboxProbeTtlMs) {
+      return this.productFactorySandboxProbeCache.value;
+    }
+    let value;
+    try {
+      value = await this.productFactorySandboxProbe();
+    } catch {
+      value = null;
+    }
+    if (!value || typeof value !== "object") {
+      value = {
+        version: 1,
+        backend: "unknown",
+        profile: { id: "factory-sandbox-v1", version: 1, status: "UNAVAILABLE" },
+        status: "UNAVAILABLE",
+        checks: {},
+        limits: {},
+        executionEligible: false,
+        unsafeCommandDisposition: "NOT_EXECUTED_UNSAFE"
+      };
+    }
+    const safeChecks = Object.fromEntries(PRODUCT_FACTORY_SANDBOX_CHECKS.map((key) => [key, safeProductFactorySandboxStatus(value.checks?.[key])]))
+    const safeLimits = Object.fromEntries(PRODUCT_FACTORY_SANDBOX_LIMITS.map((key) => [key, safeProductFactorySandboxStatus(value.limits?.[key])]))
+    const safeStatus = safeProductFactorySandboxStatus(value.status)
+    const safeEligible = safeStatus === "AVAILABLE"
+      && PRODUCT_FACTORY_SANDBOX_CHECKS.every((key) => safeChecks[key] === "PASS")
+      && PRODUCT_FACTORY_SANDBOX_LIMITS.every((key) => safeLimits[key] === "PASS")
+    const projection = {
+      version: Number(value.version) === 1 ? 1 : 1,
+      backend: safeProductFactorySandboxToken(value.backend, "unknown"),
+      profile: {
+        id: safeProductFactorySandboxToken(value.profile?.id, "factory-sandbox-v1"),
+        version: Number(value.profile?.version) === 1 ? 1 : 1,
+        status: safeProductFactorySandboxStatus(value.profile?.status)
+      },
+      status: safeStatus,
+      checks: safeChecks,
+      limits: safeLimits,
+      executionEligible: safeEligible,
+      unsafeCommandDisposition: "NOT_EXECUTED_UNSAFE"
+    };
+    this.productFactorySandboxProbeCache = { checkedAt: now, value: projection };
+    return projection;
   }
 
   /** Run a bounded, local-only product factory against the campaign repository. */
@@ -4864,6 +4935,7 @@ export class SeedingService {
     state.communityMemberships ||= [];
     const accountRuntime = projectExecutionAccountRuntime(state);
     const executionRuntime = projectExecutionRuntime(state);
+    const productFactorySandbox = await this.productFactorySandboxCapability();
     const latestMetrics = new Map();
     for (const metric of state.metricSnapshots) {
       const current = latestMetrics.get(metric.postId);
@@ -4932,6 +5004,7 @@ export class SeedingService {
       accountRuntime,
       executionAccounts: accountRuntime,
       executionRuntime,
+      productFactorySandbox,
       communityMemberships: state.communityMemberships,
       statuses,
       totals,

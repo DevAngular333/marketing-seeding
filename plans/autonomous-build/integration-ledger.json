@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "working-tree:product-factory-sandbox-preflight",
+  "checkpointCommit": "working-tree:product-factory-safety-observability",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -38,7 +38,8 @@
     "working-tree seam: explicit rehearsal candidate \u2192 existing JEV dry-run queue handoff with strict lineage, readiness and idempotency",
     "working-tree seam: bounded read-only execution evidence projection for Mission Control dashboard and /health",
     "working-tree seam: versioned SYSTEM_AGENTIC_AI DRY_RUN handoff bridge with wrapped/raw route compatibility and restart-safe zero-side-effect proof",
-    "working-tree seam: Product Factory sandbox capability/profile preflight with fail-closed eligibility"
+    "working-tree seam: Product Factory sandbox capability/profile preflight with fail-closed eligibility",
+    "working-tree seam: cached read-only Product Factory sandbox safety projection in dashboard/health and Mission Control"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -1238,6 +1239,28 @@
       "canonicalRuntimeMutated": false,
       "historicalUnknownMutated": false,
       "report": "plans/autonomous-build/product-factory-sandbox-preflight/report.md"
+    },
+    {
+      "name": "product_factory_safety_observability_focused",
+      "result": "PASS",
+      "tests": 91,
+      "passed": 91,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs test/product-factory.test.mjs",
+      "report": "plans/autonomous-build/product-factory-safety-observability/test-results.md"
+    },
+    {
+      "name": "product_factory_safety_observability_ui",
+      "result": "PASS",
+      "commands": ["cd ui && npx tsc --noEmit", "npm --prefix ui run build"],
+      "report": "plans/autonomous-build/product-factory-safety-observability/test-results.md"
+    },
+    {
+      "name": "product_factory_safety_observability_static",
+      "result": "PASS",
+      "command": "node --check src/*.mjs; git diff --check",
+      "report": "plans/autonomous-build/product-factory-safety-observability/test-results.md"
     }
   ]
 }

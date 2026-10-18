@@ -303,3 +303,17 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   render, browser, ORCA, network, credential, canonical, LinkedIn, social or
   historical UNKNOWN mutation occurred. Existing unsafe-manifest rejection
   remains unchanged.
+
+## Product Factory safety observability (2026-10-18)
+
+- The existing host capability preflight is now projected read-only through
+  `SeedingService.dashboard()`, `/health` and Mission Control. The projection
+  exposes only bounded backend/profile/check/limit statuses, effective
+  eligibility and `NOT_EXECUTED_UNSAFE` disposition.
+- The probe result is cached for 15 seconds; failures become `UNAVAILABLE` and
+  `executionEligible: false`. Dashboard reads do not mutate state or run a
+  registered product command.
+- Focused service/server/Product Factory gate: 91 passed, 0 failed, 0 skipped.
+  UI typecheck and production build passed; source syntax and `git diff --check`
+  passed. No browser, ORCA, network, credential, social, canonical or
+  historical UNKNOWN mutation occurred.

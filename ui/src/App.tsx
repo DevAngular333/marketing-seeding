@@ -1310,6 +1310,57 @@ function ExecutionEvidencePanel({ data }: { data: R }) {
   )
 }
 
+function ProductFactorySafetyPanel({ data }: { data: R }) {
+  const capability = data?.productFactorySandbox && typeof data.productFactorySandbox === "object"
+    ? data.productFactorySandbox
+    : null
+  const checks = capability?.checks && typeof capability.checks === "object" ? capability.checks : {}
+  const limits = capability?.limits && typeof capability.limits === "object" ? capability.limits : {}
+  const eligible = capability?.executionEligible === true
+  const status = String(capability?.status || "UNKNOWN")
+  const statusClass = eligible ? "status completed" : status === "UNAVAILABLE" ? "status failed" : "status draft"
+  const reason = eligible
+    ? "Đã có capability đủ điều kiện theo preflight"
+    : "Chưa chứng minh được sandbox đầy đủ; lệnh build/render vẫn bị chặn"
+  return (
+    <section className="panel mission-execution-panel full-span" aria-label="Product Factory safety">
+      <div className="panel-head">
+        <div>
+          <h2>Product Factory safety</h2>
+          <p>Capability preflight chỉ đọc; không tự chạy build, render hoặc cấp quyền xuất bản.</p>
+        </div>
+        <span className={statusClass}>{eligible ? "Eligible" : status}</span>
+      </div>
+      {!capability ? (
+        <div className="empty-state">Chưa có sandbox capability projection.</div>
+      ) : (
+        <div className="mission-execution-grid">
+          <article>
+            <span className="mission-eyebrow">Sandbox profile</span>
+            <strong>{String(capability.profile?.id || "UNKNOWN")}</strong>
+            <small>{String(capability.backend || "UNKNOWN")} · v{String(capability.profile?.version || capability.version || "UNKNOWN")}</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Execution eligibility</span>
+            <strong>{eligible ? "ALLOWED BY PREFLIGHT" : "NOT EXECUTED"}</strong>
+            <small>{reason}</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Checks</span>
+            <strong>{Object.values(checks).filter((value) => String(value) === "PASS").length} PASS</strong>
+            <small>{Object.entries(checks).filter(([, value]) => String(value) !== "PASS").map(([key, value]) => `${key}:${value}`).join(" · ") || "All checks passed"}</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Unsafe command policy</span>
+            <strong>{String(capability.unsafeCommandDisposition || "NOT_EXECUTED_UNSAFE")}</strong>
+            <small>{Object.entries(limits).map(([key, value]) => `${key}:${value}`).join(" · ") || "No verified limits"}</small>
+          </article>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function Overview({
   data,
   select,
@@ -1332,6 +1383,7 @@ function Overview({
       <div className="dashboard-grid">
         <MissionControlPanel data={data} />
         <ExecutionEvidencePanel data={data} />
+        <ProductFactorySafetyPanel data={data} />
         <TrafficChart data={data} />
         <TrafficSourcesPanel data={data} />
         <ReadinessPanel data={data} />

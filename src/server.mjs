@@ -491,6 +491,7 @@ const server = http.createServer(async (request, response) => {
         ok: true, service: "global-seeding", stateFile,
         runtime: runtimeMetadata({ pid: process.pid, sourceCommit, sourceDirty, state }),
         executionRuntime: projectExecutionRuntime(state),
+        productFactorySandbox: await service.productFactorySandboxCapability(),
         trafficCollector: trafficRuntime,
         campaignQueue: campaignQueueRuntime,
         controlCycle: controlCycleRuntime,
