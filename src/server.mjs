@@ -357,6 +357,7 @@ function automationCanMutate(method, pathname) {
   if (/^\/api\/campaigns\/[^/]+\/queue-ready-jobs$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/readiness-check$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/product-factory$/.test(pathname)) return true;
+  if (/^\/api\/campaigns\/[^/]+\/product-factory\/artifacts\/promote$/.test(pathname)) return false;
   if (/^\/api\/campaigns\/[^/]+\/product-intelligence\/inspect$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/distribution-handoff$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/content-candidates\/materialize$/.test(pathname)) return true;
@@ -635,6 +636,11 @@ const server = http.createServer(async (request, response) => {
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/artifacts$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.registerArtifact(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/product-factory\/artifacts\/promote$/);
+    if (request.method === "POST" && match) {
+      if (role !== "operator") return sendJson(response, 401, { ok: false, error: "operator_token_required" });
+      return sendJson(response, 201, await service.promoteProductFactoryArtifact(match[1], await readJson(request), actor));
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/stories$/);
     if (request.method === "POST" && match) {

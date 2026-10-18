@@ -411,6 +411,35 @@ function requiredText(value, label) {
   return text;
 }
 
+const ARTIFACT_METADATA_SECRET = /(?:password|passphrase|secret|token|cookie|authorization|credential|api[_-]?key|session(?:[_ -]?token)?)\s*[:=]\s*\S+|(?:bearer\s+[a-z0-9._-]{6,}|sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9_]{12,})/i;
+
+function requiredSafeArtifactMetadata(value, label, maxLength) {
+  if (typeof value !== "string") throw new Error(`${label} must be a string`);
+  const text = requiredText(value, label);
+  if (text.length > maxLength) throw new Error(`${label} must contain at most ${maxLength} characters`);
+  if (ARTIFACT_METADATA_SECRET.test(text)) throw new Error(`${label} contains credential/session material`);
+  return text;
+}
+
+function normalizedRelativeArtifactPath(value, label = "artifact path") {
+  const raw = requiredText(value, label).replaceAll("\\", "/");
+  if (path.isAbsolute(raw)) throw new Error(`${label} must be relative`);
+  const normalized = path.posix.normalize(raw);
+  if (!normalized || normalized === "." || normalized.startsWith("../") || normalized.includes("/../") || normalized.includes("\u0000")) {
+    throw new Error(`${label} must stay inside productRepo`);
+  }
+  return normalized;
+}
+
+function safeFactoryCommandRef(value) {
+  if (value == null) return null;
+  if (!Array.isArray(value)) throw new Error("Product Factory command reference must be an array");
+  const values = value;
+  if (values.length > 8) throw new Error("Product Factory command reference is too large");
+  const normalized = values.map((item) => requiredSafeArtifactMetadata(item, "Product Factory command reference", 240));
+  return Array.isArray(value) ? normalized : normalized[0];
+}
+
 export function normalizeTargetReadiness(value, fallbackStatus = "needs_review", bindingContext = null, ttlMs = configuredReadinessTtlMs()) {
   const input = value && typeof value === "object" ? value : {};
   const state = String(input.state || (fallbackStatus === "active" ? "ready" : "checking")).trim();
@@ -1809,6 +1838,77 @@ export class SeedingService {
         mediaType: requiredText(input.mediaType || "application/octet-stream", "artifact mediaType"),
         ...source,
         evidence,
+        status: "verified",
+        createdAt: nowIso()
+      };
+      nextState.artifacts.push(artifact);
+      return artifact;
+    });
+    return result.result;
+  }
+
+  /** Promote one exact Product Factory evidence candidate into the canonical artifact collection. */
+  async promoteProductFactoryArtifact(campaignId, input = {}, actor = "operator") {
+    const factoryRunId = requiredText(input.factoryRunId, "factoryRunId");
+    const relativePath = normalizedRelativeArtifactPath(input.path || input.artifactPath);
+    const expectedSha256 = requiredText(input.sha256 || input.artifactSha256, "artifact SHA-256").toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(expectedSha256)) throw new Error("artifact SHA-256 must be 64 lowercase hexadecimal characters");
+    const name = requiredSafeArtifactMetadata(input.name, "artifact name", 240);
+    const mediaType = requiredSafeArtifactMetadata(input.mediaType || "application/octet-stream", "artifact mediaType", 160);
+    const evidence = requiredSafeArtifactMetadata(input.evidence, "artifact evidence", 2000);
+    const initialState = await this.store.read();
+    const campaign = requireItem(initialState.campaigns, campaignId, "Campaign");
+    const productRepo = await requireProductRepo(campaign.productRepo);
+    const initialRun = (campaign.productFactoryRuns || []).find((item) => item.id === factoryRunId);
+    if (!initialRun) throw new Error("Product Factory run not found");
+    if (initialRun.status !== "SUCCEEDED" || initialRun.externalSideEffects !== false || initialRun.execution?.status !== "SUCCEEDED" || initialRun.execution?.externalSideEffects !== false || initialRun.artifacts?.externalSideEffects !== false) {
+      throw new Error("Product Factory run is not successfully completed");
+    }
+    if (path.resolve(String(initialRun.repositoryPath || "")) !== path.resolve(productRepo) || path.resolve(String(initialRun.artifacts?.repositoryPath || "")) !== path.resolve(productRepo)) {
+      throw new Error("Product Factory run repository does not match campaign productRepo");
+    }
+    const initialCandidate = (initialRun.artifacts?.artifacts || []).find((item) => {
+      return String(item.path || "").replaceAll(path.sep, "/") === relativePath;
+    });
+    if (!initialCandidate) throw new Error("Product Factory artifact candidate not found");
+    if (String(initialCandidate.sha256 || "").toLowerCase() !== expectedSha256) throw new Error("Product Factory artifact candidate hash mismatch");
+
+    const result = await this.store.mutate(actor, "product_factory_artifact_promoted", async (nextState) => {
+      const currentCampaign = requireItem(nextState.campaigns, campaignId, "Campaign");
+      const run = (currentCampaign.productFactoryRuns || []).find((item) => item.id === factoryRunId);
+      if (!run) throw new Error("Product Factory run not found");
+      if (run.status !== "SUCCEEDED" || run.externalSideEffects !== false || run.execution?.status !== "SUCCEEDED" || run.execution?.externalSideEffects !== false || run.artifacts?.externalSideEffects !== false) throw new Error("Product Factory run is not successfully completed");
+      const currentProductRepo = await requireProductRepo(currentCampaign.productRepo);
+      if (path.resolve(String(run.repositoryPath || "")) !== path.resolve(currentProductRepo) || path.resolve(String(run.artifacts?.repositoryPath || "")) !== path.resolve(currentProductRepo)) {
+        throw new Error("Product Factory run repository does not match campaign productRepo");
+      }
+      const candidate = (run.artifacts?.artifacts || []).find((item) => String(item.path || "").replaceAll(path.sep, "/") === relativePath);
+      if (!candidate) throw new Error("Product Factory artifact candidate not found");
+      if (String(candidate.sha256 || "").toLowerCase() !== expectedSha256) throw new Error("Product Factory artifact candidate hash mismatch");
+      const source = await readArtifactSource(currentProductRepo, relativePath);
+      if (source.relativePath.replaceAll(path.sep, "/") !== relativePath || source.sha256 !== expectedSha256) {
+        throw new Error("Product Factory artifact source changed since evidence run");
+      }
+      const commandRef = safeFactoryCommandRef(candidate.commandRef);
+      nextState.artifacts ||= [];
+      const sameIdentity = nextState.artifacts.find((item) => item.campaignId === campaignId && item.relativePath === relativePath && item.sha256 === expectedSha256);
+      if (sameIdentity) {
+        const provenance = sameIdentity.provenance || {};
+        if (provenance.factoryRunId !== factoryRunId || sameIdentity.name !== name || sameIdentity.mediaType !== mediaType || sameIdentity.evidence !== evidence) {
+          throw new Error("Existing artifact conflicts with Product Factory promotion");
+        }
+        return sameIdentity;
+      }
+      const conflictingPath = nextState.artifacts.find((item) => item.campaignId === campaignId && item.relativePath === relativePath && item.sha256 !== expectedSha256);
+      if (conflictingPath) throw new Error("Existing artifact has a conflicting hash for this path");
+      const artifact = {
+        id: randomUUID(),
+        campaignId,
+        name,
+        mediaType,
+        ...source,
+        evidence,
+        provenance: { factoryRunId, commandRef },
         status: "verified",
         createdAt: nowIso()
       };

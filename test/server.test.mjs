@@ -67,6 +67,11 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   const candidateIdentity = contentCandidateIdentity({ storyId: "fixture-story", targetId: fixtureTarget.id, channel: fixtureTarget.channel, content: candidateContent, claimIds: [], evidenceRefs: [] });
   const candidateContentId = `content-${candidateIdentity.slice(0, 24)}`;
   const fixtureGroundingSha256 = createHash("sha256").update(await readFile(path.join(appRoot, "README.md"))).digest("hex");
+  fixtureCampaign.productFactoryRuns = [{
+    id: "fixture-product-factory-run", status: "SUCCEEDED", externalSideEffects: false, repositoryPath: appRoot,
+    execution: { status: "SUCCEEDED", externalSideEffects: false },
+    artifacts: { repositoryPath: appRoot, externalSideEffects: false, artifacts: [{ path: "README.md", sha256: fixtureGroundingSha256, commandRef: ["fixture"] }] }
+  }];
   initialState.stories.push({ id: "fixture-story", campaignId: fixtureCampaign.id, audience: "public", language: "en", groundingSources: [{ relativePath: "README.md", sha256: fixtureGroundingSha256 }], status: "draft" });
   fixtureCampaign.contentCandidates = [{ contentId: candidateContentId, contentIdentity: candidateIdentity, storyId: "fixture-story", targetId: fixtureTarget.id, channel: fixtureTarget.channel, content: candidateContent, claimIds: [], evidenceRefs: [], status: "draft" }];
   initialState.targets.push(fixtureTarget);
@@ -121,6 +126,17 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal(materialized.contentId, candidateContentId);
   assert.equal("campaignAuthorizationId" in materialized, false);
   assert.equal("executionState" in materialized, false);
+  const promotePath = `${baseUrl}/api/campaigns/live-grant-campaign/product-factory/artifacts/promote`;
+  const promotionPayload = JSON.stringify({ factoryRunId: "fixture-product-factory-run", path: "README.md", sha256: fixtureGroundingSha256, name: "Fixture README", mediaType: "text/plain", evidence: "Factory evidence fixture" });
+  assert.equal((await fetch(promotePath, { method: "POST", headers: { "content-type": "application/json" }, body: promotionPayload })).status, 401);
+  assert.equal((await fetch(promotePath, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: promotionPayload })).status, 401);
+  const promotedResponse = await fetch(promotePath, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: promotionPayload });
+  assert.equal(promotedResponse.status, 201);
+  const promotedArtifact = await promotedResponse.json();
+  assert.equal(promotedArtifact.status, "verified");
+  const repeatedPromotion = await fetch(promotePath, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: promotionPayload });
+  assert.equal(repeatedPromotion.status, 201);
+  assert.equal((await repeatedPromotion.json()).id, promotedArtifact.id);
   const operatorSession = await fetch(`${baseUrl}/api/operator/session`, {
     headers: { authorization: `Bearer ${token}`, "x-agentic-actor": "test-operator" }
   });

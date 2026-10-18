@@ -158,3 +158,12 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - Commit: `3ac7937 fix: preserve no-fit discovery strategy compatibility`.
 - Focused gate: 77 passed, 0 failed, 0 skipped. Full Node suite: 422 total, 420 passed, 0 failed, 2 skipped. Independent review: PASS (bounded). Syntax and diff checks passed.
 - Canonical runtime remained schema 8, revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; no browser, ORCA, social, authority, or UNKNOWN mutation occurred.
+
+
+## Product Factory artifact promotion milestone (2026-10-18)
+
+- Added operator-only promotion of one exact successful Product Factory candidate into the existing verified artifact collection. Promotion revalidates repository binding, relative path, persisted candidate hash, and current source bytes inside the store mutation; metadata is bounded and secret/session-filtered.
+- Repeated identical promotion is idempotent across restart. The route creates only an artifact row and cannot create or change authority, posts, execution requests, grants, windows, leases, publication evidence, browser state or UNKNOWN history.
+- Focused independent gate: 72 passed, 0 failed, 0 skipped. Full `npm test`: 424 total, 422 passed, 0 failed, 2 skipped. Source syntax and `git diff --check` passed.
+- Canonical runtime read-only snapshot remained schema 8, revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; all four historical UNKNOWN executions and uncertainty records remain present and unchanged. No browser, ORCA, LinkedIn or social action occurred.
+- Review: `plans/autonomous-build/reports/verify-20261018-product-factory-artifact-promotion.md` — PASS (bounded). Details: `plans/autonomous-build/product-factory-artifact-promotion/`.

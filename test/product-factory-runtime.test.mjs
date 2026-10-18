@@ -8,7 +8,7 @@ import { SeedingService } from "../src/service.mjs";
 
 test("runProductFactory executes local evidence only and persists bounded run lineage", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "factory-runtime-"));
-  await fs.writeFile(path.join(root, "package.json"), "{}\n");
+  await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { validate: "node --check src/server.mjs" } }));
   await fs.mkdir(path.join(root, "media"));
   await fs.writeFile(path.join(root, "media", "demo.mp4"), "fixture-video");
   const stateFile = path.join(root, "state.json");
@@ -51,4 +51,60 @@ test("factory run lineage is bounded and survives a new store instance", async (
   const saved = (await restarted.snapshot()).campaigns.find((item) => item.id === campaign.id);
   assert.equal(saved.productFactoryRuns.length, 24);
   assert.equal(saved.productFactoryRuns.every((run) => run.externalSideEffects === false), true);
+});
+
+test("promotes one exact factory evidence candidate idempotently without execution authority", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "factory-promote-"));
+  await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { validate: "node --check src/server.mjs" } }));
+  await fs.mkdir(path.join(root, "src"));
+  await fs.writeFile(path.join(root, "src", "server.mjs"), "export const fixture = true;\n");
+  await fs.mkdir(path.join(root, "media"));
+  await fs.writeFile(path.join(root, "media", "demo.mp4"), "fixture-video");
+  const stateFile = path.join(root, "state.json");
+  const service = new SeedingService(new JsonStore(stateFile));
+  await service.init();
+  const campaign = await service.createCampaign({ name: "Factory promotion", objective: "Promote evidence", productRepo: root });
+  const before = await service.snapshot();
+  const run = await service.runProductFactory(campaign.id, { artifactPaths: ["media/demo.mp4"] }, "automation");
+  const candidate = run.artifacts.artifacts[0];
+  const input = { factoryRunId: run.id, path: candidate.path, sha256: candidate.sha256, name: "Demo video", mediaType: "video/mp4", evidence: "Factory run evidence" };
+  const promoted = await service.promoteProductFactoryArtifact(campaign.id, input, "operator");
+  assert.equal(promoted.status, "verified");
+  assert.deepEqual(promoted.provenance, { factoryRunId: run.id, commandRef: candidate.commandRef });
+  const repeated = await service.promoteProductFactoryArtifact(campaign.id, input, "operator");
+  assert.equal(repeated.id, promoted.id);
+  const after = await service.snapshot();
+  assert.equal(after.artifacts.length, before.artifacts.length + 1);
+  assert.equal(after.posts.length, before.posts.length);
+  assert.equal(after.executionRequests.length, before.executionRequests.length);
+  assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length);
+  assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length);
+  const restarted = new SeedingService(new JsonStore(stateFile));
+  await restarted.init();
+  assert.equal((await restarted.promoteProductFactoryArtifact(campaign.id, input, "operator")).id, promoted.id);
+});
+
+test("factory artifact promotion rejects stale, unsafe, failed and conflicting evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "factory-promote-reject-"));
+  await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { validate: "node --check src/server.mjs" } }));
+  await fs.mkdir(path.join(root, "src"));
+  await fs.writeFile(path.join(root, "src", "server.mjs"), "export const fixture = true;\n");
+  await fs.writeFile(path.join(root, "README.md"), "stable evidence\n");
+  const stateFile = path.join(root, "state.json");
+  const service = new SeedingService(new JsonStore(stateFile));
+  await service.init();
+  const campaign = await service.createCampaign({ name: "Factory rejection", objective: "Reject stale evidence", productRepo: root });
+  const run = await service.runProductFactory(campaign.id, { artifactPaths: ["README.md"] }, "automation");
+  const candidate = run.artifacts.artifacts[0];
+  const input = { factoryRunId: run.id, path: candidate.path, sha256: candidate.sha256, name: "README", mediaType: "text/plain", evidence: "Read-only evidence" };
+  await fs.writeFile(path.join(root, "README.md"), "changed after run\n");
+  await assert.rejects(() => service.promoteProductFactoryArtifact(campaign.id, input), /source changed/);
+  await assert.rejects(() => service.promoteProductFactoryArtifact(campaign.id, { ...input, path: "../outside.txt" }), /relative|inside/);
+  await assert.rejects(() => service.promoteProductFactoryArtifact(campaign.id, { ...input, sha256: "0".repeat(64) }), /hash mismatch|source changed/);
+  await assert.rejects(() => service.promoteProductFactoryArtifact(campaign.id, { ...input, evidence: "token=secret-value" }), /credential\/session/);
+  await service.store.mutate("fixture", "failed_factory_run", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.productFactoryRuns.push({ ...run, id: "failed-run", status: "FAILED" });
+  });
+  await assert.rejects(() => service.promoteProductFactoryArtifact(campaign.id, { ...input, factoryRunId: "failed-run" }), /successfully completed/);
 });
