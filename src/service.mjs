@@ -26,6 +26,7 @@ import { canonicalTemplateSourceRefs, contentCandidateIdentity, deriveContentCan
 import { appendLearningFeedback, deriveLearningFeedback } from "./learning.mjs";
 import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
 import { legacyHandoffIdentity, validateDistributionHandoff } from "./distribution-handoff.mjs";
+import { projectEngagementContext } from "./engagement-context.mjs";
 import { appRoot } from "./paths.mjs";
 
 export async function pollConfiguredDiscoveries(service, { actor = "scheduled-discovery-observer", shuttingDown = false } = {}) {
@@ -1057,6 +1058,134 @@ function projectExecutionAccountRuntime(state) {
       ...eligibility
     };
   }).sort((left, right) => left.id.localeCompare(right.id));
+}
+
+const AUTHORIZED_ACCOUNT_CANDIDATE_MAX = 128;
+
+function authorizedAccountCandidateKey({ campaignId, authorizationId, platform, accountId, profileId, targetId }) {
+  return createHash("sha256").update(JSON.stringify({
+    campaignId: String(campaignId || ""),
+    authorizationId: String(authorizationId || ""),
+    platform: String(platform || ""),
+    accountId: String(accountId || ""),
+    profileId: String(profileId || ""),
+    targetId: String(targetId || "")
+  })).digest("hex").slice(0, 24);
+}
+
+function candidateReadinessReasons(target, now, readinessTtlMs) {
+  if (!target?.readiness || typeof target.readiness !== "object") return ["readiness:missing"];
+  const readiness = target.readiness;
+  const state = safeAccountRuntimeState(readiness.state);
+  if (state !== "READY") return [`readiness:${safeAccountRuntimeReason(readiness.reasonCode || state)}`];
+  const expected = {
+    platform: target.channel,
+    accountId: target.accountId,
+    profileId: target.profileId,
+    targetId: target.id
+  };
+  if (!expected.platform || !expected.accountId || !expected.profileId || !expected.targetId) return ["readiness:binding_incomplete"];
+  if (readiness.binding !== readinessBinding(expected)) return ["readiness:binding_mismatch"];
+  const expiresAt = Date.parse(readiness.expiresAt || "");
+  if (!Number.isFinite(expiresAt)) return ["readiness:expiry_invalid"];
+  if (expiresAt <= now.getTime()) return ["readiness:expired"];
+  if (!isReadinessFresh(readiness, expected, now, readinessTtlMs)) return ["readiness:stale"];
+  return [];
+}
+
+/**
+ * Project exact campaign-authorized account/session candidates without
+ * creating authority or execution state. This is advisory pre-dispatch data:
+ * the queue and worker still revalidate the full execution contract before any
+ * browser input. Raw profile and identity material are intentionally omitted.
+ */
+export function projectAuthorizedAccountCandidates(state = {}, { campaignId = null, now = new Date(), readinessTtlMs = configuredReadinessTtlMs() } = {}) {
+  const observedAt = now instanceof Date ? now : new Date(now);
+  if (!Number.isFinite(observedAt.getTime())) throw new Error("Candidate projection time must be valid");
+  const requestedCampaignId = campaignId == null ? null : String(campaignId);
+  const campaigns = Array.isArray(state.campaigns) ? state.campaigns : [];
+  const targets = Array.isArray(state.targets) ? state.targets : [];
+  const accounts = Array.isArray(state.executionAccounts) ? state.executionAccounts : [];
+  const authorizations = Array.isArray(state.campaignAuthorizations) ? state.campaignAuthorizations : [];
+  const candidates = [];
+  for (const authorization of [...authorizations].sort((left, right) => String(left?.id || "").localeCompare(String(right?.id || "")))) {
+    if (!authorization || (requestedCampaignId && String(authorization.campaignId || "") !== requestedCampaignId)) continue;
+    const campaign = campaigns.find((item) => item?.id === authorization.campaignId) || null;
+    const destinations = Array.isArray(authorization.destinations) ? authorization.destinations : [];
+    for (const destination of [...destinations].sort((left, right) => {
+      const a = `${String(left?.platform || "")}\u0000${String(left?.targetId || "")}\u0000${String(left?.accountId || "")}`;
+      const b = `${String(right?.platform || "")}\u0000${String(right?.targetId || "")}\u0000${String(right?.accountId || "")}`;
+      return a.localeCompare(b);
+    })) {
+      const target = targets.find((item) => item?.id === destination?.targetId) || null;
+      let account = null;
+      try {
+        if (target?.channel && target?.accountId) account = accounts.find((item) => item?.id === executionAccountKey(target.channel, target.accountId)) || null;
+      } catch {
+        account = null;
+      }
+      const reasons = [];
+      if (!campaign) reasons.push("campaign:missing");
+      else if (campaign.status !== "active") reasons.push("campaign:not_active");
+      if (authorization.status !== "active") reasons.push(`authorization:${String(authorization.status || "unknown").toLowerCase()}`);
+      if (authorization.executionMode !== "standing_autonomous") reasons.push("authorization:execution_mode_not_standing_autonomous");
+      if (authorization.allowLiveExecution !== true) reasons.push("authorization:live_execution_disabled");
+      if (!authorization.binding || authorization.binding !== campaignAuthorizationFingerprint(authorization)) reasons.push("authorization:binding_stale");
+      if (!campaign || authorization.campaignBinding !== campaignScopeFingerprint(campaign)) reasons.push("authorization:campaign_scope_stale");
+      const validFrom = Date.parse(authorization.validFrom || "");
+      const validUntil = Date.parse(authorization.validUntil || "");
+      if (!Number.isFinite(validFrom) || !Number.isFinite(validUntil) || validUntil <= validFrom) reasons.push("authorization:validity_invalid");
+      else if (observedAt.getTime() < validFrom) reasons.push("authorization:not_yet_valid");
+      else if (observedAt.getTime() > validUntil) reasons.push("authorization:expired");
+      if (!target) reasons.push("target:missing");
+      else {
+        if (target.channel !== destination.platform) reasons.push("target:platform_mismatch");
+        if (target.accountId !== destination.accountId) reasons.push("target:account_mismatch");
+        if (target.profileId !== destination.profileId) reasons.push("target:profile_mismatch");
+        if (target.url !== destination.targetUrl) reasons.push("target:url_mismatch");
+        if (target.status !== "active") reasons.push(`target:${String(target.status || "unknown").toLowerCase()}`);
+        reasons.push(...candidateReadinessReasons(target, observedAt, readinessTtlMs));
+      }
+      if (!account) reasons.push("account:missing");
+      else {
+        if (account.status !== "enabled") reasons.push(`account:status_${String(account.status || "unknown").toLowerCase()}`);
+        if (account.health !== "healthy") reasons.push(`account:health_${String(account.health || "unknown").toLowerCase()}`);
+        if (target && account.profileId !== target.profileId) reasons.push("account:profile_mismatch");
+      }
+      const profileId = target?.profileId || destination?.profileId || account?.profileId || null;
+      const platform = String(destination?.platform || target?.channel || "");
+      const accountId = String(destination?.accountId || target?.accountId || account?.accountId || "");
+      const targetId = String(destination?.targetId || target?.id || "");
+      const candidate = {
+        candidateKey: authorizedAccountCandidateKey({ campaignId: authorization.campaignId, authorizationId: authorization.id, platform, accountId, profileId, targetId }),
+        campaignId: String(authorization.campaignId || ""),
+        authorizationId: String(authorization.id || ""),
+        authorizationStatus: String(authorization.status || "unknown"),
+        executionMode: String(authorization.executionMode || "unknown"),
+        platform,
+        accountId,
+        profileFingerprint: profileId ? accountProfileFingerprint(profileId) : null,
+        targetId,
+        targetUrl: target?.url || destination?.targetUrl || null,
+        sessionMode: account ? "SESSION_REUSE" : null,
+        authMode: account ? "MANUAL_AUTH" : null,
+        readiness: target?.readiness ? {
+          state: safeAccountRuntimeState(target.readiness.state),
+          checkedAt: target.readiness.checkedAt || null,
+          expiresAt: target.readiness.expiresAt || null,
+          reasonCode: safeAccountRuntimeReason(target.readiness.reasonCode || target.readiness.state),
+          recoveryClassification: safeAccountRuntimeRecovery(target.readiness.recoveryClassification)
+        } : null,
+        eligibleForAutonomousExecution: reasons.length === 0,
+        ineligibilityReasons: [...new Set(reasons)]
+      };
+      candidates.push(candidate);
+    }
+  }
+  return candidates
+    .sort((left, right) => `${left.eligibleForAutonomousExecution ? "0" : "1"}\u0000${left.platform}\u0000${left.targetId}\u0000${left.candidateKey}`.localeCompare(`${right.eligibleForAutonomousExecution ? "0" : "1"}\u0000${right.platform}\u0000${right.targetId}\u0000${right.candidateKey}`))
+    .slice(0, AUTHORIZED_ACCOUNT_CANDIDATE_MAX)
+    .map((candidate, index) => ({ ...candidate, selectionOrder: index + 1 }));
 }
 
 function metricTotals(metric = {}) {
@@ -4934,6 +5063,8 @@ export class SeedingService {
     state.fixtureAutomationRuns ||= [];
     state.communityMemberships ||= [];
     const accountRuntime = projectExecutionAccountRuntime(state);
+    const authorizedAccountCandidates = projectAuthorizedAccountCandidates(state, { readinessTtlMs: this.readinessTtlMs });
+    const engagementContext = projectEngagementContext(state, { now: new Date() });
     const executionRuntime = projectExecutionRuntime(state);
     const productFactorySandbox = await this.productFactorySandboxCapability();
     const latestMetrics = new Map();
@@ -5003,6 +5134,8 @@ export class SeedingService {
       postCount: state.posts.length,
       accountRuntime,
       executionAccounts: accountRuntime,
+      authorizedAccountCandidates,
+      engagementContext,
       executionRuntime,
       productFactorySandbox,
       communityMemberships: state.communityMemberships,
