@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deriveLearningFeedback, normalizePostAttributionContext } from "../src/learning.mjs";
+import { deriveLearningFeedback, normalizePostAttributionContext, isNormalizedPostAttributionContext } from "../src/learning.mjs";
 
 test("unknown dominates learning with do nothing",()=>{const s={campaigns:[{id:"c",outcomeSummary:{summaryId:"o",publication:{unknown:1,unknownExecutionIds:["e"]},metrics:{snapshots:1,totals:{},coverage:{}},evidence:{}}}]}; const f=deriveLearningFeedback(s,"c",{now:new Date("2026-01-01T00:00:00Z")}); assert.equal(f.action,"do_nothing"); assert.equal(f.advisory,true);});
 test("measured outcomes produce explainable engagement feedback",()=>{const s={campaigns:[{id:"c",outcomeSummary:{summaryId:"o",publication:{unknown:0},metrics:{snapshots:1,totals:{clicks:2,leads:0},coverage:{clicks:{measured:1}}},evidence:{metricSnapshotIds:["m"]}}}]}; const f=deriveLearningFeedback(s,"c",{now:new Date("2026-01-01T00:00:00Z")}); assert.equal(f.action,"engage"); assert.deepEqual(f.evidence,["m"]);});
@@ -80,4 +80,24 @@ test("post metrics advisory classifies bounded response and measurement states",
     "RESPONSE_OBSERVED", "REACH_WITHOUT_RESPONSE", "MEASURED_NO_RESPONSE", "PARTIAL_MEASUREMENTS", "UNKNOWN_OR_UNSUPPORTED", "UNOBSERVED"
   ]);
   assert.deepEqual(context.metricAdvisory.posts[0].evidenceRefs, ["m1"]);
+});
+
+test("post metrics advisory fails closed for invalid measured values and snapshot-only evidence", () => {
+  const context = normalizePostAttributionContext({ postAttributions: [
+    { postId: "invalid", status: "PARTIAL", metrics: { snapshotId: "m-invalid", values: { impressions: null }, coverage: { impressions: "measured" } } },
+    { postId: "negative", status: "PARTIAL", metrics: { snapshotId: "m-negative", values: { impressions: -1 }, coverage: { impressions: "measured" } } },
+    { postId: "snapshot-only", status: "PARTIAL", metrics: { snapshotId: "m-only" } }
+  ] });
+  assert.deepEqual(context.metricAdvisory.posts.map((item) => item.classification), [
+    "UNKNOWN_OR_UNSUPPORTED", "UNKNOWN_OR_UNSUPPORTED", "UNKNOWN_OR_UNSUPPORTED"
+  ]);
+});
+
+test("post metrics advisory rejects tampered assessment and evidence", () => {
+  const context = normalizePostAttributionContext({ postAttributions: [
+    { postId: "p1", status: "VERIFIED", metrics: { snapshotId: "m1", values: { impressions: 2 }, coverage: { impressions: "measured" } } }
+  ] });
+  const tampered = structuredClone(context);
+  tampered.postAttributions[0].metricAssessment.classification = "RESPONSE_OBSERVED";
+  assert.equal(isNormalizedPostAttributionContext(tampered), false);
 });

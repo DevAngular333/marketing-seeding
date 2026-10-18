@@ -64,14 +64,16 @@ function normalizeAttributionMetrics(metrics) {
 
 function deriveMetricAssessment({ metrics, engagement, conversions, evidence }) {
   const response = (engagement.interactions || 0) > 0 || (engagement.replies || 0) > 0 || (engagement.sentReplies || 0) > 0 || (conversions.count || 0) > 0
-    || Boolean(metrics && ["reactions", "comments", "shares", "clicks", "leads"].some((field) => Number.isSafeInteger(metrics.values[field]) && metrics.values[field] > 0));
+    || Boolean(metrics && ["reactions", "comments", "shares", "clicks", "leads"].some((field) => metrics.coverage[field] === "measured" && Number.isSafeInteger(metrics.values[field]) && metrics.values[field] > 0));
   const fields = metrics ? Object.keys(metrics.coverage) : [];
-  const measured = fields.filter((field) => metrics.coverage[field] === "measured");
+  const measured = fields.filter((field) => metrics.coverage[field] === "measured" && Number.isSafeInteger(metrics.values[field]) && metrics.values[field] >= 0);
+  const invalidMeasured = fields.filter((field) => metrics.coverage[field] === "measured" && !Number.isSafeInteger(metrics.values[field]));
   const uncertain = fields.filter((field) => ["unknown", "unsupported"].includes(metrics.coverage[field]));
   const measuredValues = measured.map((field) => metrics.values[field]).filter((value) => Number.isSafeInteger(value));
   let classification = "UNOBSERVED";
   if (response) classification = "RESPONSE_OBSERVED";
-  else if (metrics && uncertain.length && measured.length) classification = "PARTIAL_MEASUREMENTS";
+  else if (metrics && (invalidMeasured.length || uncertain.length) && measured.length) classification = "PARTIAL_MEASUREMENTS";
+  else if (metrics && (uncertain.length || invalidMeasured.length || (!measured.length && (metrics.snapshotId || metrics.capturedAt)))) classification = "UNKNOWN_OR_UNSUPPORTED";
   else if (metrics && uncertain.length && !measured.length) classification = "UNKNOWN_OR_UNSUPPORTED";
   else if (measuredValues.some((value) => value > 0) && measured.some((field) => field === "impressions")) classification = "REACH_WITHOUT_RESPONSE";
   else if (measured.length) classification = "MEASURED_NO_RESPONSE";
@@ -132,7 +134,7 @@ function normalizePostAttribution(row) {
   };
 }
 
-function normalizeMetricAdvisory(rows) {
+function normalizeMetricAdvisory(rows, retainedRows = rows) {
   const byPost = new Map();
   for (const row of rows) {
     if (!row?.postId || !METRIC_ASSESSMENTS.includes(row.metricAssessment?.classification)) continue;
@@ -141,7 +143,8 @@ function normalizeMetricAdvisory(rows) {
   const all = [...byPost.values()].sort((a, b) => a.postId.localeCompare(b.postId));
   const counts = Object.fromEntries(METRIC_ASSESSMENTS.map((key) => [key, 0]));
   for (const row of all) counts[row.classification] += 1;
-  const posts = all.sort((a, b) => METRIC_ASSESSMENTS.indexOf(a.classification) - METRIC_ASSESSMENTS.indexOf(b.classification) || a.postId.localeCompare(b.postId)).slice(0, MAX_ATTRIBUTIONS);
+  const retainedIds = new Set(retainedRows.map((row) => row.postId));
+  const posts = all.filter((row) => retainedIds.has(row.postId)).sort((a, b) => METRIC_ASSESSMENTS.indexOf(a.classification) - METRIC_ASSESSMENTS.indexOf(b.classification) || a.postId.localeCompare(b.postId)).slice(0, MAX_ATTRIBUTIONS);
   return { counts, total: all.length, truncated: all.length > posts.length, posts };
 }
 
@@ -176,7 +179,7 @@ export function normalizePostAttributionContext(outcome = {}) {
     total: allAttributions.length,
     truncated: allAttributions.length > postAttributions.length,
     postAttributions,
-    metricAdvisory: normalizeMetricAdvisory(allAttributions)
+    metricAdvisory: normalizeMetricAdvisory(allAttributions, postAttributions)
   };
 }
 
@@ -187,6 +190,12 @@ export function isNormalizedPostAttributionContext(value) {
   if (Object.values(value.counts).reduce((sum, count) => sum + count, 0) !== value.total) return false;
   const normalized = value.postAttributions.map(normalizePostAttribution);
   if (normalized.some((item) => !item) || new Set(normalized.map((item) => item.postId)).size !== normalized.length) return false;
+  for (let index = 0; index < normalized.length; index += 1) {
+    const expected = deriveMetricAssessment(normalized[index]);
+    if (stable(expected) !== stable(normalized[index].metricAssessment)) return false;
+    if (value.postAttributions[index].metricAssessment !== undefined
+      && stable(expected) !== stable(value.postAttributions[index].metricAssessment)) return false;
+  }
   if (value.counts.UNKNOWN > 0 && !normalized.some((item) => item.status === "UNKNOWN")) return false;
   if (value.metricAdvisory !== undefined) {
     const advisory = value.metricAdvisory;
@@ -194,7 +203,15 @@ export function isNormalizedPostAttributionContext(value) {
     if (!METRIC_ASSESSMENTS.every((key) => Number.isSafeInteger(advisory.counts[key]) && advisory.counts[key] >= 0)) return false;
     if (Object.values(advisory.counts).reduce((sum, count) => sum + count, 0) !== advisory.total || advisory.posts.length > MAX_ATTRIBUTIONS) return false;
     const ids = new Set(normalized.map((item) => item.postId));
-    if (advisory.posts.some((item) => !item || !ids.has(item.postId) || !METRIC_ASSESSMENTS.includes(item.classification))) return false;
+    if (advisory.posts.some((item) => !item || !ids.has(item.postId) || !METRIC_ASSESSMENTS.includes(item.classification) || !Array.isArray(item.evidenceRefs))) return false;
+    const canonicalAdvisory = normalizeMetricAdvisory(normalized);
+    if (!value.truncated && stable(advisory) !== stable(canonicalAdvisory)) return false;
+    if (value.truncated) {
+      const canonicalById = new Map(canonicalAdvisory.posts.map((item) => [item.postId, item]));
+      if (advisory.posts.some((item) => stable(item) !== stable(canonicalById.get(item.postId)))) return false;
+      if (advisory.posts.some((item, index) => item.postId !== canonicalAdvisory.posts[index]?.postId)) return false;
+      for (const key of METRIC_ASSESSMENTS) if (advisory.counts[key] < canonicalAdvisory.counts[key]) return false;
+    }
   }
   for (let index = 0; index < normalized.length; index += 1) {
     const current = normalized[index];
