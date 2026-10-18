@@ -313,7 +313,27 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - The probe result is cached for 15 seconds; failures become `UNAVAILABLE` and
   `executionEligible: false`. Dashboard reads do not mutate state or run a
   registered product command.
-- Focused service/server/Product Factory gate: 91 passed, 0 failed, 0 skipped.
+- The projection sanitizer now preserves a valid all-PASS `AVAILABLE` probe;
+  a regression confirms eligibility, bounded check/limit fields and
+  `NOT_EXECUTED_UNSAFE` remain intact.
+- Focused service/server/Product Factory gate: 92 passed, 0 failed, 0 skipped.
   UI typecheck and production build passed; source syntax and `git diff --check`
   passed. No browser, ORCA, network, credential, social, canonical or
   historical UNKNOWN mutation occurred.
+
+## Browser interaction transport follow-up (2026-10-18)
+
+- The provider-neutral transport boundary remains in
+  `src/browser-interaction-transport.mjs`, with ORCA accessibility and pointer
+  implementations. The reversible local fixture certifies 10/10 accessibility
+  activations and 10/10 pointer activations under the existing policy (zero
+  wrong-target activations and zero silent fallbacks).
+- The focused transport/LinkedIn/JEV gate is 98/98; full `npm test` is 468
+  total, 466 passed, 0 failed, 2 skipped. The pointer sequence is covered by
+  a resettable regression, but this is local fixture evidence only.
+- Direct ORCA 1.4.229 probing against a localhost fixture did not produce
+  repeatable activation evidence: one snapshot saw an empty error page and a
+  subsequent click returned `browser_stale_ref`; a later evaluation returned
+  an empty object. The probe was stopped and tabs cleaned up. No LinkedIn,
+  Post, account, credential, canonical state or historical UNKNOWN record was
+  touched. ORCA remains `NOT_CERTIFIED_FOR_IRREVERSIBLE_SUBMIT`.

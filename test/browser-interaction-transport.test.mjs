@@ -52,6 +52,47 @@ test("local fixture certifies stable reversible control with reset between trial
   assert.equal(summarizeCertification(record).certified, true);
 });
 
+test("local fixture certifies the ORCA pointer transport with reset between trials", async () => {
+  const state = { open: false, calls: [] };
+  const browser = {
+    runtimeVersion: "1.4.229",
+    async mouseMove(pageId, x, y) { state.calls.push(["move", pageId, x, y]); },
+    async mouseDown(pageId, button) { state.calls.push(["down", pageId, button]); },
+    async mouseUp(pageId, button) {
+      state.calls.push(["up", pageId, button]);
+      state.open = !state.open;
+      return { released: true };
+    }
+  };
+  const transport = new OrcaPointerTransport(browser);
+  const record = await certifyTransport({
+    transport,
+    attempts: 10,
+    identity: { transport: "orca-pointer", provider: "orca", providerVersion: "1.4.229" },
+    createTrial: async () => ({
+      reset: () => { state.open = false; state.calls = []; },
+      observeBefore: () => ({ open: state.open }),
+      resolveTarget: () => ({
+        pageId: "fixture-page",
+        targetRef: "safe-toggle",
+        targetIdentity: "safe-toggle",
+        boundingBox: { x: 10, y: 20, width: 80, height: 30 }
+      }),
+      preflight: () => ({ status: "PASSED", actionable: true, hitTargetMatched: true }),
+      observeAfter: () => ({ open: state.open }),
+      classifyActivation: ({ before, after }) => ({
+        status: before.open !== after.open ? "CONTROL_ACTIVATED" : "CONTROL_NOT_OBSERVED"
+      }),
+      cleanup: () => { state.open = false; state.calls = []; }
+    })
+  });
+  assert.equal(record.certified, true);
+  assert.equal(record.metrics.attempts, 10);
+  assert.equal(record.metrics.commandCompleted, 10);
+  assert.equal(record.metrics.positiveActivation, 10);
+  assert.equal(record.metrics.activationSuccessRate, 1);
+});
+
 test("certification counts stale, moving, detached, and overlay preflight failures", async () => {
   const fixture = new BrowserInteractionFixture();
   const record = await certifyTransport({

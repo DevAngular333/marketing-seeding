@@ -1,0 +1,105 @@
+{
+  "milestone": "browser interaction transport certification",
+  "result": "NOT_CERTIFIED_FOR_IRREVERSIBLE_SUBMIT",
+  "policy": {
+    "minimumAttempts": 10,
+    "minimumActivationRate": 0.95,
+    "maximumWrongTargetActivations": 0,
+    "maximumSilentFallbacks": 0
+  },
+  "abstractionPath": "src/browser-interaction-transport.mjs",
+  "certificationHarnessPath": "src/transport-certification.mjs",
+  "currentOrcaPath": "src/orca-browser-client.mjs",
+  "orcaRuntime": {
+    "executable": "/Applications/Orca 2.app/Contents/Resources/bin/orca",
+    "version": "1.4.229",
+    "liveCertification": "NOT_CERTIFIED"
+  },
+  "localFixture": {
+    "fixturePath": "test/fixtures/browser-interaction-fixture.mjs",
+    "resetBeforeEveryTrial": true,
+    "accessibility": {
+      "attempts": 10,
+      "commandCompleted": 10,
+      "positiveSemanticActivations": 10,
+      "noTransition": 0,
+      "wrongTargetActivations": 0,
+      "activationSuccessRate": 1,
+      "certifiedUnderPolicy": true
+    },
+    "pointer": {
+      "attempts": 10,
+      "commandCompleted": 10,
+      "positiveSemanticActivations": 10,
+      "noTransition": 0,
+      "wrongTargetActivations": 0,
+      "activationSuccessRate": 1,
+      "certifiedUnderPolicy": true
+    }
+  },
+  "orcaCalibration": {
+    "attempts": 1,
+    "validSemanticTrials": 0,
+    "commandCompleted": 0,
+    "positiveSemanticActivations": 0,
+    "noTransition": 0,
+    "wrongTargetActivations": 0,
+    "observationFailures": 1,
+    "transportFailures": 1,
+    "activationSuccessRate": null,
+    "certifiedUnderPolicy": false,
+    "failureClass": "BROWSER_RUNTIME_OR_TARGET_OBSERVATION_FAILURE",
+    "evidence": [
+      "Snapshot returned chrome-error://chromewebdata/ with no target ref.",
+      "A following click returned browser_stale_ref.",
+      "A later read-only evaluation returned an empty object; tab was cleaned up."
+    ]
+  },
+  "alternativeTransport": {
+    "audited": true,
+    "implemented": true,
+    "name": "ORCA pointer transport",
+    "path": "src/browser-interaction-transport.mjs",
+    "liveCertified": false
+  },
+  "requestedSummary": {
+    "orcaCalibrationAttempts": 1,
+    "orcaCommandCompleted": 0,
+    "orcaPositiveSemanticActivations": 0,
+    "orcaNoTransition": 0,
+    "orcaWrongTargetActivations": 0,
+    "orcaActivationSuccessRate": null,
+    "alternativeTransportCalibrationAttempts": 10,
+    "alternativeTransportActivationSuccessRate": 1,
+    "futureIrreversibleSubmitTransport": null,
+    "atLeastOneTransportCertifiedForFutureIrreversibleLinkedInSubmit": false
+  },
+  "selectedTransportForFutureIrreversibleSubmit": null,
+  "transportSelectionDeterministic": true,
+  "transportMayChangeAfterDurableSubmitIntent": false,
+  "socialMutationCount": 0,
+  "finalPostClickCount": 0,
+  "historicalUnknownMutated": false,
+  "canonicalRuntimeMutated": false,
+  "protectedUnknownExecutions": [
+    "ce9cfc41-528b-425f-9dee-ab2563b50ed3",
+    "0f6b588b-20fd-42e1-9f6d-9b3bf5f04628",
+    "c2265ddf-4384-4339-a26b-4949b6a12af9",
+    "8e058f6e-5f67-4078-99bf-6cf86e1b62d7"
+  ],
+  "protectedUncertainty": "df39df1c-2f06-4c20-8e9a-4ed07f5df34c",
+  "focusedTransportTests": {
+    "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs",
+    "total": 98,
+    "passed": 98,
+    "failed": 0,
+    "skipped": 0
+  },
+  "fullNodeSuite": {
+    "command": "npm test",
+    "total": 468,
+    "passed": 466,
+    "failed": 0,
+    "skipped": 2
+  }
+}

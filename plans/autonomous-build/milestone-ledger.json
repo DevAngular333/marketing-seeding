@@ -54,7 +54,7 @@
     {
       "id": "browser-transport-certification",
       "status": "LOCAL_CERTIFIED_ORCA_UNPROVEN_LIVE",
-      "evidence": "10-trial local fixture 100% activation; ORCA transport boundary and pointer implementation tested; no real final submit"
+      "evidence": "10-trial local accessibility fixture and 10-trial local pointer fixture each achieved 100% semantic activation with zero wrong-target activations; focused transport/LinkedIn/JEV gate 98/98; direct ORCA 1.4.229 calibration was not repeatably positive; no real final submit"
     },
     {
       "id": "live-linkedin-proof",
@@ -249,7 +249,7 @@
     {
       "id": "product-factory-safety-observability",
       "status": "COMPLETE_LOCAL_VERIFIED",
-      "evidence": "Read-only cached Product Factory sandbox capability projection added to dashboard and /health with sanitized checks, limits, eligibility and NOT_EXECUTED_UNSAFE disposition; Mission Control renders the blocker without controls; focused service/server/Product Factory gate 91/91, UI typecheck/build, syntax and diff checks pass; no project command, browser, ORCA, network, social, canonical or UNKNOWN mutation; artifacts in plans/autonomous-build/product-factory-safety-observability/"
+      "evidence": "Read-only cached Product Factory sandbox capability projection added to dashboard and /health with sanitized checks, limits, eligibility and NOT_EXECUTED_UNSAFE disposition; sanitizer preserves valid all-PASS AVAILABLE state; Mission Control renders the blocker without controls; focused service/server/Product Factory gate 92/92, full npm test 468/466/0/2, UI typecheck/build, syntax and diff checks pass; no project command, browser, ORCA, network, social, canonical or UNKNOWN mutation; artifacts in plans/autonomous-build/product-factory-safety-observability/"
     }
   ]
 }

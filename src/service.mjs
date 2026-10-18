@@ -969,7 +969,7 @@ const PRODUCT_FACTORY_SANDBOX_CHECKS = Object.freeze([
 const PRODUCT_FACTORY_SANDBOX_LIMITS = Object.freeze([
   "network", "filesystem", "childProcesses", "timeoutCleanup", "resourceLimits"
 ]);
-const PRODUCT_FACTORY_SANDBOX_STATUSES = new Set(["PASS", "FAIL", "UNSUPPORTED", "UNAVAILABLE"]);
+const PRODUCT_FACTORY_SANDBOX_STATUSES = new Set(["PASS", "FAIL", "UNSUPPORTED", "UNAVAILABLE", "AVAILABLE"]);
 
 function safeProductFactorySandboxToken(value, fallback) {
   const token = String(value || "").trim();

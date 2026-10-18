@@ -16,9 +16,14 @@ or trigger browser/social work.
 - Probe errors return `UNAVAILABLE`, `executionEligible: false`, and
   `NOT_EXECUTED_UNSAFE`.
 - Projection sanitizes backend/profile/check/limit values to bounded allowlists.
-  Paths and arbitrary status text are not exposed.
+  Paths and arbitrary status text are not exposed. The allowlist preserves the
+  valid all-PASS `AVAILABLE` state instead of collapsing it to `UNSUPPORTED`.
 - Mission Control shows the capability state and why build/render remains
   blocked. It has no action or approval control.
+
+The `AVAILABLE` sanitizer regression is covered by a service test. It changes
+only the read-only projection; it does not make arbitrary project execution
+eligible.
 
 ## Evidence class
 

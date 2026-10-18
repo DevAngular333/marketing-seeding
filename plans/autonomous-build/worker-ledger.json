@@ -500,7 +500,14 @@
       "role": "master/integrator/release owner",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "scope": "Product Factory safety observability",
-      "evidence": "Cached sanitized capability projection is exposed read-only in dashboard/health and Mission Control; focused 91/91, UI typecheck/build, syntax/diff pass; no state mutation or external action"
+      "evidence": "Cached sanitized capability projection is exposed read-only in dashboard/health and Mission Control; valid all-PASS AVAILABLE state is preserved by the sanitizer; focused 92/92, full npm test 468/466/0/2, UI typecheck/build, syntax/diff pass; no state mutation or external action"
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_FAIL_CLOSED",
+      "scope": "browser interaction transport certification follow-up",
+      "evidence": "Added a 10-trial local ORCA pointer transport fixture certification; focused transport/LinkedIn/JEV gate 98/98 and full npm test 468/466/0/2 pass. Direct ORCA 1.4.229 fixture probing was not repeatable (one command completed with no usable activation and one stale-ref probe); no irreversible submit or social mutation occurred."
     }
   ]
 }

@@ -147,6 +147,41 @@ test("Product Factory sandbox capability projection falls closed on probe failur
   assert.equal(result.unsafeCommandDisposition, "NOT_EXECUTED_UNSAFE");
 });
 
+test("Product Factory sandbox capability preserves an all-PASS AVAILABLE projection", async () => {
+  const { service } = await fixture("seeding-product-factory-sandbox-available-test-");
+  service.productFactorySandboxProbe = async () => ({
+    version: 1,
+    backend: "audited-backend",
+    profile: { id: "audited-profile", version: 1, status: "PASS" },
+    status: "AVAILABLE",
+    checks: {
+      backendInvocation: "PASS",
+      profileIntegrity: "PASS",
+      networkDenied: "PASS",
+      filesystemScope: "PASS",
+      childProcessPolicy: "PASS",
+      timeoutCleanup: "PASS",
+      resourceLimits: "PASS"
+    },
+    limits: {
+      network: "PASS",
+      filesystem: "PASS",
+      childProcesses: "PASS",
+      timeoutCleanup: "PASS",
+      resourceLimits: "PASS"
+    },
+    executionEligible: true,
+    unsafeCommandDisposition: "NOT_EXECUTED_UNSAFE"
+  });
+  const result = await service.productFactorySandboxCapability({ force: true });
+  assert.equal(result.status, "AVAILABLE");
+  assert.equal(result.executionEligible, true);
+  assert.equal(result.profile.status, "PASS");
+  assert.equal(result.checks.resourceLimits, "PASS");
+  assert.equal(result.limits.network, "PASS");
+  assert.equal(result.unsafeCommandDisposition, "NOT_EXECUTED_UNSAFE");
+});
+
 test("content candidates scope normal targets through campaign posts and survive restart without authority side effects", async () => {
   const { directory, service, campaign, productRepo, target } = await fixture("seeding-content-candidate-runtime-test-");
   const document = buildProductIntelligence({

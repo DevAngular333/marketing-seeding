@@ -21,17 +21,17 @@
       "blocker_id": "ORCA-TRANSPORT-LIVE-CERT-001",
       "classification": "BROWSER_BLOCKER",
       "milestone": "browser-transport-certification",
-      "root_cause": "Local fixture certification passes, but historical live ORCA safe-control observations were not repeatably positive and no real activation calibration is currently available in this shell.",
+      "root_cause": "Both local transports pass the reversible fixture, but ORCA 1.4.229 browser probing did not produce a valid repeatable semantic activation trial; no irreversible-submit calibration is available in the current browser lane.",
       "affected_scope": "certifying the ORCA final-submit transport for irreversible LinkedIn action",
       "detected_at": "2026-10-17T00:00:00Z",
       "status": "OPEN",
       "owner_worker": "master",
       "remediation": "Retain fail-closed transport policy; collect repeatable reversible-control activation evidence in an authorized ORCA session before considering irreversible transport certification.",
-      "verification": "Local fixture certification and official metrics local gates pass; ORCA CLI unavailable in this shell and no live action was performed.",
+      "verification": "Accessibility and pointer fixture certifications are 10/10 each; focused transport/LinkedIn/JEV gate is 98/98; direct ORCA 1.4.229 localhost probe produced an empty error page and browser_stale_ref, then was cleaned up. No live action was performed.",
       "resolved_at": null,
       "resume_point": "A permitted read-only/reversible ORCA calibration session with positive structural activation evidence and unchanged canonical runtime.",
       "external_dependency": "ORCA runtime/session available in a controlled browser lane",
-      "last_checked_at": "2026-10-18T00:00:00Z"
+      "last_checked_at": "2026-10-18T12:00:00Z"
     },
     {
       "blocker_id": "METRICS-CHECKPOINT-LIVE-001",

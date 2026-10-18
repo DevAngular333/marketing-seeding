@@ -5,16 +5,17 @@
 Command:
 
 ```sh
-cd /Users/nam/Documents/marketing-seeding
-node --test test/*.test.mjs
+cd /Users/nam/Documents/marketing-seeding-integration
+npm test
 ```
 
-Result: **272 tests, 270 passed, 0 failed, 2 skipped; process terminated normally.**
+Result: **468 tests, 466 passed, 0 failed, 2 skipped; process terminated normally.**
 
 Covered existing regressions include command completion versus activation, activation versus acceptance, verified publication contracts, stale/moving/covered/wrong-composer controls, wrong account/profile, timeout/UNKNOWN quarantine, duplicate dispatch prevention, historical UNKNOWN immutability, one-click semantics, exact grants/windows, readiness and JEV lifecycle.
 
 ## Runtime diagnostics
 
-- `/health`: service healthy, PID 64620, source commit `b4fa42b…`, schema 8, revision 193.
-- Canonical SHA before/after audit: `327688c03b5f535e4cc8082837a3cd338db74b74207b86887eef2ae9ed965aae`.
+- Canonical runtime snapshot: schema 8, revision 194, SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`.
+- Focused transport/LinkedIn/JEV gate: 98 passed, 0 failed, 0 skipped.
 - No external side effect or final Post click was issued in this milestone.

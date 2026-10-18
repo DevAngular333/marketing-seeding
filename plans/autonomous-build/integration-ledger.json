@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "working-tree:product-factory-safety-observability",
+  "checkpointCommit": "working-tree:product-factory-safety-observability+browser-transport-certification",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -39,7 +39,8 @@
     "working-tree seam: bounded read-only execution evidence projection for Mission Control dashboard and /health",
     "working-tree seam: versioned SYSTEM_AGENTIC_AI DRY_RUN handoff bridge with wrapped/raw route compatibility and restart-safe zero-side-effect proof",
     "working-tree seam: Product Factory sandbox capability/profile preflight with fail-closed eligibility",
-    "working-tree seam: cached read-only Product Factory sandbox safety projection in dashboard/health and Mission Control"
+    "working-tree seam: cached read-only Product Factory sandbox safety projection in dashboard/health and Mission Control",
+    "working-tree seam: preserve Product Factory AVAILABLE sanitizer state, add pointer transport fixture certification and certification artifacts"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -1261,6 +1262,74 @@
       "result": "PASS",
       "command": "node --check src/*.mjs; git diff --check",
       "report": "plans/autonomous-build/product-factory-safety-observability/test-results.md"
+    },
+    {
+      "name": "product_factory_safety_observability_focused_latest",
+      "result": "PASS",
+      "tests": 92,
+      "passed": 92,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs test/server.test.mjs test/product-factory.test.mjs",
+      "report": "plans/autonomous-build/product-factory-safety-observability/test-results.md"
+    },
+    {
+      "name": "browser_transport_linkedin_jev_focused_latest",
+      "result": "PASS",
+      "tests": 98,
+      "passed": 98,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs",
+      "report": "plans/browser-interaction-transport-certification/regression-results.md"
+    },
+    {
+      "name": "browser_transport_local_fixture_certification",
+      "result": "PASS_LOCAL_FIXTURE",
+      "accessibilityAttempts": 10,
+      "accessibilityPositiveActivations": 10,
+      "pointerAttempts": 10,
+      "pointerPositiveActivations": 10,
+      "wrongTargetActivations": 0,
+      "socialMutationCount": 0,
+      "report": "plans/browser-interaction-transport-certification/live-evidence.json"
+    },
+    {
+      "name": "orca_direct_calibration_latest",
+      "result": "NOT_CERTIFIED",
+      "runtimeVersion": "1.4.229",
+      "attempts": 1,
+      "validSemanticTrials": 0,
+      "observationFailures": 1,
+      "transportFailures": 1,
+      "irreversibleSubmit": false,
+      "report": "plans/browser-interaction-transport-certification/live-evidence.json"
+    },
+    {
+      "name": "browser_transport_full_node_suite_latest",
+      "result": "PASS",
+      "tests": 468,
+      "passed": 466,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test",
+      "report": "plans/browser-interaction-transport-certification/regression-results.md"
+    },
+    {
+      "name": "browser_transport_static_latest",
+      "result": "PASS",
+      "command": "node --check src/*.mjs; git diff --check",
+      "report": "plans/browser-interaction-transport-certification/regression-results.md"
+    },
+    {
+      "name": "browser_transport_safety_latest",
+      "result": "PASS",
+      "socialMutationCount": 0,
+      "finalPostClickCount": 0,
+      "historicalUnknownMutated": false,
+      "canonicalRuntimeMutated": false,
+      "report": "plans/browser-interaction-transport-certification/live-evidence.json"
     }
   ]
 }

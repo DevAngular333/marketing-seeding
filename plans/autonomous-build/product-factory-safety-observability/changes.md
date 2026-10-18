@@ -6,5 +6,8 @@
   eligibility and `NOT_EXECUTED_UNSAFE` disposition.
 - Added service and server regressions for cache reuse, probe failures,
   sanitization, no state mutation and health/dashboard parity.
+- Fixed the sanitizer allowlist to preserve the valid `AVAILABLE` result from
+  an all-PASS audited probe, with a regression for eligibility and bounded
+  check/limit projection.
 - Preserved existing Product Factory command rejection and all publication and
   UNKNOWN safety contracts.

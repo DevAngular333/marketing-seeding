@@ -4,7 +4,7 @@
 
 ```text
 node --test test/service.test.mjs test/server.test.mjs test/product-factory.test.mjs
-91 passed, 0 failed, 0 skipped
+92 passed, 0 failed, 0 skipped
 ```
 
 Coverage includes deterministic cached projection, injected probe failure,
@@ -24,7 +24,7 @@ Both passed. Vite emitted only existing configuration deprecation warnings.
 
 ```text
 npm test
-466 total, 464 passed, 0 failed, 2 skipped
+468 total, 466 passed, 0 failed, 2 skipped
 ```
 
 ## Static checks
@@ -35,3 +35,10 @@ git diff --check
 ```
 
 Both passed.
+
+## Regression added after the original gate
+
+The projection sanitizer now preserves the valid all-PASS `AVAILABLE` sandbox
+status. The regression proves that `executionEligible`, profile/check/limit
+statuses and `NOT_EXECUTED_UNSAFE` remain intact. The focused gate above and the
+full suite include this regression.
