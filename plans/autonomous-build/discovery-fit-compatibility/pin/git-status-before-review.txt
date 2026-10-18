@@ -1,0 +1,4 @@
+ M src/discovery.mjs
+ M test/discovery.test.mjs
+ M test/strategy.test.mjs
+?? plans/autonomous-build/discovery-fit-compatibility/

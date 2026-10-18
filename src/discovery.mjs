@@ -29,6 +29,11 @@ function fitOptions(options = {}) {
   };
 }
 
+function hasFitHints(options = {}) {
+  const { audienceKeywords, targetChannel, targetLocale } = fitOptions(options);
+  return audienceKeywords.length > 0 || Boolean(targetChannel) || Boolean(targetLocale);
+}
+
 export function evaluateDiscoveryFit(discovery, options = {}) {
   const { audienceKeywords, targetChannel, targetLocale } = fitOptions(options);
   const haystack = normalizeText(`${discovery?.title || ''} ${discovery?.text || ''}`).toLowerCase().slice(0, 20_000);
@@ -143,8 +148,8 @@ export function processDiscoveries(observations, options = {}) {
   const normalized = (observations || []).map((item) => normalizeDiscovery(item, options));
   return deduplicateDiscoveries(normalized).map((item) => {
     const classification = classifyDiscovery(item, options);
-    const fit = evaluateDiscoveryFit(item, options);
-    return { ...item, classification, score: scoreDiscovery(item, classification, options), fit };
+    const withFit = hasFitHints(options) ? { fit: evaluateDiscoveryFit(item, options) } : {};
+    return { ...item, classification, score: scoreDiscovery(item, classification, options), ...withFit };
   });
 }
 

@@ -25,6 +25,12 @@ test('deduplicates stable observations deterministically', () => {
 test('classifies and scores with explainable factors', () => {
   const [item] = processDiscoveries([{ url: 'https://example.com/a', title: 'Need automation', text: 'workflow pain', source: 'fixture' }], { policies, keywords: ['automation'], blockedKeywords: ['spam'] });
   assert.equal(item.classification.label, 'RELEVANT'); assert.equal(item.score.score, 100); assert.match(item.score.explanation, /relevant/);
+  assert.equal('fit' in item, false);
+});
+
+test('does not attach an unknown fit when no fit hints are supplied', () => {
+  const [item] = processDiscoveries([{ url: 'https://example.com/a', title: 'Need automation', text: 'workflow pain', source: 'fixture' }], { policies, keywords: ['automation'] });
+  assert.equal('fit' in item, false);
 });
 
 test('blocked keyword receives zero score and no action eligibility', () => {

@@ -102,6 +102,25 @@ test("strategy selects engage or research only from eligible relevant discovery"
   assert.equal(engage.candidateId, "r1");
 });
 
+test("strategy keeps scheduler discoveries actionable when no fit hints are supplied", async () => {
+  const { service, campaign, store } = await fixture("strategy-discovery-no-fit-");
+  await store.mutate("fixture", "published", (state) => {
+    state.posts = state.posts.map((post) => ({ ...post, status: "published" }));
+  });
+  const recorded = await service.recordDiscoveries(campaign.id, {
+    observations: [{ url: "https://example.com/thread", title: "Need automation", text: "workflow pain", source: "fixture" }],
+    policies: { "example.com": { channel: "example", actions: ["observe"] } },
+    keywords: ["automation"]
+  });
+  assert.equal(recorded.observations.length, 1);
+  assert.equal("fit" in recorded.observations[0], false);
+  const saved = (await service.snapshot()).campaigns.find((item) => item.id === campaign.id);
+  assert.equal("fit" in saved.discovery.observations[0], false);
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00Z" });
+  assert.equal(decision.action, "research");
+  assert.equal(decision.candidateId, recorded.observations[0].discoveryId);
+});
+
 test("strategy excludes discovery with explicit mismatched or unknown fit", async () => {
   const { service, campaign, store } = await fixture("strategy-fit-gate-");
   await store.mutate("fixture", "discovery_fit", (state) => {
