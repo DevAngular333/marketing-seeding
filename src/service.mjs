@@ -8,14 +8,14 @@ import { collectOfficialMetrics, integrationReadiness } from "./integrations.mjs
 import { buildMarketingFlowGraph } from "./flow-graph.mjs";
 import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, evaluateCampaignAuthorization, normalizeCampaignAuthorization, publicationIdentityKey, publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
 import { classifyReadinessError, configuredReadinessTtlMs, executionAccountIdentityReference, executionAccountKey, isCanonicalOrcaProfileId, isReadinessFresh, normalizeExecutionAccount, normalizeReadinessResult, readinessBinding, MAX_READINESS_ATTEMPTS } from "./readiness.mjs";
-import { createExecutionRequestV1, isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateExecutionReceiptV1, validateSubmitAcceptanceEvidence } from "./execution-contracts.mjs";
+import { contentSha256, createExecutionRequestV1, isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateExecutionReceiptV1, validateSubmitAcceptanceEvidence } from "./execution-contracts.mjs";
 import { assertWindowExecutionBinding, normalizeOneTimeExecutionWindow, oneTimeExecutionWindowFingerprint, oneTimeExecutionWindowInBounds, oneTimeExecutionWindowStatus } from "./one-time-execution-window.mjs";
 import { assertLiveGrantMatchesExecution, createLiveExecutionGrantV1, liveGrantEffectiveStatus } from "./live-execution-grant.mjs";
 import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 import { activeExecutionForPost, recordSubmissionUnknown, unresolvedSubmission, UNKNOWN_POST_STATUS } from "./submission-uncertainty.mjs";
 import { deriveStandingExecutionControlPlan } from "./standing-campaign-delegation.mjs";
-import { buildProductIntelligence, normalizeEvidenceRecords, serializeProductIntelligence } from "./product-intelligence.mjs";
+import { buildProductIntelligence, normalizeEvidenceRecords, productIntelligenceHash, serializeProductIntelligence } from "./product-intelligence.mjs";
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
 import { observePublicUrls } from "./discovery-observer.mjs";
@@ -1786,7 +1786,45 @@ export class SeedingService {
   }
 
   #standingAutonomousAuthorization(authorization) {
-    return authorization?.executionMode === "standing_autonomous" && authorization.allowLiveExecution === true;
+    return authorization?.status === "active" && authorization?.executionMode === "standing_autonomous" && authorization.allowLiveExecution === true;
+  }
+
+  #assertStandingBinding(state, postId, expected = {}) {
+    const post = requireItem(state.posts, postId, "Post");
+    const campaign = requireItem(state.campaigns || [], post.campaignId, "Campaign");
+    const authorization = requireItem(state.campaignAuthorizations || [], post.campaignAuthorizationId, "Campaign authorization");
+    const target = requireItem(state.targets, post.targetId, "Target");
+    const account = (state.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
+    const exact = campaign.status === "active" &&
+      this.#standingAutonomousAuthorization(authorization) &&
+      authorization.campaignId === campaign.id &&
+      authorization.binding === campaignAuthorizationFingerprint(authorization) &&
+      authorization.campaignBinding === campaignScopeFingerprint(campaign) &&
+      post.campaignAuthorizationId === authorization.id &&
+      post.campaignAuthorizationBinding === authorization.binding &&
+      target.status === "active" &&
+      account?.status === "enabled" &&
+      account.profileId === target.profileId &&
+      (expected.campaignId === undefined || post.campaignId === expected.campaignId) &&
+      (expected.authorizationId === undefined || authorization.id === expected.authorizationId) &&
+      (expected.authorizationBinding === undefined || authorization.binding === expected.authorizationBinding) &&
+      (expected.campaignBinding === undefined || authorization.campaignBinding === expected.campaignBinding) &&
+      (expected.postAuthorizationBinding === undefined || post.campaignAuthorizationBinding === expected.postAuthorizationBinding) &&
+      (expected.targetId === undefined || target.id === expected.targetId) &&
+      (expected.accountId === undefined || target.accountId === expected.accountId) &&
+      (expected.profileId === undefined || target.profileId === expected.profileId) &&
+      (expected.targetUrl === undefined || target.url === expected.targetUrl) &&
+      (expected.postStatus === undefined || post.status === expected.postStatus) &&
+      (expected.contentId === undefined || post.contentId === expected.contentId) &&
+      (expected.contentHash === undefined || contentSha256(post.content) === expected.contentHash) &&
+      (expected.audience === undefined || post.audience === expected.audience) &&
+      (expected.publicationVisibility === undefined || String(post.publicationVisibility || "PUBLIC").toUpperCase() === expected.publicationVisibility) &&
+      (expected.idempotencyKey === undefined || post.idempotencyKey === expected.idempotencyKey) &&
+      (expected.artifactId === undefined || (post.artifactId || null) === expected.artifactId) &&
+      (expected.assetPath === undefined || (post.assetPath || null) === expected.assetPath) &&
+      (expected.assetSha256 === undefined || (post.assetSha256 || null) === expected.assetSha256);
+    if (!exact) throw new Error("Standing delegation requires an exact current campaign authorization binding");
+    return { post, campaign, authorization, target, account };
   }
 
   async ensureStandingExecutionWindow(postId, actor = "campaign-queue-scheduler") {
@@ -1811,7 +1849,16 @@ export class SeedingService {
     const now = new Date();
     const existing = (snapshot.oneTimeExecutionWindows || []).filter((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, now)));
     if (existing.length > 1) throw new Error("Multiple active standing execution windows match this job");
-    if (existing.length === 1) return existing[0];
+    if (existing.length === 1) {
+      const current = existing[0];
+      if (current.campaignId !== post.campaignId || current.campaignAuthorizationId !== authorization.id ||
+          current.jobId !== post.id || current.authorizationFingerprint !== authorization.binding ||
+          current.binding !== oneTimeExecutionWindowFingerprint(current) || current.maxExecutions !== 1 ||
+          !oneTimeExecutionWindowInBounds(current, now)) {
+        throw new Error("Standing execution window binding is stale");
+      }
+      return current;
+    }
     const fromMs = Math.max(now.getTime() - 5_000, Date.parse(authorization.validFrom));
     const untilMs = Math.min(Date.parse(authorization.validUntil), now.getTime() + 15 * 60_000);
     if (!Number.isFinite(fromMs) || !Number.isFinite(untilMs) || untilMs <= now.getTime()) throw new Error("Standing authorization has no current execution window");
@@ -1826,10 +1873,42 @@ export class SeedingService {
       reason: `standing campaign authorization ${authorization.id}`
     }, { post, authorization, authorizationFingerprint: authorization.binding, now, createdBy: actor });
     const result = await this.store.mutate(actor, "standing_execution_window_derived", (state) => {
-      const current = requireItem(state.posts, postId, "Post");
+      const currentBinding = this.#assertStandingBinding(state, postId, {
+        campaignId: post.campaignId,
+        authorizationId: authorization.id,
+        authorizationBinding: authorization.binding,
+        campaignBinding: campaignScopeFingerprint(campaign),
+        postAuthorizationBinding: post.campaignAuthorizationBinding,
+        targetId: target.id,
+        accountId: target.accountId,
+        profileId: target.profileId,
+        targetUrl: target.url,
+        postStatus: post.status,
+        contentId: post.contentId,
+        contentHash: contentSha256(post.content),
+        audience: post.audience,
+        publicationVisibility: String(post.publicationVisibility || "PUBLIC").toUpperCase(),
+        idempotencyKey: post.idempotencyKey,
+        artifactId: post.artifactId || null,
+        assetPath: post.assetPath || null,
+        assetSha256: post.assetSha256 || null
+      });
+      const current = currentBinding.post;
       if (unresolvedSubmission(state, current)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
       const active = (state.oneTimeExecutionWindows || []).find((item) => item.jobId === postId && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
-      if (active) return active;
+      if (active) {
+        if (active.campaignId !== current.campaignId || active.campaignAuthorizationId !== currentBinding.authorization.id ||
+            active.authorizationFingerprint !== currentBinding.authorization.binding || active.binding !== oneTimeExecutionWindowFingerprint(active) ||
+            active.maxExecutions !== 1) {
+          throw new Error("Standing execution window binding is stale");
+        }
+        return active;
+      }
+      if (window.campaignId !== current.campaignId || window.campaignAuthorizationId !== currentBinding.authorization.id ||
+          window.jobId !== current.id || window.authorizationFingerprint !== currentBinding.authorization.binding ||
+          window.binding !== oneTimeExecutionWindowFingerprint(window) || window.maxExecutions !== 1) {
+        throw new Error("Standing execution window binding is stale");
+      }
       state.oneTimeExecutionWindows ||= [];
       state.oneTimeExecutionWindows.push(window);
       return window;
@@ -1855,14 +1934,29 @@ export class SeedingService {
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
     const window = (snapshot.oneTimeExecutionWindows || []).find((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
     if (!window) throw new Error("Standing execution grant requires an active one-time window");
+    if (window.campaignId !== post.campaignId || window.campaignAuthorizationId !== authorization.id ||
+        window.jobId !== post.id || window.authorizationFingerprint !== authorization.binding ||
+        window.binding !== oneTimeExecutionWindowFingerprint(window) || window.maxExecutions !== 1 ||
+        !oneTimeExecutionWindowInBounds(window, new Date())) {
+      throw new Error("Standing execution grant window binding is stale");
+    }
     const pending = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
     if (pending.length > 1) throw new Error("Multiple live executions are pending for standing delegation");
     const existing = (snapshot.liveExecutionGrants || []).find((item) => item.jobId === post.id && liveGrantEffectiveStatus(item) === "ACTIVE");
-    if (existing) return existing;
     if (!account || account.status !== "enabled" || account.profileId !== target.profileId) throw new Error("Standing execution grant requires an exact enabled account/profile binding");
     const now = new Date();
     if (account.health !== "healthy") throw new Error("Standing execution grant requires a healthy account");
     if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, now, this.readinessTtlMs)) throw new Error("Standing execution grant requires fresh readiness");
+    if (existing) {
+      if (!pending.length) throw new Error("Standing execution grant requires a pending live execution request");
+      if (existing.boundExecutionId !== pending[0].executionId || existing.campaignId !== post.campaignId ||
+          existing.campaignAuthorizationId !== authorization.id || existing.campaignAuthorizationBinding !== authorization.binding ||
+          existing.targetId !== target.id || existing.accountId !== target.accountId || existing.profileId !== target.profileId) {
+        throw new Error("Standing execution grant binding is stale");
+      }
+      assertLiveGrantMatchesExecution(existing, pending[0].request, authorization, now, { checkWindow: false });
+      return existing;
+    }
     const validFrom = new Date(Math.max(now.getTime() - 5_000, Date.parse(window.validFrom))).toISOString();
     const validUntil = new Date(Math.min(Date.parse(window.validUntil), Date.parse(authorization.validUntil))).toISOString();
     const grant = createLiveExecutionGrantV1({
@@ -1870,15 +1964,71 @@ export class SeedingService {
       validFrom, validUntil, createdBy: "standing-campaign-delegation",
       operatorAuthorizationReference: authorization.standingAuthorizationReference, now
     });
+    const expectedRequest = pending[0] || null;
     const result = await this.store.mutate(actor, "standing_execution_grant_derived", (state) => {
-      const currentPost = requireItem(state.posts, postId, "Post");
-      const currentAuthorization = requireItem(state.campaignAuthorizations || [], currentPost.campaignAuthorizationId, "Campaign authorization");
-      if (!this.#standingAutonomousAuthorization(currentAuthorization)) throw new Error("Standing campaign authorization is no longer active");
+      const currentBinding = this.#assertStandingBinding(state, postId, {
+        campaignId: post.campaignId,
+        authorizationId: authorization.id,
+        authorizationBinding: authorization.binding,
+        campaignBinding: campaignScopeFingerprint(campaign),
+        postAuthorizationBinding: post.campaignAuthorizationBinding,
+        targetId: target.id,
+        accountId: target.accountId,
+        profileId: target.profileId,
+        targetUrl: target.url,
+        postStatus: post.status,
+        contentId: post.contentId,
+        contentHash: contentSha256(post.content),
+        audience: post.audience,
+        publicationVisibility: String(post.publicationVisibility || "PUBLIC").toUpperCase(),
+        idempotencyKey: post.idempotencyKey,
+        artifactId: post.artifactId || null,
+        assetPath: post.assetPath || null,
+        assetSha256: post.assetSha256 || null
+      });
+      const currentPost = currentBinding.post;
+      const currentAuthorization = currentBinding.authorization;
+      if (currentBinding.account.health !== "healthy" || !isReadinessFresh(currentBinding.target.readiness, {
+        platform: currentBinding.target.channel,
+        accountId: currentBinding.target.accountId,
+        profileId: currentBinding.target.profileId,
+        targetId: currentBinding.target.id
+      }, new Date(), this.readinessTtlMs)) {
+        throw new Error("Standing execution grant requires a fresh healthy account/profile binding");
+      }
       if (unresolvedSubmission(state, currentPost)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
-      const currentExisting = (state.liveExecutionGrants || []).find((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE");
-      if (currentExisting) return currentExisting;
       const currentRequest = (state.executionRequests || []).find((item) => item.jobId === postId && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
       if (!currentRequest) throw new Error("Standing execution grant requires a pending live execution request");
+      const requestMatches = currentRequest.executionId === expectedRequest?.executionId &&
+        currentRequest.jobId === currentPost.id && currentRequest.campaignId === currentPost.campaignId &&
+        currentRequest.request?.executionId === currentRequest.executionId && currentRequest.request?.jobId === currentPost.id &&
+        currentRequest.request?.campaignId === currentPost.campaignId && currentRequest.request?.platform === currentBinding.target.channel &&
+        currentRequest.request?.accountId === currentBinding.target.accountId && currentRequest.request?.profileId === currentBinding.target.profileId &&
+        currentRequest.request?.target?.targetId === currentBinding.target.id && currentRequest.request?.target?.url === currentBinding.target.url &&
+        currentRequest.request?.authorization?.authorizationId === currentAuthorization.id && currentRequest.request?.authorization?.binding === currentAuthorization.binding &&
+        currentRequest.request?.content?.contentId === currentPost.contentId && currentRequest.request?.content?.sha256 === contentSha256(currentPost.content) &&
+        currentRequest.request?.audience === currentPost.audience &&
+        currentRequest.request?.publicationVisibility === String(currentPost.publicationVisibility || "PUBLIC").toUpperCase() &&
+        currentRequest.request?.idempotencyKey === currentPost.idempotencyKey && currentRequest.request?.oneTimeWindow?.windowId === window.windowId &&
+        currentRequest.request?.media?.length === (currentPost.artifactId ? 1 : 0) &&
+        (!currentPost.artifactId || (currentRequest.request.media[0]?.artifactId === currentPost.artifactId &&
+          currentRequest.request.media[0]?.sha256 === currentPost.assetSha256 &&
+          currentRequest.request.media[0]?.reference === currentPost.assetPath));
+      if (!requestMatches) throw new Error("Standing execution grant request binding is stale");
+      const currentWindow = (state.oneTimeExecutionWindows || []).find((item) => item.windowId === window.windowId);
+      if (!currentWindow || currentWindow.campaignId !== currentPost.campaignId || currentWindow.campaignAuthorizationId !== currentAuthorization.id ||
+          currentWindow.jobId !== currentPost.id || currentWindow.authorizationFingerprint !== currentAuthorization.binding ||
+          currentWindow.binding !== oneTimeExecutionWindowFingerprint(currentWindow) || currentWindow.maxExecutions !== 1 ||
+          !["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(currentWindow, new Date())) ||
+          !oneTimeExecutionWindowInBounds(currentWindow, new Date()) ||
+          (currentWindow.status === "RESERVED" && currentWindow.reservedExecutionId !== currentRequest.executionId)) {
+        throw new Error("Standing execution grant window binding is stale");
+      }
+      const currentExisting = (state.liveExecutionGrants || []).find((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE");
+      if (currentExisting) {
+        assertLiveGrantMatchesExecution(currentExisting, currentRequest.request, currentAuthorization, new Date(), { checkWindow: false });
+        return currentExisting;
+      }
       grant.boundExecutionId = currentRequest.executionId;
       currentRequest.request.liveGrant = { grantId: grant.grantId };
       assertLiveGrantMatchesExecution(grant, currentRequest.request, currentAuthorization, new Date(), { checkWindow: false });
@@ -2215,6 +2365,16 @@ export class SeedingService {
       )));
     } catch (error) {
       throw new Error(`Product intelligence document is not serializable: ${error.message}`);
+    }
+    if (document.documentHash !== undefined) {
+      const declaredHash = String(document.documentHash || "").toLowerCase();
+      const withoutHash = { ...document };
+      delete withoutHash.documentHash;
+      const expectedHash = productIntelligenceHash(JSON.parse(serializeProductIntelligence(withoutHash)));
+      if (!/^[a-f0-9]{64}$/.test(declaredHash) || declaredHash !== expectedHash) {
+        throw new Error("Product intelligence documentHash mismatch");
+      }
+      document.documentHash = declaredHash;
     }
     const serialized = serializeProductIntelligence(document);
     if (Buffer.byteLength(serialized, "utf8") > MAX_PRODUCT_INTELLIGENCE_BYTES) {

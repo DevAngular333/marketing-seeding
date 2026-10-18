@@ -469,6 +469,76 @@ test("execution runtime projection rejects publication URLs carrying credentials
   assert.equal(projection.recent[0].permalink, null);
 });
 
+test("execution runtime projection exposes a bounded chronological timeline without raw identifiers", () => {
+  const permalink = "https://example.invalid/post/timeline";
+  const projection = projectExecutionRuntime({
+    executionRequests: [{
+      executionId: "timeline-execution-secret",
+      jobId: "timeline-post-secret",
+      dryRun: false,
+      request: { dryRun: false },
+      state: "CONFIRMED",
+      submitState: "CONFIRMED",
+      createdAt: "2026-10-18T10:00:00.000Z",
+      executionStartedAt: "2026-10-18T10:00:01.000Z",
+      submitIntentAt: "2026-10-18T10:00:02.000Z",
+      dispatchedAt: "2026-10-18T10:00:03.000Z"
+    }],
+    executionReceipts: [{
+      executionId: "timeline-execution-secret",
+      receivedAt: "2026-10-18T10:00:04.000Z",
+      receipt: {
+        submitState: "CONFIRMED",
+        publicationUrl: permalink,
+        publicationEvidence: {
+          verifiedAt: "2026-10-18T10:00:05.000Z",
+          verificationMethod: "independent_fixture",
+          accountMatched: true,
+          targetMatched: true,
+          contentHashMatched: true,
+          verificationDetails: {
+            authorIdentity: { matched: true },
+            contentMatch: { matched: true },
+            candidate: { postId: "timeline-post-id", permalink, timestamp: "2026-10-18T10:00:04.500Z", timestampMatched: true }
+          }
+        }
+      }
+    }]
+  });
+  assert.equal(projection.timelineCount, projection.timeline.length);
+  assert.equal(projection.timelineTruncated, false);
+  assert.ok(projection.timeline.length >= 5);
+  assert.equal(projection.timeline[0].event, "publication_verified");
+  assert.equal(projection.timeline[0].publicationStatus, "VERIFIED");
+  assert.equal(projection.timeline[0].permalink, permalink);
+  assert.equal(projection.timeline.at(-1).event, "execution_request_created");
+  assert.equal(projection.latestAction.executionRef, projection.timeline[0].executionRef);
+  assert.equal(projection.latestAction.event, "publication_verified");
+  assert.equal(JSON.stringify(projection).includes("timeline-execution-secret"), false);
+  assert.equal(JSON.stringify(projection).includes("timeline-post-secret"), false);
+});
+
+test("execution runtime timeline retains terminal dry-run completion as its own event", () => {
+  const projection = projectExecutionRuntime({
+    executionRequests: [{
+      executionId: "dry-run-timeline-secret",
+      jobId: "dry-run-post-secret",
+      dryRun: true,
+      request: { dryRun: true },
+      state: "DRY_RUN_COMPLETE",
+      submitState: "NOT_STARTED",
+      createdAt: "2026-10-18T11:00:00.000Z",
+      dryRunCompletedAt: "2026-10-18T11:00:02.000Z"
+    }],
+    executionReceipts: []
+  });
+  assert.equal(projection.timeline.some((event) => event.event === "dry_run_completed"), true);
+  assert.equal(projection.latestAction.event, "dry_run_completed");
+  assert.equal(projection.latestAction.publicationStatus, "DRY_RUN_ONLY");
+  assert.equal(projection.latestAction.permalink, null);
+  assert.equal(JSON.stringify(projection).includes("dry-run-timeline-secret"), false);
+});
+
 test("materialize content candidate rejects identity tampering and unbound targets", async () => {
   const { service, campaign, productRepo, target } = await fixture("seeding-content-materialize-guards-test-");
   const document = buildProductIntelligence({ productId: "fixture-product", evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }], claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }] });
@@ -1064,6 +1134,139 @@ test("queue story derivation stays draft-only without policy, with ambiguous or 
   }
 });
 
+test("standing template queue autonomously inspects absent product intelligence within approved source bounds", async () => {
+  const { directory, service, campaign, productRepo, target } = await fixture("seeding-autonomous-intake-queue-test-");
+  await writeFile(path.join(productRepo, "README.md"), [
+    "A bounded product runtime is a deterministic tool.",
+    "It solves blind retries and uncertain submissions.",
+    "It is better because it is verified and idempotent.",
+    "Operators and developers need this runtime."
+  ].join("\n"), "utf8");
+  const profileId = "threads-autonomous-intake-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-autonomous-intake-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: {
+      mode: "approved_template_set",
+      approvedClaims: [{ id: "what", text: "A bounded product runtime is a deterministic tool.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+      templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}}" }],
+      storyPolicy: { callToAction: "Read the evidence" }
+    },
+    audienceRules: { allowedAudiences: ["Operators and developers."] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true, executionMode: "standing_autonomous", standingAuthorizationReference: "standing-autonomous-intake"
+  }, "operator");
+  const first = await service.queueDueCampaignJobs("autonomous-intake-queue");
+  const state = await service.snapshot();
+  const savedCampaign = state.campaigns.find((item) => item.id === campaign.id);
+  assert.equal(savedCampaign.productIntelligence?.handoff?.readinessStatus, "READY");
+  assert.equal(state.stories.filter((story) => story.campaignId === campaign.id).length, 1);
+  assert.equal(savedCampaign.contentCandidates.filter((candidate) => candidate.templateId === "template-1").length, 1);
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  await restarted.queueDueCampaignJobs("autonomous-intake-queue-restart");
+  const after = await restarted.snapshot();
+  assert.equal(after.stories.filter((story) => story.campaignId === campaign.id).length, 1);
+  assert.equal(after.campaigns.find((item) => item.id === campaign.id).contentCandidates.filter((candidate) => candidate.templateId === "template-1").length, 1);
+  assert.equal(first.some((item) => item.campaignId === campaign.id), true);
+});
+
+test("autonomous product-intelligence intake keeps incomplete evidence draft-only", async () => {
+  const { service, campaign, productRepo, target } = await fixture("seeding-autonomous-intake-incomplete-test-");
+  await writeFile(path.join(productRepo, "README.md"), "A small bounded tool.\n", "utf8");
+  const profileId = "threads-autonomous-intake-incomplete-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-autonomous-intake-incomplete-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: {
+      mode: "approved_template_set",
+      approvedClaims: [{ id: "what", text: "A small bounded tool.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+      templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}}" }],
+      storyPolicy: { callToAction: "Read the evidence" }
+    },
+    audienceRules: { allowedAudiences: ["builders"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true, executionMode: "standing_autonomous", standingAuthorizationReference: "standing-autonomous-intake-incomplete"
+  }, "operator");
+  const before = await service.snapshot();
+  await service.queueDueCampaignJobs("autonomous-intake-incomplete");
+  const after = await service.snapshot();
+  const savedCampaign = after.campaigns.find((item) => item.id === campaign.id);
+  assert.equal(savedCampaign.productIntelligence?.handoff?.readinessStatus, "INCOMPLETE");
+  assert.equal(after.stories.filter((story) => story.campaignId === campaign.id).length, 0);
+  assert.equal((savedCampaign.contentCandidates || []).length, 0);
+  assert.equal(after.posts.length, before.posts.length);
+  assert.equal(after.executionRequests.length, before.executionRequests.length);
+  assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length);
+  assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length);
+  assert.equal(after.executionLeases.length, before.executionLeases.length);
+});
+
+test("autonomous product-intelligence intake fails closed on source drift before handoff", async () => {
+  const { service, campaign, productRepo, target } = await fixture("seeding-autonomous-intake-drift-test-");
+  const original = "A bounded product runtime is deterministic.\nIt solves blind retries.\nIt is verified and idempotent.\nOperators need it.\n";
+  await writeFile(path.join(productRepo, "README.md"), original, "utf8");
+  const profileId = "threads-autonomous-intake-drift-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, { profileId, status: "active", readiness: {
+    state: "ready", checkedAt: new Date().toISOString(),
+    checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+  } }, "operator");
+  const sourceHash = createHash("sha256").update(await readFile(path.join(productRepo, "README.md"))).digest("hex");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-autonomous-intake-drift-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: {
+      mode: "approved_template_set",
+      approvedClaims: [{ id: "what", text: "A bounded product runtime is deterministic.", sourceRefs: [{ relativePath: "README.md", sha256: sourceHash }] }],
+      templates: [{ id: "template-1", platform: "threads", template: "{{claim:what}}" }],
+      storyPolicy: { callToAction: "Read the evidence" }
+    },
+    audienceRules: { allowedAudiences: ["Operators"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true, executionMode: "standing_autonomous", standingAuthorizationReference: "standing-autonomous-intake-drift"
+  }, "operator");
+  await writeFile(path.join(productRepo, "README.md"), "changed after authorization\n", "utf8");
+  const before = await service.snapshot();
+  await service.queueDueCampaignJobs("autonomous-intake-drift");
+  const after = await service.snapshot();
+  const savedCampaign = after.campaigns.find((item) => item.id === campaign.id);
+  assert.equal(savedCampaign.productIntelligence, undefined);
+  assert.equal((savedCampaign.contentCandidates || []).length, 0);
+  assert.equal(after.posts.length, before.posts.length);
+  assert.equal(after.executionRequests.length, before.executionRequests.length);
+  assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length);
+  assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length);
+  assert.equal(after.executionLeases.length, before.executionLeases.length);
+});
+
 test("queue scheduler isolates one campaign failure and continues the next campaign", async () => {
   const { service, campaign, target } = await fixture("seeding-queue-failure-isolation-test-");
   const secondCampaign = await service.createCampaign({ name: "Second course", objective: "Continue queue", productRepo: campaign.productRepo }, "operator");
@@ -1221,6 +1424,23 @@ test("product intelligence derives one grounded draft story idempotently across 
   assert.equal(finalState.stories.filter((story) => story.storyIdentity === first.storyIdentity).length, 1);
 });
 
+test("product intelligence attachment rejects a forged document hash before persistence", async () => {
+  const { service, campaign, productRepo } = await fixture("seeding-product-intelligence-document-hash-test-");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  document.documentHash = "0".repeat(64);
+  const before = await service.snapshot();
+  await assert.rejects(
+    service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "INCOMPLETE" }, "automation"),
+    /documentHash mismatch/
+  );
+  const after = await service.snapshot();
+  assert.deepEqual(after, before);
+});
+
 test("product intelligence story derivation remains draft-only and requires READY handoff", async () => {
   const { service, campaign, productRepo } = await fixture("seeding-product-intelligence-story-gate-test-");
   const document = buildProductIntelligence({
@@ -1293,6 +1513,33 @@ test("discovery observations are normalized, scored, persisted and never become 
   assert.equal(state.posts[0].id, post.id);
   const dashboard = await service.dashboard();
   assert.equal(dashboard.discoveries.length, 2);
+  assert.equal(dashboard.discoveryOpportunities.length, 1);
+  assert.equal(dashboard.discoveryOpportunities[0].discoveryId, result.observations.find((item) => item.classification.label === "RELEVANT").discoveryId);
+  assert.equal(dashboard.discoveryOpportunities[0].advisory, true);
+  assert.equal(dashboard.discoveryOpportunities[0].authoritySideEffects, false);
+  assert.equal(dashboard.discoveryOpportunities[0].externalSideEffects, false);
+  assert.deepEqual(await service.snapshot(), state);
+});
+
+test("dashboard exposes read-only conversation continuity without changing state", async () => {
+  const { service, campaign, post } = await fixture("seeding-conversation-continuity-dashboard-test-");
+  await service.store.mutate("fixture", "conversation_continuity_seed", (state) => {
+    state.interactions.push(
+      { id: "interaction-continuity-1", postId: post.id, externalId: "external-thread-1", authorLabel: "reader", text: "Question", capturedAt: "2026-01-01T00:00:00.000Z" },
+      { id: "interaction-continuity-2", postId: post.id, externalId: "external-thread-1", authorLabel: "reader", text: "Follow up", capturedAt: "2026-01-02T00:00:00.000Z" }
+    );
+    state.replies.push({ id: "reply-continuity-1", interactionId: "interaction-continuity-1", status: "draft", text: "Grounded answer", createdAt: "2026-01-01T01:00:00.000Z" });
+    return state;
+  });
+  const before = await service.snapshot();
+  const dashboard = await service.dashboard();
+  assert.equal(dashboard.conversationContinuity.authoritySideEffects, false);
+  assert.equal(dashboard.conversationContinuity.externalSideEffects, false);
+  assert.equal(dashboard.conversationContinuity.total, 1);
+  assert.equal(dashboard.conversationContinuity.conversations[0].turns.length, 3);
+  assert.deepEqual(await service.snapshot(), before);
+  assert.equal(dashboard.conversationContinuity.campaignRef, null);
+  assert.ok(campaign.id);
 });
 
 test("provider-send fence rejects changed execution identity and target binding", async () => {
