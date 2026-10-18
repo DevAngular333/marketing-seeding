@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { createInitialState } from "../src/store.mjs";
 import { campaignAuthorizationFingerprint, campaignContentHash, campaignScopeFingerprint, publicationIdentityKey } from "../src/campaign-authorization.mjs";
+import { contentCandidateIdentity } from "../src/content-foundation.mjs";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -62,6 +63,12 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   fixtureAuthorization.binding = campaignAuthorizationFingerprint(fixtureAuthorization);
   fixturePost.campaignAuthorizationBinding = fixtureAuthorization.binding;
   initialState.campaigns.push(fixtureCampaign);
+  const candidateContent = "Fixture candidate content";
+  const candidateIdentity = contentCandidateIdentity({ storyId: "fixture-story", targetId: fixtureTarget.id, channel: fixtureTarget.channel, content: candidateContent, claimIds: [], evidenceRefs: [] });
+  const candidateContentId = `content-${candidateIdentity.slice(0, 24)}`;
+  const fixtureGroundingSha256 = createHash("sha256").update(await readFile(path.join(appRoot, "README.md"))).digest("hex");
+  initialState.stories.push({ id: "fixture-story", campaignId: fixtureCampaign.id, audience: "public", language: "en", groundingSources: [{ relativePath: "README.md", sha256: fixtureGroundingSha256 }], status: "draft" });
+  fixtureCampaign.contentCandidates = [{ contentId: candidateContentId, contentIdentity: candidateIdentity, storyId: "fixture-story", targetId: fixtureTarget.id, channel: fixtureTarget.channel, content: candidateContent, claimIds: [], evidenceRefs: [], status: "draft" }];
   initialState.targets.push(fixtureTarget);
   initialState.posts.push(fixturePost);
   initialState.executionAccounts.push({ id: "linkedin:fixture-account", platform: "linkedin", accountId: "fixture-account", profileId: fixtureTarget.profileId, status: "enabled", health: "healthy" });
@@ -101,6 +108,16 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal((await fetch(`${baseUrl}/api/operator/session`)).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/state`)).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/automation/collect-now`, { method: "POST" })).status, 401);
+  const candidateMaterializePath = `${baseUrl}/api/campaigns/live-grant-campaign/content-candidates/materialize`;
+  assert.equal((await fetch(candidateMaterializePath, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify({}) })).status, 400);
+  assert.equal((await fetch(candidateMaterializePath, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) })).status, 401);
+  const materializedResponse = await fetch(candidateMaterializePath, { method: "POST", headers: { authorization: `Bearer ${automationToken}`, "content-type": "application/json" }, body: JSON.stringify({ contentId: candidateContentId, contentIdentity: candidateIdentity }) });
+  assert.equal(materializedResponse.status, 201);
+  const materialized = await materializedResponse.json();
+  assert.equal(materialized.status, "draft");
+  assert.equal(materialized.contentId, candidateContentId);
+  assert.equal("campaignAuthorizationId" in materialized, false);
+  assert.equal("executionState" in materialized, false);
   const operatorSession = await fetch(`${baseUrl}/api/operator/session`, {
     headers: { authorization: `Bearer ${token}`, "x-agentic-actor": "test-operator" }
   });

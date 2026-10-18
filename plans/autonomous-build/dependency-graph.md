@@ -21,7 +21,9 @@ JsonStore / schema / audit / writer lease
   │     └─> Product Factory (safe local classification/commands + bounded candidate discovery + artifact hash + bounded persistent run lineage)
   │
   ├─> deterministic advisory strategy (reads product readiness, discovery, queue policy, UNKNOWN state and current learning context)
-  │     ├─> deterministic evidence-grounded content candidates (draft-only)
+  │     ├─> deterministic evidence-grounded content candidates
+  │     │     └─> exact candidate materialization + standing approved-copy binding
+  │     │           └─> existing queue/readiness/window/grant/request path
   │     ├─> outcome summary + advisory learning feedback
   │     └─> opt-in control cycle and public discovery polling (read-only)
   │
@@ -37,9 +39,9 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 
 ## Dependency status
 
-- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, downstream DRY_RUN distribution-handoff validation/persistence, deterministic discovery persistence/projection, bounded caller-supplied audience/channel/locale fit metadata, safe product factory execution with bounded candidate discovery and persistent run lineage.
+- **Implemented/local verified:** authority, queue governance, standing delegation, kill switch epoch fencing, exact dispatch, readiness, LinkedIn transport/adapter/verifier contracts, bounded repository inspection and product intelligence handoff persistence/projection, downstream DRY_RUN distribution-handoff validation/persistence, deterministic discovery persistence/projection, bounded caller-supplied audience/channel/locale fit metadata, safe product factory execution with bounded candidate discovery and persistent run lineage, and exact content-candidate materialization/approved-copy standing binding.
 - **Partial:** dashboard, artifact/story/draft state, metrics collectors, restart/lease recovery, account/profile session reuse, project-specific product factory orchestration and artifact lifecycle. Metric projection is deterministic locally, but live metric evidence and LinkedIn collection remain absent.
 - **Implemented/local verified:** read-only account runtime projection reusing existing account/profile/readiness state; no login, credential broker, account selector or failover.
 - **Implemented/local verified:** deterministic advisory strategy decisions, evidence-grounded draft candidates, outcome summaries with bounded explicit-link-only post attribution, campaign-aware post attribution context in advisory learning/strategy, opt-in control-cycle scheduling, and bounded public HTTP discovery polling with campaign error isolation; all are non-authoritative.
-- **Design-only/not implemented:** upstream live System-Agentic handoff producer/consumer, autonomous audience search, platform search/community-rule crawler, outcome-driven adaptive authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery. Post attribution and learning context are advisory evidence only; caller-supplied fit is implemented as advisory evidence.
+- **Design-only/not implemented:** upstream live System-Agentic handoff producer/consumer, autonomous audience search, platform search/community-rule crawler, outcome-driven adaptive authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery. Template-set candidate auto-binding remains intentionally unimplemented; post attribution and learning context are advisory evidence only; caller-supplied fit is implemented as advisory evidence.
 - **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.

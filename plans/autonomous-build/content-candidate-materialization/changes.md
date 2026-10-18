@@ -1,0 +1,6 @@
+- Added `SeedingService.materializeContentCandidate`.
+- Added automation route `POST /api/campaigns/:campaignId/content-candidates/materialize`.
+- Exported/reused deterministic content candidate identity computation.
+- Added service regression tests for idempotency, restart, tampering, target binding, and draft-only state.
+- Review hardening: materialization rechecks target channel `maxContentChars` policy.
+- Server regression now exercises authenticated automation success and asserts draft-only output.

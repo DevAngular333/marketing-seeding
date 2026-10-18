@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import { JsonStore } from "../src/store.mjs";
 import { SeedingService, buildTrafficPulse, normalizeKeywords } from "../src/service.mjs";
+import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
 import { buildProductIntelligence } from "../src/product-intelligence.mjs";
 
@@ -90,6 +91,186 @@ test("content candidates scope normal targets through campaign posts and survive
 test("content candidate targetIds must be an array when supplied", async () => {
   const { service, campaign } = await fixture("seeding-content-target-input-test-");
   await assert.rejects(service.deriveContentCandidates(campaign.id, { storyId: "missing", targetIds: "target" }), /targetIds/);
+});
+
+test("materialize content candidate creates an idempotent draft without authority side effects", async () => {
+  const { directory, service, campaign, productRepo, groundingText } = await fixture("seeding-content-materialize-test-");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, { title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more", groundingSources: ["README.md"], claimIds: ["what"] }, "automation");
+  const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+  const created = await service.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation");
+  assert.equal(created.status, "draft");
+  assert.equal(created.contentId, candidate.contentId);
+  assert.equal(created.contentIdentity, candidate.contentIdentity);
+  assert.deepEqual(created.claimIds, candidate.claimIds);
+  assert.deepEqual(created.contentEvidenceRefs, candidate.evidenceRefs);
+  assert.deepEqual(created.contentSourceRefs, [{ relativePath: "README.md", sha256: createHash("sha256").update(groundingText).digest("hex") }]);
+  assert.equal(created.audience, "builders");
+  assert.equal("campaignAuthorizationId" in created, false);
+  const before = await service.snapshot();
+  assert.equal(before.executionRequests.length, 0);
+  const repeated = await service.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation");
+  assert.equal(repeated.id, created.id);
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  const after = await restarted.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation");
+  assert.equal(after.id, created.id);
+  assert.equal((await restarted.snapshot()).posts.filter((post) => post.contentId === candidate.contentId).length, 1);
+});
+
+test("materialize content candidate rejects identity tampering and unbound targets", async () => {
+  const { service, campaign, productRepo, target } = await fixture("seeding-content-materialize-guards-test-");
+  const document = buildProductIntelligence({ productId: "fixture-product", evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }], claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }] });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, { title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more", groundingSources: ["README.md"], claimIds: ["what"] }, "automation");
+  const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+  await service.store.mutate("fixture", "tamper_candidate", (state) => { state.campaigns.find((item) => item.id === campaign.id).contentCandidates[0].content = "tampered"; return state; });
+  await assert.rejects(service.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation"), /identity mismatch/);
+  await service.store.mutate("fixture", "restore_candidate", (state) => { const item = state.campaigns.find((entry) => entry.id === campaign.id).contentCandidates[0]; item.content = candidate.content; return state; });
+  await service.store.mutate("fixture", "unbind_target", (state) => { state.posts = state.posts.filter((post) => post.targetId !== target.id); return state; });
+  await assert.rejects(service.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation"), /not bound/);
+});
+
+test("materialize content candidate rejects a contentId that is not derived from its exact identity", async () => {
+  const { service, campaign, productRepo } = await fixture("seeding-content-materialize-content-id-test-");
+  const document = buildProductIntelligence({ productId: "fixture-product", evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }], claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }] });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, { title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more", groundingSources: ["README.md"], claimIds: ["what"] }, "automation");
+  const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+  await service.store.mutate("fixture", "tamper_candidate_content_id", (state) => {
+    state.campaigns.find((item) => item.id === campaign.id).contentCandidates[0].contentId = "content-tampered";
+    return state;
+  });
+  await assert.rejects(service.materializeContentCandidate(campaign.id, { contentId: "content-tampered", contentIdentity: candidate.contentIdentity }, "automation"), /contentId mismatch/);
+});
+
+test("materialize content candidate binds only to an exact standing authorization and derives existing execution controls", async () => {
+  const { service, campaign, productRepo, target } = await fixture("seeding-content-materialize-standing-test-");
+  const profileId = "threads-standing-profile";
+  await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+  await service.updateTarget(target.id, {
+    profileId,
+    status: "active",
+    readiness: {
+      state: "ready",
+      checkedAt: new Date().toISOString(),
+      checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+    }
+  }, "operator");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, {
+    title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+    groundingSources: ["README.md"], claimIds: ["what"]
+  }, "automation");
+  const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+  await service.authorizeCampaign(campaign.id, {
+    id: "standing-content-materialization-auth",
+    validFrom: new Date(Date.now() - 60_000).toISOString(),
+    validUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+    destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+    approvedAssets: [],
+    contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(candidate.content)] },
+    audienceRules: { allowedAudiences: ["builders"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+    schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true,
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "fixture-standing-content-materialization"
+  }, "operator");
+
+  const materialized = await service.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation");
+  assert.equal(materialized.status, "queued");
+  assert.equal(materialized.campaignAuthorizationId, "standing-content-materialization-auth");
+  const state = await service.snapshot();
+  const request = state.executionRequests.find((item) => item.jobId === materialized.id);
+  const window = state.oneTimeExecutionWindows.find((item) => item.jobId === materialized.id);
+  const grant = state.liveExecutionGrants.find((item) => item.jobId === materialized.id);
+  assert.equal(request.state, "REQUEST_READY");
+  assert.equal(window.status, "RESERVED");
+  assert.equal(grant.status, "ACTIVE");
+  assert.equal(grant.boundExecutionId, request.executionId);
+  assert.equal(state.posts.filter((item) => item.idempotencyKey === materialized.idempotencyKey).length, 1);
+});
+
+test("materialize content candidate revalidates grounding source bytes before creating a post", async () => {
+  const { service, campaign, productRepo } = await fixture("seeding-content-materialize-grounding-test-");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+  const story = await service.createStory(campaign.id, { title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more", groundingSources: ["README.md"], claimIds: ["what"] }, "automation");
+  const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+  await writeFile(path.join(productRepo, "README.md"), "Changed evidence.\n", "utf8");
+  await assert.rejects(service.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation"), /grounding source changed/);
+  assert.equal((await service.snapshot()).posts.filter((item) => item.contentId === candidate.contentId).length, 0);
+});
+
+test("paused, revoked and expired standing authorizations leave materialized candidates draft", async () => {
+  for (const scenario of ["paused", "revoked", "expired"]) {
+    const { service, campaign, productRepo, target } = await fixture(`seeding-content-materialize-${scenario}-authorization-test-`);
+    const profileId = `threads-${scenario}-profile`;
+    await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
+    await service.updateTarget(target.id, {
+      profileId,
+      status: "active",
+      readiness: {
+        state: "ready",
+        checkedAt: new Date().toISOString(),
+        checks: { sessionValid: true, composerCapable: true, platformAvailable: true }
+      }
+    }, "operator");
+    const document = buildProductIntelligence({
+      productId: "fixture-product",
+      evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+      claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+    });
+    await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "READY" }, "automation");
+    const story = await service.createStory(campaign.id, {
+      title: "Evidence first", angle: "Proof", audience: "builders", callToAction: "Learn more",
+      groundingSources: ["README.md"], claimIds: ["what"]
+    }, "automation");
+    const [candidate] = await service.deriveContentCandidates(campaign.id, { storyId: story.id }, "automation");
+    await service.authorizeCampaign(campaign.id, {
+      id: `standing-${scenario}-materialization-auth`,
+      validFrom: scenario === "expired" ? new Date(Date.now() - 120_000).toISOString() : new Date(Date.now() - 60_000).toISOString(),
+      validUntil: scenario === "expired" ? new Date(Date.now() - 60_000).toISOString() : new Date(Date.now() + 60 * 60_000).toISOString(),
+      destinations: [{ platform: "threads", accountId: target.accountId, profileId, targetId: target.id }],
+      approvedAssets: [],
+      contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(candidate.content)] },
+      audienceRules: { allowedAudiences: ["builders"] },
+      publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] },
+      schedule: { timezone: "UTC", weekdays: [new Date().getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+      rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
+      allowLiveExecution: true,
+      executionMode: "standing_autonomous",
+      standingAuthorizationReference: `fixture-standing-${scenario}`
+    }, "operator");
+    if (scenario === "expired") await service.expireCampaignAuthorizations("scheduler");
+    else await service.setCampaignAuthorizationStatus(campaign.id, scenario, "operator");
+    const before = await service.snapshot();
+    const materialized = await service.materializeContentCandidate(campaign.id, { contentId: candidate.contentId, contentIdentity: candidate.contentIdentity }, "automation");
+    assert.equal(materialized.status, "draft", scenario);
+    assert.equal("campaignAuthorizationId" in materialized, false, scenario);
+    assert.equal("executionState" in materialized, false, scenario);
+    const after = await service.snapshot();
+    assert.equal(after.executionRequests.length, before.executionRequests.length, scenario);
+    assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length, scenario);
+    assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length, scenario);
+    assert.equal(after.posts.filter((post) => post.contentId === candidate.contentId).length, 1, scenario);
+  }
 });
 
 test("repository inspection builds grounded intelligence and persists safe lineage", async () => {

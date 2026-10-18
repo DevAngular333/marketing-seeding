@@ -1,4 +1,4 @@
-# Risk Register (verified 2026-10-17)
+# Risk Register (verified 2026-10-18)
 
 | ID | Risk | Severity | Control | State |
 |---|---|---:|---|---|
@@ -14,3 +14,4 @@
 | R10 | Metrics/learning and multi-platform adapters incomplete | P1 | Explicit readiness classification; only LinkedIn adapter registered for execution | OPEN, downstream roadmap |
 | R11 | Aggregate learning could steer an unrelated post or channel | P1 | Current learning is accepted only as validated explanatory context; post attribution now requires explicit links and canonical evidence, with no action rerouting or authority side effect | CONTROLLED locally; outcome-driven adaptive authority remains open |
 | R12 | Metric projections could disagree or expose arbitrary coverage states | P2 | Closed ingestion vocabulary and shared capture-time plus snapshot-ID ordering for dashboard/traffic pulse; regression tests cover same-time permutations and malformed persisted coverage | CONTROLLED locally; live metric collection remains partial |
+| R13 | Candidate materialization could confer stale or overbroad authority | P1 | Recompute candidate identity, reread grounding bytes, require one exact active standing authorization, approved-copy hash, destination/account/profile/URL/audience/visibility and binding fingerprints; paused/revoked/expired/template-set paths stay draft-only | CONTROLLED locally; live execution unproven |

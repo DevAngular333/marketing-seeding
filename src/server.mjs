@@ -331,6 +331,7 @@ function automationCanMutate(method, pathname) {
   if (/^\/api\/campaigns\/[^/]+\/product-factory$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/product-intelligence\/inspect$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/distribution-handoff$/.test(pathname)) return true;
+  if (/^\/api\/campaigns\/[^/]+\/content-candidates\/materialize$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/discoveries\/observe$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/control-cycle$/.test(pathname)) return true;
   if (/^\/api\/posts\/[^/]+\/execution-request$/.test(pathname)) return true;
@@ -620,6 +621,10 @@ const server = http.createServer(async (request, response) => {
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/content-candidates$/);
     if (request.method === "POST" && match) {
       return sendJson(response, 201, await service.deriveContentCandidates(match[1], await readJson(request), actor));
+    }
+    match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/content-candidates\/materialize$/);
+    if (request.method === "POST" && match) {
+      return sendJson(response, 201, await service.materializeContentCandidate(match[1], await readJson(request), actor));
     }
     match = url.pathname.match(/^\/api\/campaigns\/([^/]+)\/product-intelligence\/inspect$/);
     if (request.method === "POST" && match) {

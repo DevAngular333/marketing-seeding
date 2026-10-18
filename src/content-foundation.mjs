@@ -15,6 +15,9 @@ function stable(value) {
   return JSON.stringify(value);
 }
 function hash(value) { return createHash("sha256").update(stable(value)).digest("hex"); }
+export function contentCandidateIdentity({ storyId, targetId, channel, content, claimIds, evidenceRefs } = {}) {
+  return hash({ storyId, targetId, channel, content, claimIds, evidenceRefs });
+}
 function assertSafe(value, field) {
   if (SECRET.test(String(value || "")) || SECRET_ASSIGNMENT.test(String(value || "")) || SECRET_VALUE.test(String(value || ""))) throw new Error(`Content contains credential/session material: ${field}`);
 }
@@ -62,7 +65,7 @@ export function deriveContentCandidates({ productIntelligence, story, targets = 
     if (policy.maxContentChars && content.length > policy.maxContentChars) throw new Error(`Content exceeds ${policy.maxContentChars} characters for ${channel}`);
     const claimIds = selected.map((claim) => claim.id);
     const refs = [...new Set(selected.flatMap((claim) => claim.evidenceRefs))].sort();
-    const identity = hash({ storyId, targetId, channel, content, claimIds, evidenceRefs: refs });
+    const identity = contentCandidateIdentity({ storyId, targetId, channel, content, claimIds, evidenceRefs: refs });
     return { contentId: `content-${identity.slice(0, 24)}`, contentIdentity: identity, storyId, targetId, channel, content, claimIds, evidenceRefs: refs, status: "draft" };
   });
 }

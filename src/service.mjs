@@ -22,7 +22,7 @@ import { observePublicUrls } from "./discovery-observer.mjs";
 import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
-import { deriveContentCandidates } from "./content-foundation.mjs";
+import { contentCandidateIdentity, deriveContentCandidates } from "./content-foundation.mjs";
 import { appendLearningFeedback, deriveLearningFeedback } from "./learning.mjs";
 import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
 import { validateDistributionHandoff } from "./distribution-handoff.mjs";
@@ -1855,6 +1855,147 @@ export class SeedingService {
       current.updatedAt = nowIso();
       return current.contentCandidates.filter((item) => candidates.some((candidate) => candidate.contentIdentity === item.contentIdentity));
     });
+    return result.result;
+  }
+
+  async materializeContentCandidate(campaignId, input = {}, actor = "automation") {
+    const candidateId = String(input.contentId || input.candidateId || "").trim();
+    const candidateIdentity = String(input.contentIdentity || "").trim();
+    if (!candidateId || !candidateIdentity) throw new Error("Exact content candidate identity is required");
+    let shouldPrepareExecution = false;
+    const result = await this.store.mutate(actor, "content_candidate_materialized", async (state) => {
+      const campaign = requireItem(state.campaigns, campaignId, "Campaign");
+      const candidate = (campaign.contentCandidates || []).find((item) => item.contentId === candidateId && item.contentIdentity === candidateIdentity);
+      if (!candidate) throw new Error("Content candidate is not an exact campaign candidate");
+      if (candidate.status !== "draft") throw new Error("Content candidate must be draft");
+      const story = requireItem(state.stories || [], candidate.storyId, "Story");
+      if (story.campaignId !== campaignId) throw new Error("Content candidate story is not owned by campaign");
+      const groundingSources = (Array.isArray(story.groundingSources) ? story.groundingSources : [])
+        .map((source) => ({ relativePath: String(source?.relativePath || "").trim(), sha256: String(source?.sha256 || "").trim().toLowerCase() }))
+        .filter((source) => source.relativePath && /^[a-f0-9]{64}$/.test(source.sha256));
+      if (!groundingSources.length) throw new Error("Content candidate story has no verified grounding sources");
+      const productRepo = await requireProductRepo(campaign.productRepo);
+      const currentGroundingSources = await Promise.all(groundingSources.map((source) => readGroundingSource(productRepo, source.relativePath)));
+      if (currentGroundingSources.some((source, index) => source.relativePath !== groundingSources[index].relativePath || source.sha256 !== groundingSources[index].sha256)) {
+        throw new Error("Content candidate grounding source changed since story creation");
+      }
+      const target = requireItem(state.targets, candidate.targetId, "Target");
+      if (String(target.channel || "").toLowerCase() !== String(candidate.channel || "").toLowerCase()) throw new Error("Content candidate channel does not match target");
+      if (!CHANNELS[target.channel]) throw new Error(`Unsupported channel: ${target.channel}`);
+      const campaignTargetIds = new Set((state.posts || []).filter((post) => post.campaignId === campaignId).map((post) => post.targetId));
+      for (const authorization of (state.campaignAuthorizations || []).filter((item) => item.campaignId === campaignId)) {
+        for (const destination of authorization.destinations || []) campaignTargetIds.add(destination.targetId);
+      }
+      if (!campaignTargetIds.has(target.id)) throw new Error("Content candidate target is not bound to campaign");
+      const content = String(candidate.content || "");
+      const policy = CHANNELS[target.channel];
+      if (policy.maxContentChars && content.length > policy.maxContentChars) throw new Error(`Content exceeds ${policy.maxContentChars} characters for ${target.channel}`);
+      const contentHash = campaignContentHash(content);
+      if (candidate.contentHash && candidate.contentHash !== contentHash) throw new Error("Content candidate content hash mismatch");
+      const recomputedIdentity = contentCandidateIdentity({ storyId: candidate.storyId, targetId: candidate.targetId, channel: candidate.channel, content, claimIds: candidate.claimIds || [], evidenceRefs: [...new Set(candidate.evidenceRefs || [])].sort() });
+      if (candidate.contentIdentity !== recomputedIdentity) throw new Error("Content candidate identity mismatch");
+      if (candidate.contentId !== `content-${candidate.contentIdentity.slice(0, 24)}`) throw new Error("Content candidate contentId mismatch");
+      const identityKey = publicationIdentityKey({ campaignId, contentId: candidate.contentId, platform: target.channel, accountId: target.accountId, targetId: target.id });
+      const activeAuthorizations = (state.campaignAuthorizations || []).filter((item) => item.campaignId === campaignId && item.status === "active");
+      if (activeAuthorizations.length > 1) throw new Error("Multiple active campaign authorizations prevent fail-closed materialization");
+      const authorization = activeAuthorizations[0] || null;
+      const now = new Date();
+      const destination = authorization?.destinations?.find((item) => item.targetId === target.id && item.platform === target.channel && item.accountId === target.accountId && item.profileId === target.profileId && item.targetUrl === target.url);
+      const boundary = authorization?.contentBoundary || {};
+      const candidateFitsStandingAuthorization = Boolean(
+        authorization && authorization.executionMode === "standing_autonomous" && authorization.allowLiveExecution === true &&
+        authorization.binding === campaignAuthorizationFingerprint(authorization) &&
+        authorization.campaignBinding === campaignScopeFingerprint(campaign) &&
+        Number.isFinite(Date.parse(authorization.validFrom)) && now >= new Date(authorization.validFrom) &&
+        Number.isFinite(Date.parse(authorization.validUntil)) && now <= new Date(authorization.validUntil) &&
+        destination && boundary.mode === "approved_copy_set" && boundary.contentHashes?.includes(contentHash) &&
+        authorization.audienceRules?.allowedAudiences?.includes(String(story.audience || "").trim()) &&
+        (authorization.publicationVisibilityRules?.allowedVisibilities || ["PUBLIC"]).includes("PUBLIC")
+      );
+      const existing = state.posts.find((post) => post.idempotencyKey === identityKey || publicationIdentityKeysForPost(post, state).includes(identityKey));
+      if (existing) {
+        if (existing.campaignId !== campaignId || existing.targetId !== target.id || existing.contentId !== candidate.contentId || existing.contentIdentity !== candidate.contentIdentity ||
+            existing.content !== content || existing.contentHash !== contentHash || existing.storyId !== candidate.storyId || existing.idempotencyKey !== identityKey ||
+            existing.audience !== String(story.audience || "").trim() || existing.language !== (String(story.language || "en").trim() || "en") || existing.publicationVisibility !== "PUBLIC" ||
+            JSON.stringify(existing.claimIds || []) !== JSON.stringify(candidate.claimIds || []) ||
+            JSON.stringify(existing.contentEvidenceRefs || []) !== JSON.stringify([...new Set((candidate.evidenceRefs || []).map(String))].sort()) ||
+            JSON.stringify(existing.contentSourceRefs || []) !== JSON.stringify(groundingSources)) {
+          throw new Error("Existing post conflicts with content candidate");
+        }
+        if (existing.status !== "draft") {
+          if (candidateFitsStandingAuthorization && ["queued", "blocked"].includes(existing.status) &&
+              existing.campaignAuthorizationId === authorization.id && existing.campaignAuthorizationBinding === authorization.binding) {
+            shouldPrepareExecution = true;
+            return existing;
+          }
+          throw new Error("Existing post conflicts with content candidate");
+        }
+        if (candidateFitsStandingAuthorization) {
+          if (existing.campaignAuthorizationId && existing.campaignAuthorizationId !== authorization.id) throw new Error("Existing post is bound to another campaign authorization");
+          if (existing.campaignAuthorizationBinding && existing.campaignAuthorizationBinding !== authorization.binding) throw new Error("Existing post authorization binding is stale");
+          existing.campaignAuthorizationId ||= authorization.id;
+          existing.campaignAuthorizationBinding ||= authorization.binding;
+          shouldPrepareExecution = true;
+          if (!existing.jobLifecycle) existing.jobLifecycle = [{ state: "CREATED", at: existing.createdAt || nowIso() }];
+          if (!existing.jobLifecycle.some((item) => item.state === "AUTHORIZED" && item.authorizationId === authorization.id)) {
+            existing.jobLifecycle.push({ state: "AUTHORIZED", at: nowIso(), authorizationId: authorization.id });
+          }
+          const eligibility = evaluateQueue(existing, state);
+          existing.authorizationDecision = { evaluatedAt: nowIso(), allowed: eligibility.allowed, reasons: eligibility.reasons };
+          if (eligibility.allowed) {
+            existing.status = "queued";
+            existing.queuedAt ||= nowIso();
+            existing.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
+            if (!existing.jobLifecycle.some((item) => item.state === "QUEUED")) existing.jobLifecycle.push({ state: "READY", at: existing.queuedAt }, { state: "QUEUED", at: existing.queuedAt });
+            delete existing.blockedAt;
+          } else {
+            existing.status = "blocked";
+            existing.blockedAt ||= nowIso();
+          }
+        }
+        return existing;
+      }
+      const at = nowIso();
+      const post = {
+        id: randomUUID(), campaignId, targetId: target.id, storyId: candidate.storyId || null,
+        content, contentId: candidate.contentId, contentIdentity: candidate.contentIdentity, contentHash,
+        contentEvidenceRefs: [...new Set((candidate.evidenceRefs || []).map(String))].sort(),
+        claimIds: [...new Set((candidate.claimIds || []).map(String))],
+        contentSourceRefs: groundingSources,
+        idempotencyKey: identityKey, audience: String(story.audience || "").trim(),
+        language: String(story.language || "en").trim() || "en", publicationVisibility: "PUBLIC", status: "draft",
+        approvedAt: null, createdAt: at, updatedAt: at
+      };
+      if (candidateFitsStandingAuthorization) {
+        post.campaignAuthorizationId = authorization.id;
+        post.campaignAuthorizationBinding = authorization.binding;
+        shouldPrepareExecution = true;
+        post.jobLifecycle = [{ state: "CREATED", at }, { state: "AUTHORIZED", at, authorizationId: authorization.id }];
+        const eligibility = evaluateQueue(post, state);
+        post.authorizationDecision = { evaluatedAt: at, allowed: eligibility.allowed, reasons: eligibility.reasons };
+        if (eligibility.allowed) {
+          post.status = "queued";
+          post.queuedAt = at;
+          post.queuedKillEpoch = Number.isSafeInteger(state.control?.killSwitch?.epoch) ? state.control.killSwitch.epoch : 0;
+          post.jobLifecycle.push({ state: "READY", at }, { state: "QUEUED", at });
+        } else {
+          post.status = "blocked";
+          post.blockedAt = at;
+          post.jobLifecycle.push({ state: "BLOCKED", at, reasons: eligibility.reasons });
+        }
+      }
+      state.posts.push(post);
+      return post;
+    });
+    if (shouldPrepareExecution && result.result.campaignAuthorizationId) {
+      const readinessResult = await this.refreshCampaignJobReadiness(result.result.id, actor);
+      if (readinessResult.status === "queued") {
+        await this.prepareExecutionRequest(result.result.id, actor);
+        await this.ensureStandingExecutionGrant(result.result.id, "execution-router");
+      }
+      const latest = await this.store.read();
+      return latest.posts.find((item) => item.id === result.result.id) || result.result;
+    }
     return result.result;
   }
 

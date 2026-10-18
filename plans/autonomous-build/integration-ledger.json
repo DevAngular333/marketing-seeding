@@ -27,7 +27,8 @@
     "56ea34e feat: add read-only mission control projection",
     "c607e1e feat: expose bounded account runtime eligibility",
     "6dcebf9 feat: expose account readiness in mission control",
-    "working-tree seam: bounded campaign-aware post attribution context in existing learning/strategy with late-UNKNOWN retention and target identity validation"
+    "working-tree seam: bounded campaign-aware post attribution context in existing learning/strategy with late-UNKNOWN retention and target identity validation",
+    "working-tree seam: exact content-candidate materialization and approved-copy standing authorization binding with inactive-authority regressions"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -76,6 +77,9 @@
     {"name":"metrics_observability_focused","result":"PASS_BOUNDED","tests":39,"passed":39,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/outcome.test.mjs","report":"plans/autonomous-build/metrics-observability-hardening/report.md"},
     {"name":"metrics_observability_independent_review","result":"ACCEPT_BOUNDED","tests":41,"passed":41,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/outcome.test.mjs test/control-cycle.test.mjs","notes":"Rework addressed contradictory coverage/value semantics; dashboard and traffic pulse share deterministic snapshot ordering; no authority/browser/UNKNOWN drift"},
     {"name":"full_node_suite_after_metrics_observability","result":"PASS","tests":397,"passed":395,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
-    {"name":"metrics_observability_static","result":"PASS","command":"node --check src/service.mjs && git diff --check"}
+    {"name":"metrics_observability_static","result":"PASS","command":"node --check src/service.mjs && git diff --check"},
+    {"name":"content_candidate_materialization_authorization","result":"PASS_BOUNDED","tests":44,"passed":44,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/service.test.mjs test/server.test.mjs","notes":"Exact candidate/source/content lineage; approved-copy standing binding; paused/revoked/expired authority remains draft-only; no external side effects"},
+    {"name":"full_node_suite_after_content_authorization","result":"PASS","tests":403,"passed":401,"failed":0,"skipped":2,"exitCode":0,"command":"node --test test/*.test.mjs"},
+    {"name":"content_authorization_static_and_runtime_immutability","result":"PASS","command":"node --check src/*.mjs && git diff --check","notes":"Canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6; protected UNKNOWN execution IDs unchanged"}
   ]
 }

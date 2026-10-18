@@ -6,7 +6,7 @@
 - Branch: `integration/autonomous-build`
 - Integration branch `integration/autonomous-build` includes the outcome-learning strategy and post-attribution learning context on top of `0c8bbe3` (`feat: add bounded post outcome attribution`); it includes the Product Factory project-evidence safety seam, strategy fit gate, learning-aware advisory context and bounded campaign-aware attribution validation. The branch also includes the Mission Control account/session section, product-understanding derivation, account-runtime readiness projection and canonical DRY_RUN handoff artifacts.
 - Main worktree `/Users/nam/Documents/marketing-seeding` was not modified.
-- Integration branch contains the accepted local source changes and release artifacts; no source change has been merged into `main`.
+- Integration branch contains the accepted local source changes, content-candidate authorization-binding seam and release artifacts; no source change has been merged into `main`.
 - `SYSTEM_AGENTIC_AI` Core was not modified.
 
 ## Runtime
@@ -31,6 +31,7 @@
 - Advisory strategy now accepts only current, structurally valid learning feedback linked to the current outcome summary and records bounded learning/outcome evidence plus normalized post-attribution context; campaign-aware post/target/channel identity is checked before exposure and account/profile values are fingerprinted in the advisory projection. Action precedence and UNKNOWN quarantine remain unchanged. It does not perform outcome rerouting or execution.
 - Outcome summaries now also expose bounded explicit-link-only `postAttributions` with `UNKNOWN` > `VERIFIED` > `PARTIAL` > `UNOBSERVED` precedence, canonical publication evidence checks, deterministic latest metrics and unassigned campaign-only conversions. This is advisory evidence only and does not reroute strategy or create authority.
 - Metric observability now accepts only the `measured`/`unknown`/`unsupported` coverage vocabulary, and dashboard/traffic-pulse latest snapshot selection uses the same deterministic capture-time plus snapshot-ID ordering as outcome summaries. Invalid persisted coverage is normalized into a bounded dashboard bucket; no metric collection or authority semantics changed.
+- Content candidates can now be materialized idempotently with exact story/source/content lineage. An exact active `standing_autonomous` authorization with approved-copy scope can bind the candidate through the existing queue/readiness/request/one-time-window/live-grant path; paused, revoked and expired authority remains draft-only. `approved_template_set` remains conservative and draft-only in this path.
 
 ## Counts
 
@@ -42,9 +43,9 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 
 ## Tests
 
-- Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; Product Factory project-evidence/runtime/service gate 45/45; distribution-handoff/service/server gate 33/33.
+- Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; Product Factory project-evidence/runtime/service gate 45/45; distribution-handoff/service/server gate 33/33. Content candidate materialization/authorization focused gate: 44 passed, 0 failed, 0 skipped.
 - Full suite after learning-aware strategy context: 384 total, 382 passed, 0 failed, 2 skipped; exit 0. The focused strategy/control-cycle/learning/outcome/service/server gate is 49/49.
-- Metrics observability hardening gate: service/outcome 39 passed, 0 failed, 0 skipped; full Node suite 397 total, 395 passed, 0 failed, 2 skipped; `node --check src/service.mjs` and `git diff --check` passed.
+- Metrics observability hardening gate: service/outcome 39 passed, 0 failed, 0 skipped; the pre-materialization full Node suite was 397 total, 395 passed, 0 failed, 2 skipped. Latest full Node suite is 403 total, 401 passed, 0 failed, 2 skipped; `node --check src/*.mjs` and `git diff --check` passed.
 - Outcome attribution gate: focused outcome/control-cycle/learning/service 42 passed, 0 failed, 0 skipped; full suite 388 total, 386 passed, 0 failed, 2 skipped; independent review ACCEPT (bounded).
 - Post-attribution learning context gate: focused learning/strategy 20 passed, combined strategy/control-cycle/learning/outcome/service/server 56 passed, full suite 393 total, 391 passed, 0 failed, 2 skipped; independent review rework findings resolved with late-UNKNOWN retention and campaign-aware identity checks.
 - UI typecheck: `cd ui && npx tsc --noEmit` passed; production build: `cd ui && npm run build` passed with only existing Vite config warnings.
@@ -53,6 +54,10 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - Strategy fit gate: focused 36 passed, 0 failed, 0 skipped; independent review ACCEPT (bounded).
 - Learning-aware strategy context: focused 49 passed, 0 failed, 0 skipped; independent review ACCEPT (bounded).
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
+
+## Latest content-candidate authorization seam
+
+- Local/synthetic only. Exact approved-copy candidates can enter the existing standing delegation path when authority is already active and exact. Paused, revoked and expired authorizations produce a draft with no execution artifacts. No authority is invented and no per-post approval UI was added. Template-set auto-binding remains unimplemented.
 
 ## Live proof
 

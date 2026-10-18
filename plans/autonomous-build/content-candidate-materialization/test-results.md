@@ -1,0 +1,4 @@
+- `node --test test/content-foundation.test.mjs test/service.test.mjs test/server.test.mjs` — 44 passed, 0 failed, 0 skipped.
+- `node --test test/*.test.mjs` — 403 total, 401 passed, 0 failed, 2 skipped.
+- `node --check src/*.mjs` — passed.
+- `git diff --check` — passed.

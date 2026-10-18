@@ -10,7 +10,7 @@
 - **No live real website publish was attempted.** Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant or lease. ORCA is unavailable in this shell. This is an external authorization/input blocker.
 - No fresh execution ID, durable submit intent, autonomous final click, semantic activation, platform acceptance, permalink, post ID or real `PUBLISHED` receipt exists.
 - Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10; this does not certify LinkedIn.
-- Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection and persistent product-factory candidate evidence added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch is at `745ce65`; the canonical service has not been redeployed.
+- Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection, persistent product-factory candidate evidence and content-candidate authorization binding added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch has not been merged or deployed; the canonical service has not been redeployed.
 
 ## Outcome
 
@@ -29,15 +29,15 @@ The integration branch now contains local, tested foundations for bounded standi
 - Mission Control/API now projects registered account health, bound-target count, readiness state, bounded blocker reason, `SESSION_REUSE` / `MANUAL_AUTH` mode and fail-closed eligibility reasons with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. The UI renders this through the existing GET-only dashboard and adds no action controls. This is observability only and does not select, authenticate or fail over accounts.
 - Mission Control overview now also projects control-cycle status, advisory strategy and learning actions/reasons, verified/UNKNOWN publication counts and measured metric coverage. It is explicitly read-only and advisory; it does not grant authority or execute actions.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
-- Strategy fit gate excludes explicit mismatched/unknown audience-channel-locale fit while preserving matched and legacy observations; focused 36/36 and full 381/379/0/2 pass.
-- Strategy consumes only current, valid learning feedback as bounded explanatory context; publish/discovery/wait precedence and UNKNOWN quarantine remain unchanged. Focused 49/49 and full 384/382/0/2 pass.
+- Strategy fit gate excludes explicit mismatched/unknown audience-channel-locale fit while preserving matched and legacy observations; focused 36/36 and the prior full gate 381/379/0/2 pass.
+- Strategy consumes only current, valid learning feedback as bounded explanatory context; publish/discovery/wait precedence and UNKNOWN quarantine remain unchanged. Focused 49/49 and the prior full gate 384/382/0/2 pass.
 
 ## Verification
 
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
- Full Node suite: 381 total, 379 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: latest 403 total, 401 passed, 0 failed, 2 skipped; exit 0
  Product Factory project-evidence/runtime/service gate: 45 passed, 0 failed, 0 skipped; independent safety review PASS (bounded)
  UI typecheck: `cd ui && npx tsc --noEmit` → PASS
  UI production build: `cd ui && npm run build` → PASS (existing Vite config warnings only)
@@ -67,3 +67,11 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 3. After live proof, freeze the execution seam, then continue product handoff/artifact lineage, authorized discovery/strategy, content/account runtime, metrics/learning, and incremental platform certification.
 
 Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
+
+## Latest verification overlay (2026-10-18)
+
+- Exact evidence-grounded candidate materialization now rereads grounding bytes, recomputes identity/content hash, and persists one idempotent post lineage.
+- An exact active `standing_autonomous` authorization with `approved_copy_set` can bind the candidate to the existing queue/readiness/request/one-time-window/live-grant path without a per-post approval step.
+- Paused, revoked and expired authorizations remain draft-only and create no execution artifacts. Multiple active or mismatched authority fails closed. `approved_template_set` remains draft-only in this path.
+- Focused content candidate gate: 44 passed, 0 failed, 0 skipped. Full Node suite: 403 total, 401 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
+- Canonical runtime remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; no social mutation and no historical UNKNOWN mutation occurred.

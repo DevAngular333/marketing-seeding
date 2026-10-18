@@ -1,0 +1,3 @@
+- Materialized drafts intentionally remain un-authorized and are not eligible for execution until a later safe standing-authorization binding seam acts on them.
+- Grounding source hashes are preserved but not reread from the product repository during materialization.
+- No live platform or browser behavior was exercised.
