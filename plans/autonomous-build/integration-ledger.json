@@ -896,6 +896,46 @@
       "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
       "protectedUnknownExecutions": 4,
       "protectedUnknownUncertainties": 4
+    },
+    {
+      "name": "metric_provider_resilience_focused",
+      "result": "PASS",
+      "tests": 70,
+      "passed": 70,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/integrations.test.mjs test/service.test.mjs test/server.test.mjs",
+      "report": "plans/autonomous-build/metric-provider-resilience/report.md"
+    },
+    {
+      "name": "metric_provider_resilience_independent_review",
+      "result": "PASS_BOUNDED",
+      "report": "plans/autonomous-build/metric-provider-resilience/report.md",
+      "notes": "Bounded Retry-After parsing, negative/signed rejection, cap and fail-fast behavior reviewed; live provider behavior remains unverified"
+    },
+    {
+      "name": "full_node_suite_after_metric_provider_resilience",
+      "result": "PASS",
+      "tests": 444,
+      "passed": 442,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "metric_provider_resilience_static",
+      "result": "PASS",
+      "command": "node --check src/integrations.mjs && node --check test/integrations.test.mjs && git diff --check"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_metric_provider_resilience",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 4
     }
   ]
 }

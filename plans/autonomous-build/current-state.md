@@ -41,6 +41,7 @@
 - The campaign queue now exposes a bounded read-only runtime projection at `/health.campaignQueue` and `/api/dashboard.automation.campaignQueue`: enabled state, fixed interval, running state, start/completion timestamps, next run and bounded cycle counts/error reason. It reuses the existing scheduler and queue service seam and adds no authority or external side effect.
 - Queue evaluation now isolates candidate-materialization and per-campaign queue failures, continues healthy campaigns, preserves the successful `{ campaignId, decisions }` result shape, and reports bounded failure codes through the existing queue projection. Shared expiry/store failures remain fail-closed at the cycle boundary.
 - Post-level metric advisory context now derives deterministic `RESPONSE_OBSERVED`, `REACH_WITHOUT_RESPONSE`, `MEASURED_NO_RESPONSE`, `PARTIAL_MEASUREMENTS`, `UNKNOWN_OR_UNSUPPORTED`, and `UNOBSERVED` assessments from the existing explicit post attribution rows. Positive values require valid `measured` coverage; invalid or mixed malformed measured values fail closed. Advisory validation recomputes classifications/evidence and uses the same retained rows under truncation. This is explanatory only and does not change action precedence, authority, execution, or UNKNOWN quarantine.
+- Metric provider retry resilience now honors bounded numeric or HTTP-date `Retry-After` on retryable responses, rejects signed/malformed/oversized hints to bounded exponential fallback, and keeps non-retryable responses fail-fast. Focused integrations/service/server gate is 70/70; latest full suite is 444/442/0/2; independent bounded review PASS. This remains fixture-only; live provider behavior, credentials and network permissions are unverified.
 
 ## Counts
 
@@ -203,3 +204,14 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - Focused independent gate: 72 passed, 0 failed, 0 skipped. Full `npm test`: 424 total, 422 passed, 0 failed, 2 skipped. Source syntax and `git diff --check` passed.
 - Canonical runtime read-only snapshot remained schema 8, revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; all four historical UNKNOWN executions and uncertainty records remain present and unchanged. No browser, ORCA, LinkedIn or social action occurred.
 - Review: `plans/autonomous-build/reports/verify-20261018-product-factory-artifact-promotion.md` — PASS (bounded). Details: `plans/autonomous-build/product-factory-artifact-promotion/`.
+
+## Metric provider resilience (2026-10-18)
+
+- Retryable metric provider responses use bounded numeric or HTTP-date
+  `Retry-After` hints; signed, malformed and oversized hints use exponential
+  fallback; non-retryable responses fail fast.
+- Focused integrations/service/server tests: 70 passed, 0 failed, 0 skipped.
+  Full Node suite: 444 total, 442 passed, 0 failed, 2 skipped. Syntax and
+  diff checks pass; independent review is PASS_BOUNDED.
+- Evidence is synthetic/local only. No live provider request, credential,
+  browser, ORCA, LinkedIn, social or canonical state mutation occurred.

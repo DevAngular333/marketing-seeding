@@ -438,6 +438,13 @@
       "status": "ACCEPT_BOUNDED",
       "scope": "metric checkpoint observability read-only review",
       "evidence": "59 focused tests passed; interval-isolated latest evidence ordering, invalid publishedAt fail-closed behavior, compatibility and no authority/browser/provider/UNKNOWN drift confirmed; report plans/autonomous-build/reports/verify-20261018-metric-checkpoint-observability.md"
+    },
+    {
+      "worker_id": "/root/metric_provider_resilience_review",
+      "role": "independent verifier",
+      "status": "PASS_BOUNDED",
+      "scope": "metric provider retry resilience",
+      "evidence": "Final review PASS after signed negative Retry-After fix; focused 7/7, syntax/diff pass; live providers and canonical state untouched"
     }
   ]
 }

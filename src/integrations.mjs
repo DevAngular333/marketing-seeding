@@ -1,4 +1,6 @@
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_RETRY_DELAY_MS = 25;
+const MAX_RETRY_AFTER_SECONDS = 10;
 const METRIC_FIELDS = ["impressions", "reactions", "comments", "shares", "clicks", "leads"];
 
 const PROVIDERS = Object.freeze({
@@ -85,12 +87,43 @@ export function integrationReadiness(env = process.env) {
   });
 }
 
+function responseHeader(response, name) {
+  if (typeof response?.headers?.get === "function") return response.headers.get(name);
+  if (response?.headers && typeof response.headers === "object") {
+    const target = name.toLowerCase();
+    const key = Object.keys(response.headers).find((candidate) => candidate.toLowerCase() === target);
+    return key ? response.headers[key] : null;
+  }
+  return null;
+}
+
+function boundedRetryDelay(response, attempt, nowMs = Date.now()) {
+  const fallback = DEFAULT_RETRY_DELAY_MS * (2 ** attempt);
+  const raw = responseHeader(response, "retry-after");
+  if (raw === null || raw === undefined || String(raw).trim() === "") return fallback;
+  const value = String(raw).trim();
+  if (/^\d+$/.test(value)) {
+    const seconds = Number(value);
+    return Number.isSafeInteger(seconds) && seconds <= MAX_RETRY_AFTER_SECONDS
+      ? seconds * 1_000
+      : fallback;
+  }
+  if (/^[+-]/.test(value)) return fallback;
+  const retryAt = Date.parse(value);
+  if (!Number.isFinite(retryAt)) return fallback;
+  const delay = Math.max(0, retryAt - nowMs);
+  return delay <= MAX_RETRY_AFTER_SECONDS * 1_000 ? delay : fallback;
+}
+
 export async function requestJson(url, options = {}, runtime = {}) {
   const fetchImpl = runtime.fetchImpl || globalThis.fetch;
   const timeoutMs = runtime.timeoutMs || DEFAULT_TIMEOUT_MS;
   const retries = Number.isSafeInteger(runtime.retries) ? runtime.retries : 2;
+  const nowMs = typeof runtime.nowMs === "function" ? runtime.nowMs : () => Date.now();
+  const sleep = runtime.sleepImpl || ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
+    let retryDelayMs = null;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -101,6 +134,7 @@ export async function requestJson(url, options = {}, runtime = {}) {
         error.status = response.status;
         if (response.status < 500 && response.status !== 429) throw error;
         lastError = error;
+        retryDelayMs = boundedRetryDelay(response, attempt, nowMs());
       } else {
         return body;
       }
@@ -110,7 +144,7 @@ export async function requestJson(url, options = {}, runtime = {}) {
     } finally {
       clearTimeout(timer);
     }
-    if (attempt < retries) await new Promise((resolve) => setTimeout(resolve, 25 * (2 ** attempt)));
+    if (attempt < retries) await sleep(retryDelayMs ?? DEFAULT_RETRY_DELAY_MS * (2 ** attempt));
   }
   throw lastError || new Error("Provider request failed");
 }

@@ -205,6 +205,11 @@
       "id": "metric-checkpoint-observability",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "evidence": "Working-tree bounded buildMetricCheckpoints projection; exactly three 1h/24h/72h windows from publishedAt, interval-isolated deterministic evidence selection, explicit pending/due/missing/unknown/unsupported states, invalid timestamp fail-closed behavior and existing traffic-pulse/dashboard exposure; focused 59/59, full 435/433/0/2, syntax/diff pass, independent review ACCEPT_BOUNDED; canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; no live/browser/ORCA/social/UNKNOWN mutation"
+    },
+    {
+      "id": "metric-provider-resilience",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Working-tree requestJson retry seam honors bounded numeric/HTTP-date Retry-After, rejects signed/malformed/oversized hints to bounded exponential fallback, and keeps non-retryable responses fail-fast; focused integrations/service/server 70/70, full npm test 444/442/0/2, syntax/diff pass, independent review PASS; no live provider, canonical, browser, ORCA, credential or social mutation"
     }
   ]
 }

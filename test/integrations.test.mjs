@@ -54,3 +54,84 @@ test("provider request retries transient network errors without duplicating succ
   assert.deepEqual(result, { ok: true });
   assert.equal(attempts, 3);
 });
+
+test("provider request retries a bounded 429 response without duplicating the result", async () => {
+  let attempts = 0;
+  const delays = [];
+  const result = await requestJson("https://example.invalid/retry-after", {}, {
+    retries: 1,
+    sleepImpl: async (delayMs) => delays.push(delayMs),
+    fetchImpl: async () => {
+      attempts += 1;
+      return attempts === 1 ? jsonResponse({ error: "slow down" }, 429) : jsonResponse({ ok: true });
+    }
+  });
+  assert.deepEqual(result, { ok: true });
+  assert.equal(attempts, 2);
+  assert.deepEqual(delays, [25]);
+});
+
+test("provider request uses Retry-After seconds when the response supplies the hint", async () => {
+  let attempts = 0;
+  const delays = [];
+  const result = await requestJson("https://example.invalid/retry-after-seconds", {}, {
+    retries: 1,
+    sleepImpl: async (delayMs) => delays.push(delayMs),
+    fetchImpl: async () => {
+      attempts += 1;
+      if (attempts === 1) return new Response(JSON.stringify({ error: "slow down" }), { status: 429, headers: { "Retry-After": "2" } });
+      return jsonResponse({ ok: true });
+    }
+  });
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(delays, [2_000]);
+});
+
+test("provider request accepts an HTTP-date Retry-After with a deterministic clock", async () => {
+  let attempts = 0;
+  const delays = [];
+  const now = Date.parse("2026-10-18T00:00:00.000Z");
+  const result = await requestJson("https://example.invalid/retry-after-date", {}, {
+    retries: 1,
+    nowMs: () => now,
+    sleepImpl: async (delayMs) => delays.push(delayMs),
+    fetchImpl: async () => {
+      attempts += 1;
+      if (attempts === 1) return new Response(JSON.stringify({ error: "slow down" }), { status: 503, headers: { "Retry-After": "Sun, 18 Oct 2026 00:00:03 GMT" } });
+      return jsonResponse({ ok: true });
+    }
+  });
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(delays, [3_000]);
+});
+
+test("provider request falls back for malformed or oversized Retry-After and fails fast for non-retryable responses", async () => {
+  for (const retryAfter of ["tomorrow", "-1", "11"]) {
+    let attempts = 0;
+    const delays = [];
+    await requestJson("https://example.invalid/retry-after-invalid", {}, {
+      retries: 1,
+      sleepImpl: async (delayMs) => delays.push(delayMs),
+      fetchImpl: async () => {
+        attempts += 1;
+        if (attempts === 1) return new Response(JSON.stringify({ error: "retry" }), { status: 500, headers: { "Retry-After": retryAfter } });
+        return jsonResponse({ ok: true });
+      }
+    });
+    assert.equal(attempts, 2);
+    assert.deepEqual(delays, [25]);
+  }
+
+  let attempts = 0;
+  const delays = [];
+  await assert.rejects(requestJson("https://example.invalid/non-retryable", {}, {
+    retries: 2,
+    sleepImpl: async (delayMs) => delays.push(delayMs),
+    fetchImpl: async () => {
+      attempts += 1;
+      return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "Retry-After": "2" } });
+    }
+  }), /HTTP 401/);
+  assert.equal(attempts, 1);
+  assert.deepEqual(delays, []);
+});
