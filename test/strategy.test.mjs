@@ -93,6 +93,11 @@ test("strategy selects engage or research only from eligible relevant discovery"
   assert.equal(research.action, "research");
   assert.equal(research.eligible, true);
   assert.deepEqual(research.evidence, ["discovery:d1"]);
+  assert.equal(research.engagementContext.total, 0);
+  assert.equal(research.engagementContext.candidateTotal, 0);
+  assert.equal(research.authoritySideEffects, false);
+  assert.equal(research.engagementContext.authoritySideEffects, false);
+  assert.equal(research.engagementContext.externalSideEffects, false);
   await store.mutate("fixture", "reply", (state) => {
     state.interactions.push({ id: "i1", postId: state.posts[0].id, status: "open" });
     state.replies.push({ id: "r1", interactionId: "i1", status: "draft", groundingSources: ["README.md"], groundingSummary: "grounded" });
@@ -100,6 +105,26 @@ test("strategy selects engage or research only from eligible relevant discovery"
   const engage = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00Z" });
   assert.equal(engage.action, "engage");
   assert.equal(engage.candidateId, "r1");
+  assert.equal(engage.engagementContext.total, 1);
+  assert.equal(engage.engagementContext.candidateTotal, 0);
+  assert.equal(engage.reasons.includes("engagement_context_observed"), true);
+  assert.equal(engage.evidence.includes(`engagement-context:${campaign.id}`), true);
+  assert.equal(engage.authoritySideEffects, false);
+  assert.equal(engage.engagementContext.externalSideEffects, false);
+});
+
+test("strategy never projects engagement context when UNKNOWN quarantine dominates", async () => {
+  const { service, campaign, store, post } = await fixture("strategy-engagement-unknown-");
+  await store.mutate("fixture", "engagement_unknown", (state) => {
+    state.posts = state.posts.map((item) => ({ ...item, status: "published" }));
+    state.interactions.push({ id: "i-unknown", postId: post.id, externalId: "comment:unknown", text: "uncertain", capturedAt: "2026-10-01T00:00:00.000Z" });
+    state.submissionUncertainties.push({ id: "u-engagement", status: "UNKNOWN", campaignId: campaign.id, jobId: post.id });
+  });
+  const decision = await service.deriveStrategy(campaign.id, { now: "2026-10-17T12:00:00Z" });
+  assert.equal(decision.action, "do_nothing");
+  assert.deepEqual(decision.reasons, ["submission_unknown_quarantined"]);
+  assert.equal("engagementContext" in decision, false);
+  assert.equal(decision.authoritySideEffects, false);
 });
 
 test("strategy keeps scheduler discoveries actionable when no fit hints are supplied", async () => {

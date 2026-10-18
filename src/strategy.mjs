@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { evaluateQueue } from "./guards.mjs";
 import { publicationIdentityKeysForPost } from "./campaign-authorization.mjs";
 import { isNormalizedPostAttributionContext, normalizePostAttributionContext } from "./learning.mjs";
+import { projectEngagementContext } from "./engagement-context.mjs";
 
 const ACTIONS = new Set(["publish", "engage", "research", "wait", "do_nothing"]);
 const MAX_DECISIONS = 24;
@@ -167,6 +168,24 @@ function campaignReplies(state, campaignId) {
   }).sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
+function engagementContextSummary(state, campaignId, now) {
+  const context = projectEngagementContext(state, { campaignId, now });
+  const quarantined = context.conversations.filter((conversation) => conversation.status === "QUARANTINED").length;
+  const actionable = context.conversations.filter((conversation) => conversation.status === "ACTIONABLE").length;
+  return {
+    schemaVersion: context.schemaVersion,
+    campaignRef: context.campaignRef,
+    total: context.total,
+    candidateTotal: context.candidateTotal,
+    actionable,
+    quarantined,
+    truncated: context.truncated,
+    candidateTruncated: context.candidateTruncated,
+    authoritySideEffects: context.authoritySideEffects,
+    externalSideEffects: context.externalSideEffects
+  };
+}
+
 function dynamicWaitReasons(posts, schedules, now) {
   const reasonsFound = [];
   if (schedules.some((schedule) => schedule.status === "active" && schedule.campaignId === posts[0]?.campaignId)) reasonsFound.push("active_schedule");
@@ -194,6 +213,7 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
   let reasonList = [];
   let refs = [];
   let learning = null;
+  let engagementContext = null;
   if (!productReady(campaign)) {
     reasonList = ["product_intelligence_incomplete"];
   } else if (unknownForCampaign(state, campaignId, posts)) {
@@ -214,6 +234,7 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
       reasonList = ["product_intelligence_ready", "target_policy_and_queue_checks_pass"];
       refs = [`post:${selected.post.id}`, `target:${selected.post.targetId}`];
     } else if (discoveries.length) {
+      engagementContext = engagementContextSummary(state, campaignId, now);
       const reply = campaignReplies(state, campaignId);
       const discovery = discoveries[0];
       if (reply.length) {
@@ -225,6 +246,9 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
         reasonList = ["relevant_discovery", "no_grounded_action_draft"];
         refs = [`discovery:${discovery.discoveryId}`];
       }
+      if (engagementContext.total > 0) reasonList.push("engagement_context_observed");
+      if (engagementContext.candidateTotal > 0) reasonList.push("engagement_context_actionable_candidate");
+      if (engagementContext.total > 0) refs.push(`engagement-context:${campaignId}`);
     } else {
       const waiting = dynamicWaitReasons(posts, state.schedules || [], now);
       if (waiting.length) { action = "wait"; score = 20; eligible = false; reasonList = waiting; }
@@ -238,6 +262,7 @@ export function deriveStrategyDecision(state, campaignId, { now = new Date() } =
   }
   const core = { ...base, action, score, eligible, candidateId, reasons: reasons(reasonList), evidence: evidence(refs) };
   if (learning) core.learningContext = learning;
+  if (engagementContext) core.engagementContext = engagementContext;
   return { ...core, decisionId: `strategy-${digest(core).slice(0, 24)}`, createdAt: now.toISOString(), advisory: true, authoritySideEffects: false };
 }
 
