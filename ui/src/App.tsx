@@ -1196,6 +1196,120 @@ function MissionControlPanel({ data }: { data: R }) {
   )
 }
 
+function executionRuntimeLabel(value: unknown) {
+  const labels: Record<string, string> = {
+    DRY_RUN: "DRY_RUN",
+    LIVE: "LIVE",
+    UNKNOWN: "UNKNOWN",
+    DRY_RUN_COMPLETE: "DRY_RUN_COMPLETE",
+    SUBMIT_RESULT_UNKNOWN: "SUBMIT_RESULT_UNKNOWN",
+    publication_verified: "PUBLICATION_VERIFIED",
+    execution_state: "EXECUTION_STATE",
+    dry_run_completed: "DRY_RUN_COMPLETED",
+  }
+  const normalized = String(value || "UNKNOWN").trim()
+  return labels[normalized] || normalized || "UNKNOWN"
+}
+
+function safeExecutionPermalink(value: unknown) {
+  try {
+    const url = new URL(String(value || "").trim())
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password
+      ? url.toString()
+      : null
+  } catch {
+    return null
+  }
+}
+
+function ExecutionEvidencePanel({ data }: { data: R }) {
+  const runtime = data?.executionRuntime && typeof data.executionRuntime === "object"
+    ? data.executionRuntime
+    : null
+  const counts = runtime?.counts && typeof runtime.counts === "object" ? runtime.counts : {}
+  const byMode = counts?.byMode && typeof counts.byMode === "object" ? counts.byMode : {}
+  const latest = runtime?.latestAction && typeof runtime.latestAction === "object"
+    ? runtime.latestAction
+    : null
+  const blockers = Array.isArray(runtime?.blockers) ? runtime.blockers : []
+  const permalink = safeExecutionPermalink(
+    Array.isArray(runtime?.recent)
+      ? runtime.recent.find((row: R) => safeExecutionPermalink(row?.permalink))?.permalink
+      : null,
+  )
+  const quarantineCount = Number.isFinite(Number(runtime?.quarantine?.count))
+    ? Number(runtime.quarantine.count)
+    : 0
+
+  return (
+    <section className="panel mission-execution-panel full-span" aria-label="Bằng chứng thực thi">
+      <div className="panel-head">
+        <div>
+          <h2>Execution evidence</h2>
+          <p>Projection chỉ đọc của transport, trạng thái và bằng chứng publication.</p>
+        </div>
+        <span className="status">Chỉ đọc · fail-closed</span>
+      </div>
+      {!runtime ? (
+        <div className="empty-state">Chưa có execution runtime projection.</div>
+      ) : (
+        <>
+          <div className="mission-execution-grid">
+            <article>
+              <span className="mission-eyebrow">Latest phase / action</span>
+              <strong>{latest ? executionRuntimeLabel(latest.phase) : "UNKNOWN"}</strong>
+              <small>
+                {latest
+                  ? `${executionRuntimeLabel(latest.event)} · ${executionRuntimeLabel(latest.mode)} · ${formatDate(latest.at)}`
+                  : "Chưa có action được ghi nhận"}
+              </small>
+            </article>
+            <article>
+              <span className="mission-eyebrow">Execution modes</span>
+              <strong>{Number(byMode.DRY_RUN || 0)} DRY_RUN</strong>
+              <small>{Number(byMode.LIVE || 0)} LIVE · {Number(byMode.UNKNOWN || 0)} UNKNOWN</small>
+            </article>
+            <article>
+              <span className="mission-eyebrow">Publication verification</span>
+              <strong>{Number(counts.verified || 0)} VERIFIED</strong>
+              <small>{Number(counts.publicationUnverified || 0)} LIVE chưa verify · không suy luận từ command</small>
+            </article>
+            <article>
+              <span className="mission-eyebrow">UNKNOWN quarantine</span>
+              <strong>{quarantineCount}</strong>
+              <small>Record immutable · không retry tự động</small>
+            </article>
+          </div>
+          <div className="mission-execution-footer">
+            <div>
+              <span className="mission-eyebrow">Verified permalink</span>
+              {permalink ? (
+                <a href={permalink} target="_blank" rel="noreferrer">Mở publication ↗</a>
+              ) : (
+                <small>Chưa có independent VERIFIED permalink.</small>
+              )}
+            </div>
+            <div>
+              <span className="mission-eyebrow">Bounded blockers</span>
+              {blockers.length ? (
+                <div className="mission-blocker-list">
+                  {blockers.slice(0, 8).map((blocker: R) => (
+                    <span className="status draft" key={`${blocker.code}-${blocker.count}`}>
+                      {executionRuntimeLabel(blocker.code)} · {Number(blocker.count || 0)}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <small>Không có blocker code được ghi nhận.</small>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
 function Overview({
   data,
   select,
@@ -1217,6 +1331,7 @@ function Overview({
       </div>
       <div className="dashboard-grid">
         <MissionControlPanel data={data} />
+        <ExecutionEvidencePanel data={data} />
         <TrafficChart data={data} />
         <TrafficSourcesPanel data={data} />
         <ReadinessPanel data={data} />
