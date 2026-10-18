@@ -118,5 +118,9 @@
     ,{"name":"full_node_suite_after_discovery_fit_compatibility","result":"PASS","tests":422,"passed":420,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
     ,{"name":"discovery_fit_compatibility_static","result":"PASS","command":"for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"}
     ,{"name":"canonical_runtime_immutability_after_discovery_fit_compatibility","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
+    ,{"name":"product_factory_artifact_promotion_independent_review","result":"PASS_BOUNDED","report":"plans/autonomous-build/reports/verify-20261018-product-factory-artifact-promotion.md","notes":"Exact run/campaign/path/hash/current-source binding; operator-only route; restart idempotency; no authority, publication, browser or UNKNOWN effects"}
+    ,{"name":"full_node_suite_after_product_factory_artifact_promotion","result":"PASS","tests":424,"passed":422,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
+    ,{"name":"product_factory_artifact_promotion_static","result":"PASS","command":"for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"}
+    ,{"name":"canonical_runtime_immutability_after_product_factory_artifact_promotion","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknownExecutions":4,"protectedUnknownUncertainties":4}
   ]
 }
