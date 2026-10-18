@@ -230,6 +230,11 @@
       "id": "execution-evidence-read-model",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "evidence": "Read-only executionRuntime projection in existing dashboard and /health; dry-run/live/UNKNOWN separation, hashed bounded rows, strict independent VERIFIED permalink gate and no-write GET tests; focused service/server 72/72, full npm test 456/454/0/2, UI typecheck/build pass, canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; no ORCA/browser/network/social/UNKNOWN mutation"
+    },
+    {
+      "id": "dry-run-restart-soak",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Isolated temporary JsonStore soak proves explicit rehearsal handoff and JEV dry-run survive three post-restart ticks; an expired lease is atomically removed and reacquired; one adapter execution, one post, one request and one receipt remain; terminal DRY_RUN_COMPLETE is never redispatched; focused 148/148, full npm test 457/455/0/2, syntax/diff pass; no live window/grant, publication evidence, ORCA/browser/network/social or UNKNOWN mutation; artifacts in plans/autonomous-build/dry-run-restart-soak/"
     }
   ]
 }

@@ -473,6 +473,13 @@
       "status": "COMPLETE_LOCAL_GATES",
       "scope": "explicit rehearsal candidate to JEV dry-run queue handoff",
       "evidence": "Handoff regressions 2/2; readiness/JEV 76/76; full npm test 449/447/0/2; independent review ACCEPT; syntax, JSON and diff checks pass; no live ORCA/browser/social/canonical/UNKNOWN mutation"
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_GATES",
+      "scope": "dry-run restart and expired-lease recovery soak",
+      "evidence": "Isolated soak 1/1; combined dry-run/readiness/JEV/service gate 148/148; full npm test 457/455/0/2; syntax/diff and journal JSON checks pass; three restart ticks retained one terminal DRY_RUN_COMPLETE; expired lease was reclaimed; no live ORCA/browser/social/canonical/UNKNOWN mutation"
     }
   ]
 }

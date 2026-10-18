@@ -1108,6 +1108,53 @@
       "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
       "protectedUnknownExecutions": 4,
       "protectedUnknownUncertainties": 1
+    },
+    {
+      "name": "dry_run_restart_soak_focused",
+      "result": "PASS",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/dry-run-restart-soak.test.mjs",
+      "report": "plans/autonomous-build/dry-run-restart-soak/test-results.md"
+    },
+    {
+      "name": "dry_run_restart_soak_combined_gate",
+      "result": "PASS",
+      "tests": 148,
+      "passed": 148,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/dry-run-restart-soak.test.mjs test/service.test.mjs test/readiness-execution.test.mjs test/jev-execution-worker.test.mjs",
+      "report": "plans/autonomous-build/dry-run-restart-soak/test-results.md"
+    },
+    {
+      "name": "dry_run_restart_soak_static",
+      "result": "PASS",
+      "command": "node --check test/dry-run-restart-soak.test.mjs; for f in src/*.mjs; do node --check \"$f\"; done; git diff --check",
+      "report": "plans/autonomous-build/dry-run-restart-soak/test-results.md"
+    },
+    {
+      "name": "dry_run_restart_soak_full_node_suite",
+      "result": "PASS",
+      "tests": 457,
+      "passed": 455,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test",
+      "report": "plans/autonomous-build/dry-run-restart-soak/test-results.md"
+    },
+    {
+      "name": "canonical_runtime_immutability_after_dry_run_restart_soak",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 4,
+      "report": "plans/autonomous-build/dry-run-restart-soak/report.md"
     }
   ]
 }
