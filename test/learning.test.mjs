@@ -57,3 +57,27 @@ test("bounded context retains a late UNKNOWN and reports global counts", () => {
   assert.equal(context.postAttributions.some((item) => item.postId === "z-unknown"), true);
   assert.equal(context.postAttributions.length, 24);
 });
+
+test("post metrics advisory classifies bounded response and measurement states", () => {
+  const context = normalizePostAttributionContext({ postAttributions: [
+    { postId: "response", status: "VERIFIED", metrics: { snapshotId: "m1", values: { clicks: 2 }, coverage: { clicks: "measured" } } },
+    { postId: "reach", status: "VERIFIED", metrics: { snapshotId: "m2", values: { impressions: 12, clicks: 0 }, coverage: { impressions: "measured", clicks: "measured" } } },
+    { postId: "measured-zero", status: "VERIFIED", metrics: { snapshotId: "m3", values: { clicks: 0 }, coverage: { clicks: "measured" } } },
+    { postId: "partial", status: "PARTIAL", metrics: { snapshotId: "m4", values: { impressions: 4 }, coverage: { impressions: "measured", clicks: "unknown" } } },
+    { postId: "unknown", status: "VERIFIED", metrics: { snapshotId: "m5", values: {}, coverage: { clicks: "unsupported" } } },
+    { postId: "none", status: "UNOBSERVED" }
+  ] });
+  assert.deepEqual(context.metricAdvisory.counts, {
+    RESPONSE_OBSERVED: 1,
+    REACH_WITHOUT_RESPONSE: 1,
+    MEASURED_NO_RESPONSE: 1,
+    PARTIAL_MEASUREMENTS: 1,
+    UNKNOWN_OR_UNSUPPORTED: 1,
+    UNOBSERVED: 1
+  });
+  assert.equal(context.metricAdvisory.total, 6);
+  assert.deepEqual(context.metricAdvisory.posts.map((item) => item.classification), [
+    "RESPONSE_OBSERVED", "REACH_WITHOUT_RESPONSE", "MEASURED_NO_RESPONSE", "PARTIAL_MEASUREMENTS", "UNKNOWN_OR_UNSUPPORTED", "UNOBSERVED"
+  ]);
+  assert.deepEqual(context.metricAdvisory.posts[0].evidenceRefs, ["m1"]);
+});

@@ -7,6 +7,7 @@ const METRIC_COVERAGE = new Set(["measured", "unknown", "unsupported"]);
 const MAX_ATTRIBUTIONS = 24;
 const MAX_ATTRIBUTION_EVIDENCE = 8;
 const MAX_HISTORY = 24;
+const METRIC_ASSESSMENTS = Object.freeze(["RESPONSE_OBSERVED", "REACH_WITHOUT_RESPONSE", "MEASURED_NO_RESPONSE", "PARTIAL_MEASUREMENTS", "UNKNOWN_OR_UNSUPPORTED", "UNOBSERVED"]);
 function digest(value) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 
 function stable(value) {
@@ -61,6 +62,26 @@ function normalizeAttributionMetrics(metrics) {
   return { snapshotId, capturedAt, values, coverage };
 }
 
+function deriveMetricAssessment({ metrics, engagement, conversions, evidence }) {
+  const response = (engagement.interactions || 0) > 0 || (engagement.replies || 0) > 0 || (engagement.sentReplies || 0) > 0 || (conversions.count || 0) > 0
+    || Boolean(metrics && ["reactions", "comments", "shares", "clicks", "leads"].some((field) => Number.isSafeInteger(metrics.values[field]) && metrics.values[field] > 0));
+  const fields = metrics ? Object.keys(metrics.coverage) : [];
+  const measured = fields.filter((field) => metrics.coverage[field] === "measured");
+  const uncertain = fields.filter((field) => ["unknown", "unsupported"].includes(metrics.coverage[field]));
+  const measuredValues = measured.map((field) => metrics.values[field]).filter((value) => Number.isSafeInteger(value));
+  let classification = "UNOBSERVED";
+  if (response) classification = "RESPONSE_OBSERVED";
+  else if (metrics && uncertain.length && measured.length) classification = "PARTIAL_MEASUREMENTS";
+  else if (metrics && uncertain.length && !measured.length) classification = "UNKNOWN_OR_UNSUPPORTED";
+  else if (measuredValues.some((value) => value > 0) && measured.some((field) => field === "impressions")) classification = "REACH_WITHOUT_RESPONSE";
+  else if (measured.length) classification = "MEASURED_NO_RESPONSE";
+  const refs = [
+    ...(metrics?.snapshotId ? [metrics.snapshotId] : []),
+    ...(evidence?.interactionIds || []), ...(evidence?.replyIds || []), ...(evidence?.metricSnapshotIds || []), ...(evidence?.replyIds || [])
+  ];
+  return { classification, evidenceRefs: safeIds(refs, MAX_ATTRIBUTION_EVIDENCE) };
+}
+
 function normalizePostAttribution(row) {
   if (!row || typeof row !== "object") return null;
   const postId = safeText(row.postId);
@@ -106,8 +127,22 @@ function normalizePostAttribution(row) {
       interactionIds: safeIds(evidence.interactionIds),
       replyIds: safeIds(evidence.replyIds)
     },
-    reasons
+    reasons,
+    metricAssessment: deriveMetricAssessment({ metrics: normalizeAttributionMetrics(row.metrics), engagement: { interactions: safeNonNegativeInteger(engagement.interactions), replies: safeNonNegativeInteger(engagement.replies), sentReplies: safeNonNegativeInteger(engagement.sentReplies) }, conversions: { count: safeNonNegativeInteger(conversions.count) }, evidence })
   };
+}
+
+function normalizeMetricAdvisory(rows) {
+  const byPost = new Map();
+  for (const row of rows) {
+    if (!row?.postId || !METRIC_ASSESSMENTS.includes(row.metricAssessment?.classification)) continue;
+    byPost.set(row.postId, { postId: row.postId, classification: row.metricAssessment.classification, evidenceRefs: safeIds(row.metricAssessment.evidenceRefs) });
+  }
+  const all = [...byPost.values()].sort((a, b) => a.postId.localeCompare(b.postId));
+  const counts = Object.fromEntries(METRIC_ASSESSMENTS.map((key) => [key, 0]));
+  for (const row of all) counts[row.classification] += 1;
+  const posts = all.sort((a, b) => METRIC_ASSESSMENTS.indexOf(a.classification) - METRIC_ASSESSMENTS.indexOf(b.classification) || a.postId.localeCompare(b.postId)).slice(0, MAX_ATTRIBUTIONS);
+  return { counts, total: all.length, truncated: all.length > posts.length, posts };
 }
 
 /**
@@ -140,7 +175,8 @@ export function normalizePostAttributionContext(outcome = {}) {
     counts,
     total: allAttributions.length,
     truncated: allAttributions.length > postAttributions.length,
-    postAttributions
+    postAttributions,
+    metricAdvisory: normalizeMetricAdvisory(allAttributions)
   };
 }
 
@@ -152,6 +188,14 @@ export function isNormalizedPostAttributionContext(value) {
   const normalized = value.postAttributions.map(normalizePostAttribution);
   if (normalized.some((item) => !item) || new Set(normalized.map((item) => item.postId)).size !== normalized.length) return false;
   if (value.counts.UNKNOWN > 0 && !normalized.some((item) => item.status === "UNKNOWN")) return false;
+  if (value.metricAdvisory !== undefined) {
+    const advisory = value.metricAdvisory;
+    if (!advisory || typeof advisory !== "object" || !Array.isArray(advisory.posts) || !advisory.counts || !Number.isSafeInteger(advisory.total) || advisory.total < 0 || advisory.truncated !== (advisory.total > advisory.posts.length)) return false;
+    if (!METRIC_ASSESSMENTS.every((key) => Number.isSafeInteger(advisory.counts[key]) && advisory.counts[key] >= 0)) return false;
+    if (Object.values(advisory.counts).reduce((sum, count) => sum + count, 0) !== advisory.total || advisory.posts.length > MAX_ATTRIBUTIONS) return false;
+    const ids = new Set(normalized.map((item) => item.postId));
+    if (advisory.posts.some((item) => !item || !ids.has(item.postId) || !METRIC_ASSESSMENTS.includes(item.classification))) return false;
+  }
   for (let index = 0; index < normalized.length; index += 1) {
     const current = normalized[index];
     if (value.counts[current.status] < 1) return false;
