@@ -305,7 +305,7 @@ async function runTrafficCollection(actor = "scheduled-official-collector") {
   trafficRuntime.running = true;
   trafficRuntime.lastStartedAt = new Date().toISOString();
   try {
-    const results = await service.collectAllMetrics(actor);
+    const results = await service.collectAllMetrics(actor, { dueOnly: true });
     trafficRuntime.lastSummary = {
       total: results.length,
       succeeded: results.filter((item) => item.ok === true).length,

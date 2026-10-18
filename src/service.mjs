@@ -25,7 +25,7 @@ import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { canonicalTemplateSourceRefs, contentCandidateIdentity, deriveContentCandidates, deriveProductIntelligenceStory, deriveTemplateContentCandidates, renderApprovedTemplate, templateCandidateBinding, templateClaimIds, TEMPLATE_CANDIDATE_CONTRACT_VERSION } from "./content-foundation.mjs";
 import { appendLearningFeedback, deriveLearningFeedback } from "./learning.mjs";
 import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
-import { validateDistributionHandoff } from "./distribution-handoff.mjs";
+import { legacyHandoffIdentity, validateDistributionHandoff } from "./distribution-handoff.mjs";
 import { appRoot } from "./paths.mjs";
 
 export async function pollConfiguredDiscoveries(service, { actor = "scheduled-discovery-observer", shuttingDown = false } = {}) {
@@ -508,6 +508,33 @@ export function buildMetricCheckpoints(post, snapshots = [], collectorRuns = [],
   });
 }
 
+/**
+ * Build a deterministic, read-only collection plan from persisted posts and observations.
+ * With dueOnly enabled, only posts whose current checkpoint is due or overdue are selected.
+ * Invalid publication timestamps fail closed and are never sent to a provider.
+ */
+export function buildMetricCollectionPlan(state = {}, { now = new Date(), dueOnly = false } = {}) {
+  const posts = Array.isArray(state?.posts) ? state.posts : [];
+  const snapshots = Array.isArray(state?.metricSnapshots) ? state.metricSnapshots : [];
+  const collectorRuns = Array.isArray(state?.collectorRuns) ? state.collectorRuns : [];
+  const at = now instanceof Date ? now : new Date(now);
+  return posts
+    .filter((post) => post?.status === "published")
+    .map((post) => {
+      const checkpoints = buildMetricCheckpoints(post, snapshots, collectorRuns, at);
+      const invalidPublication = checkpoints.every((checkpoint) => checkpoint.status === "unknown" && checkpoint.reason === "published_at_invalid");
+      const due = checkpoints.filter((checkpoint) => checkpoint.status === "due" || checkpoint.status === "missing");
+      const shouldCollect = !invalidPublication && (!dueOnly || due.length > 0);
+      return {
+        postId: post.id,
+        shouldCollect,
+        reason: invalidPublication ? "published_at_invalid" : shouldCollect ? null : "checkpoint_not_due",
+        dueCheckpoints: due.map((checkpoint) => checkpoint.key),
+        checkpoints
+      };
+    });
+}
+
 function metricReadingsMatchSnapshot(snapshot, readings) {
   if (!snapshot) return false;
   return METRIC_FIELDS.every((field) => {
@@ -850,7 +877,8 @@ export class SeedingService {
     const result = await this.store.mutate(actor, "distribution_handoff_attached", (nextState) => {
       const campaign = requireItem(nextState.campaigns, campaignId, "Campaign");
       campaign.distributionHandoffs ||= [];
-      const existing = campaign.distributionHandoffs.find((item) => item.handoffHash === validation.handoff.handoffHash);
+      const legacyHash = legacyHandoffIdentity(validation.handoff);
+      const existing = campaign.distributionHandoffs.find((item) => item.handoffHash === validation.handoff.handoffHash || item.handoffHash === legacyHash);
       if (existing) return existing;
       const row = { ...validation.handoff, attachedAt: nowIso(), attachedBy: String(actor || "system-agentic") };
       campaign.distributionHandoffs = [...campaign.distributionHandoffs, row].slice(-24);
@@ -4254,7 +4282,13 @@ export class SeedingService {
     const state = await this.store.read();
     const results = [];
     const readiness = new Map(integrationReadiness(options.env || process.env).map((item) => [item.id, item]));
+    const planByPostId = new Map(buildMetricCollectionPlan(state, { now: options.now || new Date(), dueOnly: options.dueOnly === true }).map((item) => [item.postId, item]));
     for (const post of state.posts.filter((item) => item.status === "published")) {
+      const plan = planByPostId.get(post.id);
+      if (options.dueOnly === true && plan && !plan.shouldCollect) {
+        results.push({ postId: post.id, ok: null, status: "not_due", reason: plan.reason || "checkpoint_not_due", dueCheckpoints: plan.dueCheckpoints });
+        continue;
+      }
       const target = state.targets.find((item) => item.id === post.targetId);
       const provider = readiness.get(target?.channel);
       if (!provider || provider.mode === "manual_only" || !provider.configured) {

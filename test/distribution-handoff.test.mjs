@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { JsonStore } from "../src/store.mjs";
 import { SeedingService } from "../src/service.mjs";
-import { validateDistributionHandoff } from "../src/distribution-handoff.mjs";
+import { legacyHandoffIdentity, validateDistributionHandoff } from "../src/distribution-handoff.mjs";
 
 async function fixture() {
   const dir = await mkdtemp(path.join(os.tmpdir(), "handoff-")); const repo = path.join(dir, "repo"); await mkdir(repo); await writeFile(path.join(repo, "README.md"), "evidence");
@@ -79,6 +79,21 @@ test("canonical envelope requires the provider-neutral version contract", async 
   await assert.rejects(f.service.attachDistributionHandoff(f.campaign.id, { ...base, handoffVersion: 2 }), /handoffVersion/);
   const result = await f.service.attachDistributionHandoff(f.campaign.id, base);
   assert.equal(result.handoff.handoffVersion, 1);
+});
+
+test("versioned replay reuses a legacy pre-version row", async () => {
+  const f = await fixture(); const base = canonicalInput(f);
+  const validation = validateDistributionHandoff(base, { state: await f.service.snapshot(), campaignId: f.campaign.id });
+  const legacy = { ...validation.handoff }; delete legacy.handoffVersion; legacy.handoffHash = legacyHandoffIdentity(validation.handoff);
+  await f.service.store.mutate("fixture", "legacy_handoff_seeded", state => {
+    const campaign = state.campaigns.find(item => item.id === f.campaign.id);
+    campaign.distributionHandoffs = [legacy];
+    return campaign;
+  });
+  await f.service.attachDistributionHandoff(f.campaign.id, base);
+  const state = await f.service.snapshot();
+  assert.equal(state.campaigns.find(item => item.id === f.campaign.id).distributionHandoffs.length, 1);
+  assert.equal(state.campaigns.find(item => item.id === f.campaign.id).distributionHandoffs[0].handoffHash, legacy.handoffHash);
 });
 
 test("canonical envelope rejects duplicate or unresolved references and bounded violations", async () => {

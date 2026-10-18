@@ -183,4 +183,12 @@ export function validateDistributionHandoff(input = {}, { state, campaignId } = 
 }
 
 export function stableHandoffIdentity(handoff) { return handoff?.handoffHash || hash(handoff); }
+// Legacy rows written before the explicit contract version did not include
+// handoffVersion. Keep their identity replayable while new envelopes remain
+// versioned and fail closed.
+export function legacyHandoffIdentity(handoff) {
+  if (!handoff || typeof handoff !== "object") return hash(handoff);
+  const { handoffVersion: _ignored, ...legacy } = handoff;
+  return hash(legacy);
+}
 export const DISTRIBUTION_HANDOFF_LIMITS = Object.freeze({ MAX_JSON_BYTES, MAX_TEXT, MAX_ARRAY });

@@ -19,3 +19,9 @@ Canonical provider-neutral distribution envelopes now require `handoffVersion: 1
 - No live upstream producer/consumer wiring.
 - Handoff remains `DRY_RUN` only and cannot derive authorization, grant, window, lease, post or publication evidence.
 - Contract version is downstream-enforced; upstream System-Agentic source remains unchanged.
+
+## Rework — legacy replay compatibility
+
+Independent review found that adding `handoffVersion` to the normalized hash could append a duplicate when replaying a pre-version persisted row. The attach path now compares both the current versioned hash and a legacy-equivalent hash that omits `handoffVersion`. A regression seeds a pre-version row and verifies reattachment remains one row. New canonical envelopes still require version 1 and mismatches fail closed.
+
+Rework evidence: focused 9/9; full suite 437 total, 435 passed, 0 failed, 2 skipped; syntax and diff checks pass.
