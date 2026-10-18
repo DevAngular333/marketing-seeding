@@ -29,7 +29,9 @@
     "6dcebf9 feat: expose account readiness in mission control",
     "working-tree seam: bounded campaign-aware post attribution context in existing learning/strategy with late-UNKNOWN retention and target identity validation",
     "working-tree seam: exact content-candidate materialization and approved-copy standing authorization binding with inactive-authority regressions",
-    "working-tree seam: versioned approved-template candidate binding with claim/source/render revalidation and HTTP role coverage"
+    "working-tree seam: versioned approved-template candidate binding with claim/source/render revalidation and HTTP role coverage",
+    "b988ffd fix: fail closed post metrics advisory",
+    "f3c21ec fix: quarantine mixed malformed metric assessments"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -122,5 +124,12 @@
     ,{"name":"full_node_suite_after_product_factory_artifact_promotion","result":"PASS","tests":424,"passed":422,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
     ,{"name":"product_factory_artifact_promotion_static","result":"PASS","command":"for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"}
     ,{"name":"canonical_runtime_immutability_after_product_factory_artifact_promotion","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknownExecutions":4,"protectedUnknownUncertainties":4}
+    ,{"name":"post_metrics_advisory_focused","result":"PASS_BOUNDED","tests":25,"passed":25,"failed":0,"skipped":0,"command":"node --test test/learning.test.mjs test/strategy.test.mjs","report":"plans/autonomous-build/post-metrics-advisory/report.md"}
+    ,{"name":"post_metrics_advisory_integration","result":"PASS","tests":87,"passed":87,"failed":0,"skipped":0,"command":"node --test test/learning.test.mjs test/strategy.test.mjs test/outcome.test.mjs test/control-cycle.test.mjs test/service.test.mjs test/server.test.mjs"}
+    ,{"name":"post_metrics_advisory_full_suite","result":"PASS","tests":428,"passed":426,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
+    ,{"name":"post_metrics_advisory_static","result":"PASS","command":"for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"}
+    ,{"name":"post_metrics_advisory_independent_review","result":"PASS_BOUNDED","report":"plans/autonomous-build/reports/verify-20261018-post-metrics-advisory.md","notes":"Bounded projection, tamper checks, invalid/unsupported/mixed metric fail-closed behavior; no side effects"}
+    ,{"name":"canonical_runtime_immutability_after_post_metrics_advisory","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknownExecutions":4,"protectedUnknownUncertainties":4}
+
   ]
 }

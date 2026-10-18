@@ -57,5 +57,8 @@
     ,{"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"discovery fit compatibility","evidence":"Commit 3ac7937; full 422/420/0/2, focused 77/77, canonical schema 8 revision 194 SHA unchanged; no external or social mutation"}
     ,{"worker_id":"/root/factory_promotion_review","role":"independent verifier","status":"PASS_BOUNDED","scope":"Product Factory artifact promotion","evidence":"Report plans/autonomous-build/reports/verify-20261018-product-factory-artifact-promotion.md; focused 72/72; exact lineage/hash/source review; operator-only route; artifact-only effects; full suite/canonical snapshot subsequently passed"}
     ,{"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"Product Factory artifact promotion integration","evidence":"86800a3; full npm test 424/422/0/2; focused independent gate 72/72; syntax/diff pass; canonical schema 8 revision 194 SHA unchanged; no browser/social/UNKNOWN mutation"}
+    ,{"worker_id":"/root/post_metrics_advisory","role":"implementation/rework","status":"DONE","scope":"bounded post metrics advisory and fail-closed validation","commits":"b988ffd, f3c21ec","evidence":"Final focused learning/strategy 25/25, integration 87/87, full 428/426/0/2; no canonical/runtime/external side effects"}
+    ,{"worker_id":"/root/post_metrics_review","role":"independent verifier","status":"PASS_BOUNDED","scope":"post metrics advisory review","evidence":">24 projection, tamper, unsupported-positive, invalid/null/negative and mixed-positive malformed regressions pass; focused 25/25, syntax/diff pass; no side effects"}
+
   ]
 }
