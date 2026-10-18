@@ -101,3 +101,15 @@ test("post metrics advisory rejects tampered assessment and evidence", () => {
   tampered.postAttributions[0].metricAssessment.classification = "RESPONSE_OBSERVED";
   assert.equal(isNormalizedPostAttributionContext(tampered), false);
 });
+
+test("post metrics advisory does not promote mixed malformed measurements to response", () => {
+  const context = normalizePostAttributionContext({ postAttributions: [
+    { postId: "mixed", status: "PARTIAL", metrics: {
+      snapshotId: "m-mixed",
+      values: { impressions: null, clicks: 2 },
+      coverage: { impressions: "measured", clicks: "measured" }
+    } }
+  ] });
+  assert.equal(context.metricAdvisory.posts[0].classification, "PARTIAL_MEASUREMENTS");
+  assert.equal(isNormalizedPostAttributionContext(context), true);
+});

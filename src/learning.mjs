@@ -71,8 +71,13 @@ function deriveMetricAssessment({ metrics, engagement, conversions, evidence }) 
   const uncertain = fields.filter((field) => ["unknown", "unsupported"].includes(metrics.coverage[field]));
   const measuredValues = measured.map((field) => metrics.values[field]).filter((value) => Number.isSafeInteger(value));
   let classification = "UNOBSERVED";
-  if (response) classification = "RESPONSE_OBSERVED";
-  else if (metrics && (invalidMeasured.length || uncertain.length) && measured.length) classification = "PARTIAL_MEASUREMENTS";
+  // An invalid measured field makes the metric snapshot incomplete. Keep that
+  // uncertainty visible even when another field or engagement signal is
+  // positive; do not turn a partially malformed snapshot into a response
+  // claim.
+  if (metrics && invalidMeasured.length && (measured.length || uncertain.length || response)) classification = "PARTIAL_MEASUREMENTS";
+  else if (response) classification = "RESPONSE_OBSERVED";
+  else if (metrics && uncertain.length && measured.length) classification = "PARTIAL_MEASUREMENTS";
   else if (metrics && (uncertain.length || invalidMeasured.length || (!measured.length && (metrics.snapshotId || metrics.capturedAt)))) classification = "UNKNOWN_OR_UNSUPPORTED";
   else if (metrics && uncertain.length && !measured.length) classification = "UNKNOWN_OR_UNSUPPORTED";
   else if (measuredValues.some((value) => value > 0) && measured.some((field) => field === "impressions")) classification = "REACH_WITHOUT_RESPONSE";
