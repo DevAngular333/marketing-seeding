@@ -45,3 +45,19 @@ SYSTEM_AGENTIC_AI Core (frozen, read-only)
 - **Implemented/local verified:** deterministic advisory strategy decisions, evidence-grounded draft candidates, outcome summaries with bounded explicit-link-only post attribution, campaign-aware post attribution context in advisory learning/strategy, opt-in control-cycle scheduling, and bounded public HTTP discovery polling with campaign error isolation; all are non-authoritative.
 - **Design-only/not implemented:** upstream live System-Agentic handoff producer/consumer, autonomous audience search, platform search/community-rule crawler, outcome-driven adaptive authority/NBA, production LLM content, contextual engagement, multi-account registry/recovery. Post attribution and learning context are advisory evidence only; caller-supplied fit is implemented as advisory evidence.
 - **Live blocked:** real LinkedIn final submit and independent publication discovery require fresh exact authorization and a permitted live lane.
+
+## Latest queue derivation seam
+
+```text
+persisted campaign stories + exact active standing approved_template_set authority
+  -> deterministic template candidate derivation
+  -> immutable candidate identity / source and claim binding
+  -> existing content materializer
+  -> existing readiness + queue eligibility
+  -> execution request + one-time window + live grant + lease
+  -> existing JEV/LinkedIn/browser path
+```
+
+The first five nodes are locally verified. The browser path and real publication
+verification remain externally blocked; no queue derivation creates authority or
+bypasses the existing controls.

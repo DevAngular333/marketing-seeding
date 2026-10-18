@@ -28,3 +28,11 @@
 | Security/privacy | PARTIAL | local bearer tokens, ACL scripts, redacted evidence, no secrets in new code | Browser profile/credential material remains host-managed; no full broker |
 | Observability | PARTIAL | audit events, execution IDs, receipts, readiness/evidence refs, flow graph | No live publication timeline or broad tracing |
 | Full production readiness | BLOCKED | Latest full Node suite 410 total, 408 passed, 0 failed, 2 skipped; template-binding service/server gate 46/46; content-candidate scheduler gate 42/42; metrics observability 39/39; outcome attribution 42/42; learning-aware strategy 49/49; strategy fit 36/36; UI typecheck/build pass; Product Factory project-evidence safety gate 45/45; focused discovery/service/server 50/50; audience-fit 39/39; handoff/service/server 33/33 | Live authorization, ORCA availability/certification and real publication verification absent; production sandbox, outcome-driven authority/NBA execution, adaptive content, and multi-account runtime remain incomplete |
+
+## Latest queue readiness overlay (2026-10-18)
+
+| Area | Status | Evidence | Blocker |
+|---|---|---|---|
+| Standing template candidate scheduling | READY (LOCAL) | Queue derives exact versioned template candidates from persisted stories under one active standing authority; focused 47/47; full 412/410/0/2 | No live authorization/session/ORCA proof |
+| Candidate lineage integrity | READY (LOCAL) | Immutable identity preservation, source/claim/render/fingerprint revalidation and tamper regressions | Real platform behavior unverified |
+| Autonomous irreversible publication | BLOCKED | Existing JEV/LinkedIn/UNKNOWN contracts remain intact; no live execution attempted | External exact authorization and ORCA lane unavailable |

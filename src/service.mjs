@@ -1897,7 +1897,11 @@ export class SeedingService {
       const current = requireItem(state.campaigns, campaignId, "Campaign");
       current.contentCandidates ||= [];
       const byIdentity = new Map(current.contentCandidates.map((item) => [item.contentIdentity, item]));
-      for (const candidate of candidates) byIdentity.set(candidate.contentIdentity, candidate);
+      // Candidate identity is immutable lineage. Never overwrite an existing
+      // row during autonomous derivation: a tampered or stale row must remain
+      // visible and fail closed at materialization instead of being silently
+      // replaced by a newly derived candidate.
+      for (const candidate of candidates) if (!byIdentity.has(candidate.contentIdentity)) byIdentity.set(candidate.contentIdentity, candidate);
       current.contentCandidates = [...byIdentity.values()].slice(-24);
       current.updatedAt = nowIso();
       return current.contentCandidates.filter((item) => candidates.some((candidate) => candidate.contentIdentity === item.contentIdentity));
@@ -2096,13 +2100,40 @@ export class SeedingService {
    * readiness, request, window and grant contracts.
    */
   async materializeAuthorizedContentCandidates(campaignId, actor = "campaign-queue-scheduler") {
-    const snapshot = await this.store.read();
-    const campaign = requireItem(snapshot.campaigns, campaignId, "Campaign");
+    let snapshot = await this.store.read();
+    let campaign = requireItem(snapshot.campaigns, campaignId, "Campaign");
     const activeAuthorizations = (snapshot.campaignAuthorizations || [])
       .filter((item) => item.campaignId === campaignId && item.status === "active");
     const authorization = activeAuthorizations.length === 1 ? activeAuthorizations[0] : null;
-    if (!authorization || authorization.executionMode !== "standing_autonomous" || authorization.allowLiveExecution !== true || !["approved_copy_set", "approved_template_set"].includes(authorization.contentBoundary?.mode)) {
+    if (campaign.status !== "active" || !authorization || authorization.executionMode !== "standing_autonomous" || authorization.allowLiveExecution !== true || !["approved_copy_set", "approved_template_set"].includes(authorization.contentBoundary?.mode)) {
       return { campaignId, materialized: [], skipped: (campaign.contentCandidates || []).filter((item) => item.status === "draft").length, reason: "standing_content_authorization_not_uniquely_active" };
+    }
+
+    // A standing template authorization is also the bounded source of its
+    // candidates. Derive only from persisted stories and the exact approved
+    // templates, then re-read before materialization so every candidate still
+    // passes the same source/claim/target/authorization checks. This keeps the
+    // queue autonomous without creating a second content or authority path.
+    if (authorization.contentBoundary.mode === "approved_template_set") {
+      const stories = (snapshot.stories || [])
+        .filter((story) => story.campaignId === campaignId)
+        .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+        .slice(-24);
+      const templates = (authorization.contentBoundary.templates || [])
+        .map((template) => ({ ...template, id: String(template.id || "").trim(), platform: String(template.platform || "").trim().toLowerCase() }))
+        .sort((left, right) => `${left.platform}\u0000${left.id}`.localeCompare(`${right.platform}\u0000${right.id}`));
+      for (const story of stories) {
+        for (const template of templates) {
+          try {
+            await this.deriveTemplateContentCandidates(campaignId, { storyId: story.id, templateId: template.id }, actor);
+          } catch {
+            // A stale, malformed or source-drifted story/template is kept
+            // draft-only; another exact template or story may still proceed.
+          }
+        }
+      }
+      snapshot = await this.store.read();
+      campaign = requireItem(snapshot.campaigns, campaignId, "Campaign");
     }
     const results = [];
     for (const candidate of (campaign.contentCandidates || []).filter((item) => item.status === "draft")) {
@@ -2166,7 +2197,14 @@ export class SeedingService {
     const candidateSnapshot = await this.store.read();
     const candidateFailures = new Map();
     for (const campaign of candidateSnapshot.campaigns || []) {
-      if ((campaign.contentCandidates || []).some((candidate) => candidate.status === "draft")) {
+      const activeAuthorizations = (candidateSnapshot.campaignAuthorizations || [])
+        .filter((authorization) => authorization.campaignId === campaign.id && authorization.status === "active");
+      const templateQueueSource = campaign.status === "active" && activeAuthorizations.length === 1 &&
+        activeAuthorizations[0].executionMode === "standing_autonomous" &&
+        activeAuthorizations[0].allowLiveExecution === true &&
+        activeAuthorizations[0].contentBoundary?.mode === "approved_template_set" &&
+        (candidateSnapshot.stories || []).some((story) => story.campaignId === campaign.id);
+      if ((campaign.contentCandidates || []).some((candidate) => candidate.status === "draft") || templateQueueSource) {
         try {
           await this.materializeAuthorizedContentCandidates(campaign.id, actor);
         } catch (error) {

@@ -95,5 +95,10 @@
     {"name":"template_candidate_binding_independent_review","result":"ACCEPT","notes":"HTTP auth reachability gap closed; no safety or acceptance findings"},
     {"name":"full_node_suite_after_template_candidate_binding","result":"PASS","tests":410,"passed":408,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"},
     {"name":"canonical_runtime_immutability_after_template_candidate_binding","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
+    ,{"name":"standing_template_candidate_scheduler_focused","result":"PASS_BOUNDED","tests":47,"passed":47,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs","notes":"Queue-only derivation from persisted stories; active standing authority; paused/ambiguous/inactive fail-closed; restart/idempotency; source/render/tamper safety"}
+    ,{"name":"standing_template_candidate_scheduler_static","result":"PASS","command":"node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"}
+    ,{"name":"standing_template_candidate_scheduler_independent_review","result":"ACCEPT","notes":"No blocking safety, authority, idempotency or UNKNOWN immutability findings; malformed sibling template behavior recorded as residual policy advisory"}
+    ,{"name":"full_node_suite_after_standing_template_scheduler","result":"PASS","tests":412,"passed":410,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
+    ,{"name":"canonical_runtime_immutability_after_standing_template_scheduler","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
   ]
 }

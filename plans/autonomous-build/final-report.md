@@ -84,3 +84,10 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 - The queue runtime projection is bounded and read-only on `/health` and the existing dashboard; focused server/lifecycle gate: 46 passed, 0 failed, 0 skipped. It does not expose raw errors, credentials, state paths or execution controls.
 - Per-campaign queue failure isolation focused gate: 47 passed, 0 failed, 0 skipped; independent review ACCEPT. Shared expiry/store failures remain fail-closed at the cycle boundary.
 - Canonical runtime remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; no social mutation and no historical UNKNOWN mutation occurred.
+
+## Latest verification overlay (2026-10-18, standing template scheduler)
+
+- Queue-only standing template derivation is now locally verified. An active campaign with exactly one active `standing_autonomous` `approved_template_set` authorization can derive candidates from persisted stories without an operator candidate call.
+- Candidate identity is immutable during autonomous derivation; state is reread before materialization; source, claim, render, template fingerprint, target, account/profile, URL, audience, visibility and authorization binding remain fail-closed.
+- Focused service/server gate: 47 passed, 0 failed, 0 skipped. Latest full Node suite: 412 total, 410 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
+- No browser, ORCA, LinkedIn, social, canonical runtime or historical UNKNOWN mutation occurred. Live irreversible-submit proof remains blocked by absent exact authorization/session and unavailable ORCA in this shell.

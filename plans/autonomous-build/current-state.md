@@ -104,3 +104,11 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   fallback `campaign_queue_failed`); raw exception details stay local.
 - Existing authority, readiness, grant/window/lease, idempotency and UNKNOWN
   behavior is unchanged. See `plans/autonomous-build/campaign-queue-failure-isolation/`.
+
+## Standing template candidate scheduler (2026-10-18)
+
+- The queue now derives versioned `approved_template_set` candidates from persisted stories for an active campaign with exactly one active `standing_autonomous` authorization and `allowLiveExecution === true`.
+- Derivation is deterministic, bounded to authorized targets/templates/claims/source refs, rereads state before materialization, and never overwrites an existing candidate identity.
+- Existing materialization, readiness, request, one-time window, live grant, lease, idempotency and UNKNOWN controls remain the only execution path.
+- Paused, inactive, ambiguous, expired, revoked and malformed authority remains draft-only. No live/browser/social/canonical/UNKNOWN mutation occurred.
+- Focused scheduler/template service gate: 47 passed, 0 failed, 0 skipped. Latest full suite: 412 total, 410 passed, 0 failed, 2 skipped.

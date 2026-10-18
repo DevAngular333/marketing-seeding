@@ -27,8 +27,8 @@ async function fixture(prefix = "seeding-fixture-") {
   return { directory, productRepo: await realpath(productRepo), groundingText, service, campaign, target, post };
 }
 
-async function templateCandidateFixture(prefix) {
-  const { service, campaign, productRepo, target } = await fixture(prefix);
+async function templateCandidateFixture(prefix, { derive = true } = {}) {
+  const { directory, service, campaign, productRepo, target } = await fixture(prefix);
   const profileId = `${prefix}-profile`;
   await service.registerExecutionAccount({ platform: "threads", accountId: target.accountId, profileId }, "operator");
   await service.updateTarget(target.id, { profileId, status: "active", readiness: {
@@ -63,8 +63,10 @@ async function templateCandidateFixture(prefix) {
     rateLimits: { maxJobsPerAccountPerDay: 3, maxJobsPerCampaignPerDay: 3, maxConcurrency: 1, minIntervalMinutes: 0 },
     allowLiveExecution: true, executionMode: "standing_autonomous", standingAuthorizationReference: `${prefix}-standing`
   }, "operator");
-  const [candidate] = await service.deriveTemplateContentCandidates(campaign.id, { storyId: story.id, templateId: "template-1" }, "automation");
-  return { service, campaign, productRepo, target, candidate };
+  const [candidate] = derive
+    ? await service.deriveTemplateContentCandidates(campaign.id, { storyId: story.id, templateId: "template-1" }, "automation")
+    : [null];
+  return { directory, service, campaign, productRepo, target, candidate };
 }
 
 test("kill switch controls are operator-only and advance the durable epoch", async () => {
@@ -370,6 +372,40 @@ test("template candidates render from exact approved claims and queue idempotent
   assert.equal(after.liveExecutionGrants.filter((item) => item.jobId === post.id).length, 1);
 });
 
+test("queue derives approved template candidates from persisted stories without per-post derivation", async () => {
+  const { directory, service, campaign } = await templateCandidateFixture("seeding-template-candidate-autonomous-queue-test-", { derive: false });
+  const before = await service.snapshot();
+  assert.equal((before.campaigns.find((item) => item.id === campaign.id).contentCandidates || []).length, 0);
+
+  const firstResults = await service.queueDueCampaignJobs("template-candidate-autonomous-queue");
+  const first = await service.snapshot();
+  const firstCampaign = first.campaigns.find((item) => item.id === campaign.id);
+  const derived = firstCampaign.contentCandidates.filter((item) => item.templateId === "template-1");
+  assert.equal(derived.length, 1);
+  assert.equal(derived[0].content, "A bounded product runtime.");
+  const post = first.posts.find((item) => item.contentId === derived[0].contentId);
+  assert.ok(post);
+  assert.equal(post.status, "queued");
+  assert.ok(firstResults.some((item) => item.campaignId === campaign.id));
+  assert.equal(first.executionRequests.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(first.oneTimeExecutionWindows.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(first.liveExecutionGrants.filter((item) => item.jobId === post.id).length, 1);
+
+  await service.queueDueCampaignJobs("template-candidate-autonomous-queue-repeat");
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  await restarted.queueDueCampaignJobs("template-candidate-autonomous-queue-restart");
+  const after = await restarted.snapshot();
+  const afterCampaign = after.campaigns.find((item) => item.id === campaign.id);
+  const afterCandidate = afterCampaign.contentCandidates.find((item) => item.templateId === "template-1");
+  assert.equal(afterCampaign.contentCandidates.filter((item) => item.templateId === "template-1").length, 1);
+  assert.equal(after.posts.filter((item) => item.contentId === afterCandidate.contentId).length, 1);
+  assert.equal(after.executionRequests.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(after.oneTimeExecutionWindows.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(after.liveExecutionGrants.filter((item) => item.jobId === post.id).length, 1);
+  assert.equal(after.submissionUncertainties.length, 0);
+});
+
 test("template candidate tampering remains draft-only with no execution artifacts", async () => {
   const { service, campaign, productRepo, target } = await fixture("seeding-template-candidate-tamper-test-");
   const profileId = "threads-template-tamper-profile";
@@ -504,9 +540,15 @@ test("queue scheduler leaves candidates without exact approved-copy standing aut
     const after = await service.snapshot();
     assert.equal(after.campaigns.find((item) => item.id === campaign.id).contentCandidates.find((item) => item.contentId === candidate.contentId).status, "draft", mode);
     assert.equal(after.posts.filter((item) => item.campaignId === campaign.id && item.contentId === candidate.contentId).length, 0, mode);
-    assert.equal(after.executionRequests.length, before.executionRequests.length, mode);
-    assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length, mode);
-    assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length, mode);
+    if (mode === "none") {
+      assert.equal(after.executionRequests.length, before.executionRequests.length, mode);
+      assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length, mode);
+      assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length, mode);
+    } else {
+      const derived = after.campaigns.find((item) => item.id === campaign.id).contentCandidates.find((item) => item.templateId === "template-1");
+      assert.ok(derived, mode);
+      assert.equal(after.posts.filter((item) => item.campaignId === campaign.id && item.contentId === derived.contentId).length, 1, mode);
+    }
   }
 });
 
@@ -555,6 +597,31 @@ test("queue scheduler leaves candidates draft-only when campaign is inactive eve
   assert.equal(after.executionRequests.length, 0);
   assert.equal(after.oneTimeExecutionWindows.length, 0);
   assert.equal(after.liveExecutionGrants.length, 0);
+});
+
+test("queue does not derive template candidates for paused or ambiguous authority", async () => {
+  for (const scenario of ["paused", "ambiguous"]) {
+    const { service, campaign } = await templateCandidateFixture(`seeding-template-candidate-${scenario}-queue-test-`, { derive: false });
+    if (scenario === "paused") {
+      await service.setCampaignAuthorizationStatus(campaign.id, "paused", "operator");
+    } else {
+      const state = await service.snapshot();
+      const authorization = state.campaignAuthorizations.find((item) => item.campaignId === campaign.id);
+      await service.store.mutate("fixture", "template_queue_ambiguous_authority", (next) => {
+        next.campaignAuthorizations.push({ ...authorization, id: `${authorization.id}-duplicate`, binding: authorization.binding, status: "active" });
+        return next;
+      });
+    }
+    const before = await service.snapshot();
+    await service.queueDueCampaignJobs(`template-candidate-${scenario}-queue`);
+    const after = await service.snapshot();
+    const savedCampaign = after.campaigns.find((item) => item.id === campaign.id);
+    assert.equal((savedCampaign.contentCandidates || []).length, 0, scenario);
+    assert.equal(after.posts.length, before.posts.length, scenario);
+    assert.equal(after.executionRequests.length, before.executionRequests.length, scenario);
+    assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length, scenario);
+    assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length, scenario);
+  }
 });
 
 test("queue scheduler isolates one campaign failure and continues the next campaign", async () => {

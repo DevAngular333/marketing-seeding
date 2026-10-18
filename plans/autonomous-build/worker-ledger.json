@@ -46,5 +46,7 @@
     {"worker_id":"/root/template_binding_review","role":"independent verifier","status":"ACCEPT","scope":"versioned approved-template candidate binding","evidence":"Focused service/server 46/46; HTTP endpoint automation bearer rejected and operator bearer reaches validation; contract/fingerprint/authorization/claim/source/render/target tamper regressions pass; no safety or acceptance findings; no browser/social/canonical/UNKNOWN mutation"},
     {"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"template candidate binding integration","evidence":"Versioned deterministic template binding integrated with existing queue/readiness/window/grant/lease/idempotency/UNKNOWN controls; full 410/408/0/2; syntax/diff pass; canonical runtime unchanged"
     }
+    ,{"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"standing template candidate scheduler","evidence":"Queue-only derivation from persisted stories under exact active standing approved_template_set authority; focused 47/47; full 412/410/0/2; syntax/diff pass; canonical runtime and protected UNKNOWN records unchanged"}
+    ,{"worker_id":"/root/standing_template_review","role":"independent verifier","status":"ACCEPT","scope":"standing template candidate scheduler","evidence":"Focused service/server 47/47; no blocking safety, authority, idempotency or UNKNOWN immutability findings; malformed sibling template behavior noted as non-blocking policy advisory"}
   ]
 }

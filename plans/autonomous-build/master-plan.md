@@ -48,3 +48,7 @@ Reuse `JsonStore`, `SeedingService`, campaign authorization, one-time windows, l
 ## Evidence policy
 
 Runtime, source, tests and artifacts outrank README/plans. Synthetic/local evidence never counts as real platform proof. `COMMAND_COMPLETED` does not imply activation, acceptance or publication. Post-submit uncertainty remains quarantined. No live action without exact current authority.
+
+24. Add queue-only standing template candidate derivation from persisted stories under one exact active approved-template authority; preserve immutable candidate lineage, source/render revalidation, per-campaign failure isolation and all existing execution controls. Local proof passes; live publication remains blocked.
+
+Latest local gate after item 24: `npm test` reports 412 total, 410 passed, 0 failed, 2 skipped; focused service/server gate reports 47/47; syntax and diff checks pass. No social action or canonical/UNKNOWN mutation occurred.
