@@ -29,8 +29,9 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 21. Add bounded read-only campaign queue runtime observability to `/health` and Mission Control without adding authority or execution controls; local lifecycle/server and full-suite gates pass.
 22. Isolate per-campaign queue failures so healthy campaigns continue and expose bounded failure codes through existing read-only observability; local focused proof passes, live execution remains blocked.
 23. Add the versioned deterministic `approved_template_set` candidate binding contract; exact template candidates reuse the same standing queue controls while legacy/manual/ambiguous candidates remain draft-only.
+24. Add deterministic evidence-grounded product-intelligence story derivation over the existing READY handoff; keep it draft-only, idempotent and source-revalidated, with no queue or authority side effects.
 
-Result: local implementation gates pass (latest full Node suite 410 total, 408 passed, 0 failed, 2 skipped); the template-binding focused service/server gate is 46/46, the queue failure-isolation focused gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler service/server gate is 42/42, the prior content-candidate materialization/authorization gate is 44/44, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, and outcome attribution is 42/42. UI typecheck and production build also pass from the prior release gate. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
+Result: local implementation gates pass (latest full Node suite 417 total, 415 passed, 0 failed, 2 skipped); the story/content/service focused gate is 67/67, the standing-template scheduler gate is 47/47, the template-binding focused service/server gate is 46/46, the queue failure-isolation gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler gate is 42/42, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, and outcome attribution is 42/42. UI typecheck and production build also pass from the prior release gate. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 
 ## Later waves (dependency order)
 
@@ -49,6 +50,6 @@ Reuse `JsonStore`, `SeedingService`, campaign authorization, one-time windows, l
 
 Runtime, source, tests and artifacts outrank README/plans. Synthetic/local evidence never counts as real platform proof. `COMMAND_COMPLETED` does not imply activation, acceptance or publication. Post-submit uncertainty remains quarantined. No live action without exact current authority.
 
-24. Add queue-only standing template candidate derivation from persisted stories under one exact active approved-template authority; preserve immutable candidate lineage, source/render revalidation, per-campaign failure isolation and all existing execution controls. Local proof passes; live publication remains blocked.
+25. Add queue-owned story derivation only after an explicit bounded campaign CTA/content policy exists; preserve draft-only story semantics and all existing candidate/authorization controls. Do not infer CTA from arbitrary campaign fields.
 
-Latest local gate after item 24: `npm test` reports 412 total, 410 passed, 0 failed, 2 skipped; focused service/server gate reports 47/47; syntax and diff checks pass. No social action or canonical/UNKNOWN mutation occurred.
+Latest local gate after item 24: `npm test` reports 417 total, 415 passed, 0 failed, 2 skipped; focused story/content/service gate reports 67/67; syntax and diff checks pass. No social action or canonical/UNKNOWN mutation occurred.

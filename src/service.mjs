@@ -15,14 +15,14 @@ import { defaultPlatformPolicies } from "./platform-policies.mjs";
 import { ReadinessProviderRegistry } from "./platform-registries.mjs";
 import { activeExecutionForPost, recordSubmissionUnknown, unresolvedSubmission, UNKNOWN_POST_STATUS } from "./submission-uncertainty.mjs";
 import { deriveStandingExecutionControlPlan } from "./standing-campaign-delegation.mjs";
-import { buildProductIntelligence, serializeProductIntelligence } from "./product-intelligence.mjs";
+import { buildProductIntelligence, normalizeEvidenceRecords, serializeProductIntelligence } from "./product-intelligence.mjs";
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
 import { observePublicUrls } from "./discovery-observer.mjs";
 import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
-import { canonicalTemplateSourceRefs, contentCandidateIdentity, deriveContentCandidates, deriveTemplateContentCandidates, renderApprovedTemplate, templateCandidateBinding, templateClaimIds, TEMPLATE_CANDIDATE_CONTRACT_VERSION } from "./content-foundation.mjs";
+import { canonicalTemplateSourceRefs, contentCandidateIdentity, deriveContentCandidates, deriveProductIntelligenceStory, deriveTemplateContentCandidates, renderApprovedTemplate, templateCandidateBinding, templateClaimIds, TEMPLATE_CANDIDATE_CONTRACT_VERSION } from "./content-foundation.mjs";
 import { appendLearningFeedback, deriveLearningFeedback } from "./learning.mjs";
 import { appendOutcomeSummary, deriveOutcomeSummary } from "./outcome.mjs";
 import { validateDistributionHandoff } from "./distribution-handoff.mjs";
@@ -1447,6 +1447,129 @@ export class SeedingService {
       };
       current.updatedAt = nowIso();
       return current.productIntelligence;
+    });
+    return result.result;
+  }
+
+  /**
+   * Derive and persist one deterministic, draft-only story from the campaign's
+   * READY product-intelligence handoff. This path never creates authority or
+   * execution artifacts and is intentionally not called by the queue.
+   */
+  async deriveProductIntelligenceStory(campaignId, input = {}, actor = "ai-drafter") {
+    const initialState = await this.store.read();
+    const campaign = requireItem(initialState.campaigns, campaignId, "Campaign");
+    const productRepo = await requireProductRepo(campaign.productRepo);
+    const productIntelligence = campaign.productIntelligence;
+    const document = productIntelligence?.document;
+    const inspection = productIntelligence?.repositoryInspection;
+    if (!productIntelligence?.handoff || !document) {
+      throw new Error("Product intelligence story derivation requires READY product intelligence");
+    }
+    if (productIntelligence.handoff.readinessStatus !== "READY") {
+      throw new Error("Product intelligence story derivation requires READY product intelligence");
+    }
+    const handoffValidation = validateProductIntelligenceHandoff(productIntelligence.handoff, document);
+    if (!handoffValidation.ok) {
+      throw new Error(`Invalid product intelligence handoff: ${handoffValidation.errors.join(", ")}`);
+    }
+    if (path.resolve(String(productIntelligence.handoff.sourceRepository || "")) !== path.resolve(productRepo)) {
+      throw new Error("Product intelligence handoff sourceRepository does not match campaign productRepo");
+    }
+    if (!inspection || !Array.isArray(inspection.records) || !inspection.records.length) {
+      throw new Error("Product intelligence story derivation requires persisted repository inspection");
+    }
+    let freshInspection;
+    try {
+      freshInspection = await inspectRepositoryEvidence(productRepo, {
+        allowlist: inspection.allowlist,
+        ...(inspection.limits || {})
+      });
+    } catch (error) {
+      throw new Error(`Product intelligence repository inspection is invalid: ${error.message}`);
+    }
+    if (path.resolve(freshInspection.repository) !== path.resolve(String(inspection.repository || productRepo)) ||
+      freshInspection.inspectionHash !== inspection.inspectionHash) {
+      throw new Error("Product intelligence repository inspection changed since handoff");
+    }
+    const freshRecordsByLocator = new Map(freshInspection.records.map((record) => [String(record.locator || ""), record]));
+    if (inspection.records.length !== freshInspection.records.length || inspection.records.some((record) => {
+      const current = freshRecordsByLocator.get(String(record?.locator || ""));
+      return !current || String(record?.id || "") !== String(current.id || "") ||
+        String(record?.sha256 || "").toLowerCase() !== String(current.sha256 || "").toLowerCase() ||
+        Number(record?.bytes) !== Number(current.bytes);
+    })) {
+      throw new Error("Product intelligence repository inspection records changed since handoff");
+    }
+    const freshEvidence = normalizeEvidenceRecords(freshInspection.records.map(({ id, sourceType, locator, content }) => ({ id, sourceType, locator, content })));
+    const freshEvidenceByHash = new Map(freshEvidence.records.map((record) => [record.hash, record]));
+    const documentEvidence = Array.isArray(document.evidence) ? document.evidence : [];
+    for (const evidence of documentEvidence) {
+      const normalized = normalizeEvidenceRecords([evidence]).records[0];
+      const current = freshEvidenceByHash.get(String(evidence?.hash || "").trim());
+      if (!normalized || normalized.hash !== String(evidence?.hash || "").trim() || !current ||
+        normalized.sourceType !== current.sourceType || normalized.locator !== current.locator ||
+        normalized.content !== current.content || normalized.observedAt !== current.observedAt) {
+        throw new Error("Product intelligence evidence is not derived from the current repository inspection");
+      }
+    }
+    const evidenceByHash = new Map((Array.isArray(document.evidence) ? document.evidence : [])
+      .filter((record) => record && typeof record === "object")
+      .map((record) => [String(record.hash || "").trim(), record]));
+    const inspectionByLocator = new Map(inspection.records.map((record) => [String(record?.locator || "").trim(), record]));
+    const requiredFields = ["WHAT_IS_IT", "WHAT_PROBLEM_DOES_IT_SOLVE", "WHY_IS_IT_BETTER", "WHO_NEEDS_IT"];
+    const selectedEvidence = new Map();
+    for (const field of requiredFields) {
+      const answer = document[field];
+      const claimId = String(answer?.id || "").trim();
+      const claim = (Array.isArray(document.CLAIMS_WE_CAN_PROVE) ? document.CLAIMS_WE_CAN_PROVE : [])
+        .find((item) => String(item?.id || "").trim() === claimId);
+      if (!claim || String(claim.field || "").trim() !== field) throw new Error(`Product intelligence field ${field} is not supported`);
+      for (const evidenceRef of Array.isArray(claim.evidenceRefs) ? claim.evidenceRefs : []) {
+        const evidence = evidenceByHash.get(String(evidenceRef || "").trim());
+        const locator = String(evidence?.locator || "").trim();
+        const recorded = inspectionByLocator.get(locator);
+        if (!evidence || !recorded || !/^[a-f0-9]{64}$/i.test(String(recorded.sha256 || ""))) {
+          throw new Error(`Product intelligence evidence is not bound to inspected repository source: ${field}`);
+        }
+        const source = await readGroundingSource(productRepo, locator);
+        if (source.sha256 !== String(recorded.sha256).toLowerCase()) {
+          throw new Error(`Product intelligence grounding source changed: ${locator}`);
+        }
+        const prior = selectedEvidence.get(locator);
+        selectedEvidence.set(locator, {
+          ...source,
+          evidenceHash: prior?.evidenceHash || evidence.hash,
+          evidenceHashes: [...new Set([...(prior?.evidenceHashes || []), evidence.hash])]
+        });
+      }
+    }
+    const disclosure = String(input.disclosure || "AI-assisted draft grounded in verified repository evidence.").replace(/\s+/g, " ").trim();
+    const story = deriveProductIntelligenceStory({
+      campaignId,
+      productIntelligence,
+      callToAction: input.callToAction,
+      groundingSources: [...selectedEvidence.values()],
+      language: input.language,
+      disclosure
+    });
+    const result = await this.store.mutate(actor, "product_intelligence_story_drafted", (state) => {
+      const currentCampaign = requireItem(state.campaigns, campaignId, "Campaign");
+      state.stories ||= [];
+      const existing = state.stories.find((item) => item.campaignId === campaignId && (item.storyIdentity === story.storyIdentity || item.id === story.id));
+      if (existing) {
+        if (existing.storyIdentity !== story.storyIdentity || existing.status !== "draft") throw new Error("Product intelligence story identity is already bound to another story");
+        return existing;
+      }
+      const created = {
+        ...story,
+        disclosure: story.disclosure,
+        createdAt: nowIso(),
+        updatedAt: nowIso()
+      };
+      state.stories.push(created);
+      currentCampaign.updatedAt = nowIso();
+      return created;
     });
     return result.result;
   }

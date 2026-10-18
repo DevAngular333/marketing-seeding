@@ -66,6 +66,122 @@ export function contentCandidateIdentity({ storyId, targetId, channel, content, 
 function assertSafe(value, field) {
   if (SECRET.test(String(value || "")) || SECRET_ASSIGNMENT.test(String(value || "")) || SECRET_VALUE.test(String(value || ""))) throw new Error(`Content contains credential/session material: ${field}`);
 }
+
+const PRODUCT_STORY_FIELDS = Object.freeze([
+  "WHAT_IS_IT",
+  "WHAT_PROBLEM_DOES_IT_SOLVE",
+  "WHY_IS_IT_BETTER",
+  "WHO_NEEDS_IT",
+]);
+const PRODUCT_STORY_MAX_FIELD = 1200;
+const PRODUCT_STORY_MAX_CTA = 300;
+const PRODUCT_STORY_MAX_DISCLOSURE = 500;
+
+function storyField(value, field) {
+  const text = String(value?.text || "").replace(/\s+/g, " ").trim();
+  if (!text) throw new Error(`Product intelligence story requires ${field}`);
+  if (text.length > PRODUCT_STORY_MAX_FIELD) throw new Error(`Product intelligence ${field} exceeds ${PRODUCT_STORY_MAX_FIELD} characters`);
+  assertSafe(text, `productIntelligence.${field}`);
+  return text;
+}
+
+/**
+ * Derive one draft-only story from already validated product intelligence.
+ * This helper is pure: repository reads and persistence belong to the service.
+ */
+export function deriveProductIntelligenceStory({ campaignId, productIntelligence, callToAction, groundingSources = [], language = "en", disclosure } = {}) {
+  const handoff = productIntelligence?.handoff;
+  const document = productIntelligence?.document;
+  if (!handoff || handoff.readinessStatus !== "READY" || !document) {
+    throw new Error("Product intelligence story derivation requires READY product intelligence");
+  }
+  const normalizedCampaignId = String(campaignId || "").trim();
+  if (!normalizedCampaignId) throw new Error("Product intelligence story campaignId is required");
+  const unsupported = Array.isArray(document.CLAIMS_WE_CANNOT_MAKE) ? document.CLAIMS_WE_CANNOT_MAKE : [];
+  if (unsupported.length) throw new Error("Product intelligence contains unsupported claims");
+  const claims = Array.isArray(document.CLAIMS_WE_CAN_PROVE) ? document.CLAIMS_WE_CAN_PROVE : [];
+  const claimById = new Map();
+  for (const claim of claims) {
+    const id = String(claim?.id || "").trim();
+    if (!id || claimById.has(id)) throw new Error("Product intelligence claims must have unique ids");
+    claimById.set(id, claim);
+  }
+  const selected = [];
+  const seenClaimIds = new Set();
+  for (const field of PRODUCT_STORY_FIELDS) {
+    const answer = document[field];
+    const claim = answer && claimById.get(String(answer.id || "").trim());
+    if (!claim || claim.field !== field || claim.text !== answer.text || JSON.stringify(claim.evidenceRefs || []) !== JSON.stringify(answer.evidenceRefs || [])) {
+      throw new Error(`Product intelligence field ${field} is not backed by a supported claim`);
+    }
+    const refs = Array.isArray(claim.evidenceRefs) ? [...new Set(claim.evidenceRefs.map((ref) => String(ref).trim()).filter(Boolean))] : [];
+    if (!refs.length || seenClaimIds.has(claim.id)) throw new Error(`Product intelligence field ${field} requires a distinct evidence-grounded claim`);
+    seenClaimIds.add(claim.id);
+    selected.push({ field, id: claim.id, text: storyField(claim, field), evidenceRefs: refs });
+  }
+  const cta = String(callToAction || "").replace(/\s+/g, " ").trim();
+  if (!cta) throw new Error("Product intelligence story callToAction is required");
+  if (cta.length > PRODUCT_STORY_MAX_CTA) throw new Error(`story callToAction exceeds ${PRODUCT_STORY_MAX_CTA} characters`);
+  assertSafe(cta, "story.callToAction");
+  const normalizedDisclosure = String(disclosure || "AI-assisted draft grounded in verified repository evidence.").replace(/\s+/g, " ").trim();
+  if (!normalizedDisclosure || normalizedDisclosure.length > PRODUCT_STORY_MAX_DISCLOSURE) throw new Error("story disclosure must contain 1-500 characters");
+  assertSafe(normalizedDisclosure, "story.disclosure");
+  const sources = [...new Map((Array.isArray(groundingSources) ? groundingSources : []).map((source) => [
+    `${String(source?.relativePath || "")}\u0000${String(source?.sha256 || "")}`,
+    { ...source }
+  ])).values()].sort((left, right) => String(left.relativePath).localeCompare(String(right.relativePath)));
+  if (!sources.length) throw new Error("Product intelligence story requires verified grounding sources");
+  if (sources.some((source) => !String(source.relativePath || "").trim() || !/^[a-f0-9]{64}$/.test(String(source.sha256 || "").toLowerCase()) || !/^[a-f0-9]{64}$/.test(String(source.evidenceHash || "").toLowerCase()))) {
+    throw new Error("Product intelligence grounding sources are invalid");
+  }
+  if (selected.some((claim) => claim.evidenceRefs.some((ref) => !sources.some((source) => [source.evidenceHash, ...(Array.isArray(source.evidenceHashes) ? source.evidenceHashes : [])].filter(Boolean).includes(ref))))) {
+    throw new Error("Product intelligence claim evidence is not bound to verified grounding sources");
+  }
+  const normalizedLanguage = String(language || "en").replace(/\s+/g, " ").trim() || "en";
+  if (normalizedLanguage.length > 32) throw new Error("story language exceeds 32 characters");
+  assertSafe(normalizedLanguage, "story.language");
+  const what = selected.find((claim) => claim.field === "WHAT_IS_IT");
+  const problem = selected.find((claim) => claim.field === "WHAT_PROBLEM_DOES_IT_SOLVE");
+  const better = selected.find((claim) => claim.field === "WHY_IS_IT_BETTER");
+  const audience = selected.find((claim) => claim.field === "WHO_NEEDS_IT");
+  const title = what.text;
+  const angle = `${problem.text} ${better.text}`.replace(/\s+/g, " ").trim();
+  if (angle.length > PRODUCT_STORY_MAX_FIELD) throw new Error(`story angle exceeds ${PRODUCT_STORY_MAX_FIELD} characters`);
+  const claimIds = selected.map((claim) => claim.id);
+  const evidenceRefs = [...new Set(selected.flatMap((claim) => claim.evidenceRefs))].sort();
+  const identity = hash({
+    contractVersion: 1,
+    campaignId: normalizedCampaignId,
+    productId: String(document.productId || "").trim(),
+    productIntelligenceDocumentHash: String(handoff.evidenceClaimDocumentHash || "").trim(),
+    title,
+    angle,
+    audience: audience.text,
+    callToAction: cta,
+    disclosure: normalizedDisclosure,
+    language: normalizedLanguage,
+    claimIds,
+    evidenceRefs,
+    groundingSources: sources.map((source) => ({ relativePath: source.relativePath, sha256: source.sha256 }))
+  });
+  return {
+    id: `story-${identity.slice(0, 24)}`,
+    storyIdentity: identity,
+    campaignId: String(campaignId || "").trim(),
+    title,
+    angle,
+    audience: audience.text,
+    callToAction: cta,
+    disclosure: normalizedDisclosure,
+    language: normalizedLanguage,
+    claimIds,
+    groundingSources: sources.map(({ evidenceHash, evidenceHashes, ...source }) => source),
+    evidenceRefs,
+    productIntelligenceDocumentHash: String(handoff.evidenceClaimDocumentHash || "").trim(),
+    derivation: "deterministic_product_intelligence",
+    status: "draft"
+  };
+}
 function bounded(value, field, max, { required = true } = {}) {
   if (value === undefined || value === null || (required && String(value).trim() === "")) throw new Error(`${field} is required`);
   if (String(value).length > max) throw new Error(`${field} exceeds bounded input length ${max}`);

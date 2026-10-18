@@ -742,6 +742,94 @@ test("repository inspection builds grounded intelligence and persists safe linea
   assert.equal(path.resolve(result.inspection.repository), path.resolve(productRepo));
 });
 
+test("product intelligence derives one grounded draft story idempotently across restart", async () => {
+  const { directory, service, campaign, productRepo } = await fixture("seeding-product-intelligence-story-test-");
+  const result = await service.inspectProductIntelligence(campaign.id, {
+    allowlist: ["README.md"],
+    claims: [
+      { id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["repo:README.md"] },
+      { id: "problem", field: "WHAT_PROBLEM_DOES_IT_SOLVE", text: "It reduces blind retries.", evidenceRefs: ["repo:README.md"] },
+      { id: "better", field: "WHY_IS_IT_BETTER", text: "It is deterministic and verified.", evidenceRefs: ["repo:README.md"] },
+      { id: "who", field: "WHO_NEEDS_IT", text: "Operators and developers.", evidenceRefs: ["repo:README.md"] }
+    ]
+  }, "automation");
+  assert.equal(result.productIntelligence.handoff.readinessStatus, "READY");
+  const before = await service.snapshot();
+  const first = await service.deriveProductIntelligenceStory(campaign.id, { callToAction: "Read the evidence" }, "automation");
+  assert.equal(first.status, "draft");
+  assert.equal(first.title, "A bounded product runtime.");
+  assert.equal(first.audience, "Operators and developers.");
+  assert.deepEqual(first.claimIds, ["what", "problem", "better", "who"]);
+  assert.equal(first.groundingSources.length, 1);
+  assert.equal(first.groundingSources[0].relativePath, "README.md");
+  const second = await service.deriveProductIntelligenceStory(campaign.id, { callToAction: "Read the evidence", disclosure: "AI-assisted draft grounded in verified repository evidence." }, "automation");
+  assert.equal(second.id, first.id);
+  const restarted = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await restarted.init();
+  const third = await restarted.deriveProductIntelligenceStory(campaign.id, { callToAction: "Read the evidence" }, "automation");
+  assert.equal(third.id, first.id);
+  const after = await restarted.snapshot();
+  assert.equal(after.stories.filter((story) => story.storyIdentity === first.storyIdentity).length, 1);
+  assert.equal(after.executionRequests.length, before.executionRequests.length);
+  assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length);
+  assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length);
+  assert.equal(after.executionLeases.length, before.executionLeases.length);
+  assert.equal(after.submissionUncertainties.length, before.submissionUncertainties.length);
+  await writeFile(path.join(productRepo, "README.md"), "drifted repository source\n", "utf8");
+  await assert.rejects(restarted.deriveProductIntelligenceStory(campaign.id, { callToAction: "Read the evidence" }, "automation"), /grounding source changed|repository inspection changed/);
+  const finalState = await restarted.snapshot();
+  assert.equal(finalState.stories.filter((story) => story.storyIdentity === first.storyIdentity).length, 1);
+});
+
+test("product intelligence story derivation remains draft-only and requires READY handoff", async () => {
+  const { service, campaign, productRepo } = await fixture("seeding-product-intelligence-story-gate-test-");
+  const document = buildProductIntelligence({
+    productId: "fixture-product",
+    evidence: [{ id: "readme", sourceType: "README", locator: "README.md", content: "A bounded product runtime." }],
+    claims: [{ id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["readme"] }]
+  });
+  await service.attachProductIntelligence(campaign.id, { document, sourceRepository: productRepo, readinessStatus: "INCOMPLETE" }, "automation");
+  await assert.rejects(service.deriveProductIntelligenceStory(campaign.id, { callToAction: "Read the evidence" }, "automation"), /requires READY/);
+  const state = await service.snapshot();
+  assert.equal(state.stories.length, 0);
+  assert.equal(state.executionRequests.length, 0);
+  assert.equal(state.oneTimeExecutionWindows.length, 0);
+  assert.equal(state.liveExecutionGrants.length, 0);
+});
+
+test("product intelligence story derivation rejects forged lineage and unsafe disclosure", async () => {
+  const { service, campaign, productRepo } = await fixture("seeding-product-intelligence-story-forgery-test-");
+  const result = await service.inspectProductIntelligence(campaign.id, {
+    allowlist: ["README.md"],
+    claims: [
+      { id: "what", field: "WHAT_IS_IT", text: "A bounded product runtime.", evidenceRefs: ["repo:README.md"] },
+      { id: "problem", field: "WHAT_PROBLEM_DOES_IT_SOLVE", text: "It reduces blind retries.", evidenceRefs: ["repo:README.md"] },
+      { id: "better", field: "WHY_IS_IT_BETTER", text: "It is deterministic and verified.", evidenceRefs: ["repo:README.md"] },
+      { id: "who", field: "WHO_NEEDS_IT", text: "Operators and developers.", evidenceRefs: ["repo:README.md"] }
+    ]
+  }, "automation");
+  await service.store.mutate("fixture", "forge_product_intelligence", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.productIntelligence.document.evidence[0].content = "forged content";
+    return state;
+  });
+  await assert.rejects(service.deriveProductIntelligenceStory(campaign.id, { callToAction: "Read the evidence" }, "automation"), /evidence is not derived|hash mismatch|inspection|Invalid product intelligence handoff/);
+
+  await service.store.mutate("fixture", "restore_product_intelligence", (state) => {
+    const current = state.campaigns.find((item) => item.id === campaign.id);
+    current.productIntelligence.document = result.productIntelligence.document;
+    current.productIntelligence.handoff = result.productIntelligence.handoff;
+    return state;
+  });
+  await assert.rejects(service.deriveProductIntelligenceStory(campaign.id, { callToAction: "Read the evidence", disclosure: "token: leaked" }, "automation"), /credential\/session/);
+  const state = await service.snapshot();
+  assert.equal(state.stories.length, 0);
+  assert.equal(state.executionRequests.length, 0);
+  assert.equal(state.oneTimeExecutionWindows.length, 0);
+  assert.equal(state.liveExecutionGrants.length, 0);
+  assert.equal(path.resolve(state.campaigns.find((item) => item.id === campaign.id).productRepo), path.resolve(productRepo));
+});
+
 test("discovery observations are normalized, scored, persisted and never become publish authority", async () => {
   const { service, campaign, post } = await fixture("seeding-discovery-runtime-test-");
   const result = await service.recordDiscoveries(campaign.id, {

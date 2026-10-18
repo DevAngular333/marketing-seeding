@@ -12,7 +12,7 @@
 - Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10; this does not certify LinkedIn.
 - The campaign queue runtime projection is locally verified only; it reports scheduler health and bounded counts but does not prove a live queue cycle or external publication.
 - Per-campaign queue failures are isolated locally so an unhealthy campaign does not starve healthy campaigns; this remains synthetic resilience evidence.
-- Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection, persistent product-factory candidate evidence and content-candidate authorization binding added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch has not been merged or deployed; the canonical service has not been redeployed.
+- Product intelligence, deterministic story drafts, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection, persistent product-factory candidate evidence and content-candidate authorization binding added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch has not been merged or deployed; the canonical service has not been redeployed.
 
 ## Outcome
 
@@ -24,6 +24,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Standing campaign authorization can derive bounded one-time execution controls without routine per-post approval, subject to existing operator-created campaign authority.
 - Queue-driven approved-copy and versioned approved-template candidates can enter that standing path automatically only for an active campaign and one exact active standing authorization; repeated ticks/restart remain idempotent and inactive/ambiguous/malformed cases stay draft-only.
 - Product intelligence emits evidence/claim hashes, supported/unsupported claims and a versioned handoff; integration branch persists/projects it read-only.
+- Product intelligence can derive one deterministic, evidence-grounded draft story from the READY handoff after current repository bytes and lineage are revalidated. The draft remains idempotent and execution-free; no queue or authority is inferred.
 - Product factory classifies a repository, executes only the strict fail-closed `node --check` manifest plan in temporary staging with bounds and optional artifact hashes, persists a bounded campaign-owned run lineage and has no external side effect. Arbitrary project scripts and build/render commands remain explicitly unexecuted.
 - Discovery normalizes, deduplicates, policy-classifies and scores observations; the opt-in public HTTP observer and 15-minute scheduler persist only bounded successful observations, isolate campaign errors, and do not create publish authority.
 - Discovery can attach bounded caller-supplied audience/channel/locale fit evidence with explicit `MATCHED`/`MISMATCHED`/`UNKNOWN` outcomes; this remains advisory and does not create platform support or execution authority.
@@ -42,7 +43,8 @@ The integration branch now contains local, tested foundations for bounded standi
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
- Full Node suite: latest 410 total, 408 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: latest 417 total, 415 passed, 0 failed, 2 skipped; exit 0
+ Story/content/service focused gate: 67 passed, 0 failed, 0 skipped
  Queue observability focused gate: 46 passed, 0 failed, 0 skipped
  Queue failure-isolation focused gate: 47 passed, 0 failed, 0 skipped
  Product Factory project-evidence/runtime/service gate: 45 passed, 0 failed, 0 skipped; independent safety review PASS (bounded)
@@ -63,7 +65,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 ## Git/release state
 
-- Integration branch includes the learning-aware advisory strategy context on top of `3bf46f4`; Product Factory project-evidence safety changes, strategy fit gate, authorized candidate scheduler and queue observability are committed on this integration branch. Main was not merged, pushed or deployed.
+- Integration branch includes the learning-aware advisory strategy context on top of `3bf46f4`; Product Factory project-evidence safety changes, strategy fit gate, authorized candidate scheduler, queue observability and deterministic story-draft derivation are committed on this integration branch. Main was not merged, pushed or deployed.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 
@@ -91,3 +93,15 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 - Candidate identity is immutable during autonomous derivation; state is reread before materialization; source, claim, render, template fingerprint, target, account/profile, URL, audience, visibility and authorization binding remain fail-closed.
 - Focused service/server gate: 47 passed, 0 failed, 0 skipped. Latest full Node suite: 412 total, 410 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
 - No browser, ORCA, LinkedIn, social, canonical runtime or historical UNKNOWN mutation occurred. Live irreversible-submit proof remains blocked by absent exact authorization/session and unavailable ORCA in this shell.
+
+## Latest verification overlay (2026-10-18, product intelligence story draft)
+
+- `SeedingService.deriveProductIntelligenceStory` now derives one deterministic
+  draft from a READY handoff, four distinct supported claims, current inspected
+  source bytes and an explicit bounded CTA/disclosure.
+- Focused story/content/service gate: 67 passed, 0 failed, 0 skipped. Full
+  Node suite: 417 total, 415 passed, 0 failed, 2 skipped. Syntax and diff
+  checks pass; independent review ACCEPT.
+- Story derivation is not wired into queue/control-cycle scheduling and cannot
+  create candidates, authority or browser work. Evidence remains LOCAL /
+  SYNTHETIC; no social, canonical or historical UNKNOWN mutation occurred.

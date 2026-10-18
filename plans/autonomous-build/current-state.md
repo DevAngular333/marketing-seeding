@@ -112,3 +112,11 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - Existing materialization, readiness, request, one-time window, live grant, lease, idempotency and UNKNOWN controls remain the only execution path.
 - Paused, inactive, ambiguous, expired, revoked and malformed authority remains draft-only. No live/browser/social/canonical/UNKNOWN mutation occurred.
 - Focused scheduler/template service gate: 47 passed, 0 failed, 0 skipped. Latest full suite: 412 total, 410 passed, 0 failed, 2 skipped.
+
+## Product intelligence story draft (2026-10-18)
+
+- Added deterministic `SeedingService.deriveProductIntelligenceStory` over the existing persisted READY product-intelligence handoff and `JsonStore` story collection. It requires four supported, evidence-grounded fields: `WHAT_IS_IT`, `WHAT_PROBLEM_DOES_IT_SOLVE`, `WHY_IS_IT_BETTER` and `WHO_NEEDS_IT`.
+- The service revalidates handoff integrity, repository inspection hashes and records, current evidence bytes, source lineage, bounded CTA/disclosure and credential-like input before persisting. The derived row is deterministic, restart-safe, idempotent and always `status: "draft"`.
+- This path is intentionally not called by the queue or control cycle. It creates no authorization, post, request, one-time window, grant, lease, browser action or provider action.
+- Focused story/content/service gate: 67 passed, 0 failed, 0 skipped. Latest full suite: 417 total, 415 passed, 0 failed, 2 skipped; syntax and `git diff --check` passed. Independent review: ACCEPT.
+- Evidence is LOCAL / SYNTHETIC only. Canonical runtime and all four historical UNKNOWN executions remain unchanged. Live LinkedIn proof remains blocked by absent exact authorization/session and unavailable ORCA.

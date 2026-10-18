@@ -48,5 +48,7 @@
     }
     ,{"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"standing template candidate scheduler","evidence":"Queue-only derivation from persisted stories under exact active standing approved_template_set authority; focused 47/47; full 412/410/0/2; syntax/diff pass; canonical runtime and protected UNKNOWN records unchanged"}
     ,{"worker_id":"/root/standing_template_review","role":"independent verifier","status":"ACCEPT","scope":"standing template candidate scheduler","evidence":"Focused service/server 47/47; no blocking safety, authority, idempotency or UNKNOWN immutability findings; malformed sibling template behavior noted as non-blocking policy advisory"}
+    ,{"worker_id":"/root/story_draft_review","role":"independent verifier","status":"ACCEPT","scope":"product intelligence story draft","evidence":"Validated handoff, fresh inspection/evidence lineage, same-file multi-reference handling, safe disclosure, draft-only persistence and no execution side effects; focused 67/67 and full 417/415/0/2"}
+    ,{"worker_id":"/root","role":"master/integrator/release owner","status":"COMPLETE_LOCAL_GATES","scope":"product intelligence story draft","evidence":"Deterministic draft derivation integrated into existing content foundation/service; full 417 total (415 passed, 0 failed, 2 skipped), syntax/diff pass; canonical runtime and protected UNKNOWN records unchanged"}
   ]
 }

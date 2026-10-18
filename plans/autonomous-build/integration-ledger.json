@@ -100,5 +100,10 @@
     ,{"name":"standing_template_candidate_scheduler_independent_review","result":"ACCEPT","notes":"No blocking safety, authority, idempotency or UNKNOWN immutability findings; malformed sibling template behavior recorded as residual policy advisory"}
     ,{"name":"full_node_suite_after_standing_template_scheduler","result":"PASS","tests":412,"passed":410,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
     ,{"name":"canonical_runtime_immutability_after_standing_template_scheduler","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
+    ,{"name":"product_intelligence_story_draft_focused","result":"PASS_BOUNDED","tests":67,"passed":67,"failed":0,"skipped":0,"command":"node --test test/content-foundation.test.mjs test/service.test.mjs test/product-intelligence.test.mjs test/product-intelligence-runtime.test.mjs","notes":"READY handoff, four-field claim/evidence binding, source drift, forged lineage, unsafe disclosure, restart/idempotency and draft-only execution-state invariants"}
+    ,{"name":"product_intelligence_story_draft_static","result":"PASS","command":"node --check src/content-foundation.mjs && node --check src/service.mjs && node --check test/content-foundation.test.mjs && node --check test/service.test.mjs && git diff --check"}
+    ,{"name":"product_intelligence_story_draft_independent_review","result":"ACCEPT","notes":"No blocking findings after handoff, source-lineage and disclosure rework; local/synthetic only"}
+    ,{"name":"full_node_suite_after_product_intelligence_story_draft","result":"PASS","tests":417,"passed":415,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
+    ,{"name":"canonical_runtime_immutability_after_product_intelligence_story_draft","result":"PASS","schemaVersion":8,"revision":194,"sha256":"5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6","protectedUnknowns":4}
   ]
 }
