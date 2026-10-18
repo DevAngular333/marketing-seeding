@@ -3092,7 +3092,7 @@ export class SeedingService {
   async readyDryRunExecutionRequests() {
     const state = await this.store.read();
     return (state.executionRequests || []).filter((item) => {
-      if (item.state !== "REQUEST_READY" || item.submitState !== "NOT_STARTED" || item.request?.dryRun !== true) return false;
+      if (item.state !== "REQUEST_READY" || item.submitState !== "NOT_STARTED" || item.dryRun !== true || item.request?.dryRun !== true) return false;
       const post = (state.posts || []).find((candidate) => candidate.id === item.jobId);
       const target = (state.targets || []).find((candidate) => candidate.id === post?.targetId);
       if (!post || post.status !== "queued" || !target) return false;

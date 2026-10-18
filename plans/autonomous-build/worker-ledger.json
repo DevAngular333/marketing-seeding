@@ -452,6 +452,20 @@
       "status": "PASS_BOUNDED",
       "scope": "metric provider retry resilience",
       "evidence": "Final review PASS after signed negative Retry-After fix; focused 7/7, syntax/diff pass; live providers and canonical state untouched"
+    },
+    {
+      "worker_id": "/root/dry_run_rehearsal_review",
+      "role": "independent verifier",
+      "status": "ACCEPT",
+      "scope": "autonomous JEV dry-run rehearsal rework review",
+      "evidence": "Matching top-level/nested dryRun flags, dryRunOnly precedence and UNKNOWN reconciliation isolation reviewed; focused 76/76, full 447/445/0/2, syntax/diff pass; no external or canonical mutation"
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_GATES",
+      "scope": "autonomous JEV dry-run rehearsal integration and journal",
+      "evidence": "Rework verified and journaled; no live ORCA/browser/social/canonical/UNKNOWN mutation"
     }
   ]
 }

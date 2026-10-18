@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "28798e8",
+  "checkpointCommit": "b739bca",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -33,7 +33,8 @@
     "b988ffd fix: fail closed post metrics advisory",
     "f3c21ec fix: quarantine mixed malformed metric assessments",
     "9ea1270 feat(metrics): make official collection idempotent",
-    "28798e8 docs(metrics): record collector milestone evidence"
+    "28798e8 docs(metrics): record collector milestone evidence",
+    "b739bca feat(jev): add opt-in autonomous dry-run rehearsal (rework verified in working tree)"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -970,6 +971,46 @@
     },
     {
       "name": "canonical_runtime_immutability_after_discovery_fit_scheduler",
+      "result": "PASS",
+      "schemaVersion": 8,
+      "revision": 194,
+      "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+      "protectedUnknownExecutions": 4,
+      "protectedUnknownUncertainties": 4
+    },
+    {
+      "name": "dry_run_rehearsal_focused",
+      "result": "PASS",
+      "tests": 76,
+      "passed": 76,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/readiness-execution.test.mjs test/jev-execution-worker.test.mjs",
+      "report": "plans/autonomous-build/dry-run-rehearsal/report.md"
+    },
+    {
+      "name": "dry_run_rehearsal_full_node_suite",
+      "result": "PASS",
+      "tests": 447,
+      "passed": 445,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test"
+    },
+    {
+      "name": "dry_run_rehearsal_static",
+      "result": "PASS",
+      "command": "for f in src/*.mjs; do node --check \"$f\"; done && git diff --check"
+    },
+    {
+      "name": "dry_run_rehearsal_independent_review",
+      "result": "ACCEPT",
+      "report": "plans/autonomous-build/reports/verify-20261018-dry-run-rehearsal.md",
+      "notes": "Mode flags fail closed; dry-run-only reconciliation skip preserves mixed autonomous-live semantics; explicit ID precedence retained."
+    },
+    {
+      "name": "canonical_runtime_immutability_after_dry_run_rehearsal",
       "result": "PASS",
       "schemaVersion": 8,
       "revision": 194,

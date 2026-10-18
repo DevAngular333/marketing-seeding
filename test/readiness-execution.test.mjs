@@ -92,6 +92,11 @@ test("autonomous dry-run readiness selects only safe dry-run rows and never live
     row.request.dryRun = true;
   });
   const dry = (await fixtureState.service.snapshot()).executionRequests[0];
+  assert.equal((await fixtureState.service.readyDryRunExecutionRequests()).length, 0, "nested dry-run flag cannot promote a top-level live row");
+  await fixtureState.service.store.mutate("test", "mark_fixture_dry_run", (state) => {
+    const row = state.executionRequests.find((item) => item.executionId === dry.executionId);
+    row.dryRun = true;
+  });
   const selected = await fixtureState.service.readyDryRunExecutionRequests();
   assert.deepEqual(selected.map((item) => item.executionId), [dry.executionId]);
   assert.equal((await fixtureState.service.readyExecutionRequests()).some((item) => item.executionId === dry.executionId), false);

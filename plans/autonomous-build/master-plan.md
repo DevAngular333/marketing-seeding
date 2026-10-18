@@ -57,6 +57,13 @@ provider lane.
  legacy no-fit campaigns remain compatible and execution authority remains
  unchanged.
 
+34. Add an opt-in autonomous JEV dry-run rehearsal for explicitly-created
+    dry-run execution requests. Require matching row/request mode flags, retain
+    explicit-ID and autonomous-live precedence, skip UNKNOWN reconciliation only
+    in a dry-run-only cycle, and expose bounded read-only runtime projection.
+    This is a local orchestration rehearsal; it does not create live authority
+    or certify LinkedIn publication.
+
 Result: local implementation gates pass (latest full Node suite 446 total, 444 passed, 0 failed, 2 skipped); discovery-fit scheduler focused gate is 90/90 and independently reviewed PASS_BOUNDED; post-metrics advisory is 25/25 focused, 87/87 integrated, and independently reviewed PASS_BOUNDED; official metrics collection is 58/58 focused and independently reviewed PASS (bounded); metric checkpoint observability is 59/59 focused and independently reviewed ACCEPT_BOUNDED. The scheduler story/content/service focused gate is 52/52, the broader story/product-intelligence/service/server gate is 74/74, the standing-template scheduler gate is 47/47, the template-binding focused service/server gate is 46/46, the queue failure-isolation gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler gate is 42/42, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, and outcome attribution is 42/42. UI typecheck and production build also pass from the prior release gate. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA is unavailable in this shell.
 
 ## Later waves (dependency order)
@@ -87,3 +94,5 @@ Latest local gate after item 30: `node --test test/service.test.mjs test/server.
 Latest local gate after item 31: `node --test test/service.test.mjs` reports 59 passed, 0 failed, 0 skipped; `npm test` reports 435 total, 433 passed, 0 failed, 2 skipped; source syntax and diff checks pass. Independent review is ACCEPT_BOUNDED. Canonical runtime revision 194 and SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No live provider, browser, ORCA or social action took place.
 
 Latest local gate after item 32: `node --test test/integrations.test.mjs test/service.test.mjs test/server.test.mjs` reports 70 passed, 0 failed, 0 skipped; `npm test` reports 444 total, 442 passed, 0 failed, 2 skipped; edited-file syntax and diff checks pass. Independent review is PASS_BOUNDED after negative/signed `Retry-After` hardening. Canonical runtime revision 194 and SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No live provider, browser, ORCA, credential or social action took place.
+
+Latest local gate after item 34: `node --test test/readiness-execution.test.mjs test/jev-execution-worker.test.mjs` reports 76 passed, 0 failed, 0 skipped; `npm test` reports 447 total, 445 passed, 0 failed, 2 skipped; source syntax and `git diff --check` pass; independent review `ACCEPT`. Canonical runtime schema 8 revision 194 SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remains unchanged. No live provider, browser, ORCA, credential, social or UNKNOWN mutation occurred.

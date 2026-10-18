@@ -236,12 +236,15 @@ function scheduleJevExecution(delayMs = 5_000) {
     const autonomousLive = process.env.SEEDING_JEV_LIVE_ENABLED === "true" && process.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED === "true";
     const executionId = liveExecutionId || dryRunExecutionId;
     const autonomousDryRun = jevDryRunRuntime.enabled && !liveExecutionId && !dryRunExecutionId;
+    const dryRunOnly = autonomousDryRun && !autonomousLive;
     if (jevExecutionRunning || shuttingDown) return scheduleJevExecution();
     const shouldExecute = autonomousLive || Boolean(executionId && !jevExecutionStarted.has(executionId));
     jevExecutionRunning = true;
     if (shouldExecute && executionId) jevExecutionStarted.add(executionId);
     try {
-      const reconciliations = await jevWorker.reconcilePendingOnce();
+      // A dry-run-only rehearsal is intentionally isolated from the automatic
+      // reconciliation lane: it must not mutate historical UNKNOWN records.
+      const reconciliations = dryRunOnly ? [] : await jevWorker.reconcilePendingOnce();
       if (shouldExecute) {
         if (autonomousLive && !liveExecutionId) {
           const results = await jevWorker.runReadyOnce({ dryRun: false });
@@ -250,7 +253,7 @@ function scheduleJevExecution(delayMs = 5_000) {
           const result = await jevWorker.run(executionId, { dryRun: !liveExecutionId });
           process.stdout.write(`JEV execution ${JSON.stringify({ executionId, status: result.status, submitState: result.receipt?.submitState || null, reconciliations: reconciliations.length })}\n`);
         }
-      } else if (autonomousDryRun) {
+      } else if (dryRunOnly) {
         jevDryRunRuntime.running = true;
         jevDryRunRuntime.lastStartedAt = new Date().toISOString();
         const results = await jevWorker.runReadyDryRunOnce();

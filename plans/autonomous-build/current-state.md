@@ -232,3 +232,27 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`;
   no live network, browser, ORCA, provider, credential, social or UNKNOWN
   submission mutation occurred.
+
+## Autonomous JEV dry-run rehearsal (2026-10-18)
+
+- Added an opt-in `SEEDING_JEV_DRY_RUN_AUTONOMOUS_ENABLED=true` scheduler lane
+  that reuses the existing `SeedingService` query and `JevExecutionWorker`.
+- Selection requires `REQUEST_READY`, `NOT_STARTED`, matching top-level and
+  nested dry-run flags, queued post, healthy exact account/profile, fresh
+  readiness, queue eligibility and no unresolved submission. Mismatched mode
+  rows fail closed; live requests remain excluded.
+- Explicit execution IDs retain precedence. In mixed autonomous-live mode,
+  UNKNOWN reconciliation remains enabled. Only a dry-run-only cycle bypasses
+  automatic reconciliation, preserving historical UNKNOWN immutability and
+  avoiding browser/network activity in the rehearsal lane.
+- Health/dashboard expose the bounded `jevDryRun` runtime projection. No new
+  store, router, browser abstraction, LinkedIn publisher or state machine was
+  added.
+- Evidence: focused JEV/readiness gate 76/76; full Node suite 447 total,
+  445 passed, 0 failed, 2 skipped; syntax and diff checks pass; independent
+  review `ACCEPT` at
+  `plans/autonomous-build/reports/verify-20261018-dry-run-rehearsal.md`.
+- Evidence remains synthetic/local. Candidate/story/template-to-rehearsal
+  handoff and real LinkedIn publication remain unverified. Canonical schema 8,
+  revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`
+  and all protected UNKNOWN records are unchanged.
