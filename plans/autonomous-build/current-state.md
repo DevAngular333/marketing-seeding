@@ -33,6 +33,7 @@
 - Metric observability now accepts only the `measured`/`unknown`/`unsupported` coverage vocabulary, and dashboard/traffic-pulse latest snapshot selection uses the same deterministic capture-time plus snapshot-ID ordering as outcome summaries. Invalid persisted coverage is normalized into a bounded dashboard bucket; no metric collection or authority semantics changed.
 - Content candidates can now be materialized idempotently with exact story/source/content lineage. The campaign queue automatically handles candidates only under one exact active `standing_autonomous` authorization with approved-copy scope, and only while the campaign itself is active; inactive, missing, ambiguous, paused, revoked, expired or template-set scope remains draft-only. Existing readiness/request/one-time-window/live-grant controls are reused.
 - The campaign queue now exposes a bounded read-only runtime projection at `/health.campaignQueue` and `/api/dashboard.automation.campaignQueue`: enabled state, fixed interval, running state, start/completion timestamps, next run and bounded cycle counts/error reason. It reuses the existing scheduler and queue service seam and adds no authority or external side effect.
+- Queue evaluation now isolates candidate-materialization and per-campaign queue failures, continues healthy campaigns, preserves the successful `{ campaignId, decisions }` result shape, and reports bounded failure codes through the existing queue projection. Shared expiry/store failures remain fail-closed at the cycle boundary.
 
 ## Counts
 
@@ -56,6 +57,7 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - Learning-aware strategy context: focused 49 passed, 0 failed, 0 skipped; independent review ACCEPT (bounded).
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
 - Queue observability focused gate: 46 passed, 0 failed, 0 skipped; latest full Node suite: 406 total, 404 passed, 0 failed, 2 skipped; edited-file syntax and diff checks passed.
+- Queue failure-isolation focused gate: 47 passed, 0 failed, 0 skipped; independent review ACCEPT; no authority/browser/canonical/UNKNOWN mutation.
 
 ## Latest content-candidate authorization seam
 
@@ -81,3 +83,12 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 - Lifecycle/server assertions cover the projection and shutdown behavior. The
   implementation remains local/synthetic evidence and does not certify ORCA,
   LinkedIn activation, acceptance or publication.
+
+## Campaign queue failure isolation milestone
+
+- Per-campaign candidate-materialization and queue errors are now bounded and
+  isolated. A failing campaign cannot starve the next healthy campaign.
+- Failure results expose only safe uppercase reason codes (or the generic
+  fallback `campaign_queue_failed`); raw exception details stay local.
+- Existing authority, readiness, grant/window/lease, idempotency and UNKNOWN
+  behavior is unchanged. See `plans/autonomous-build/campaign-queue-failure-isolation/`.

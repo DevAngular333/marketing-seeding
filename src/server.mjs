@@ -192,19 +192,22 @@ function scheduleCampaignQueueEvaluation(delayMs = 30_000) {
     campaignQueueRuntime.lastStartedAt = new Date().toISOString();
     try {
       const results = await service.queueDueCampaignJobs("campaign-queue-scheduler");
+      const failed = results.filter((item) => item?.failed === true);
+      const failureReasons = [...new Set(failed.map((item) => String(item?.reason || "campaign_queue_failed")).filter(Boolean))].slice(0, 8);
       campaignQueueRuntime.lastSummary = {
         campaigns: results.length,
         decisions: results.reduce((count, item) => count + (Array.isArray(item?.decisions) ? item.decisions.length : 0), 0),
-        failed: 0
+        failed: failed.length,
+        failureReasons
       };
     } catch (error) {
       campaignQueueRuntime.lastSummary = {
         campaigns: 0,
         decisions: 0,
         failed: 1,
-        reason: String(error?.code || "queue_evaluation_failed").slice(0, 80)
+        failureReasons: ["queue_evaluation_failed"]
       };
-      process.stderr.write(`Campaign queue evaluation failed: ${campaignQueueRuntime.lastSummary.reason}\n`);
+      process.stderr.write(`Campaign queue evaluation failed: ${campaignQueueRuntime.lastSummary.failureReasons[0]}\n`);
     } finally {
       campaignQueueRunning = false;
       campaignQueueRuntime.running = false;

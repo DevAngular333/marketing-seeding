@@ -86,6 +86,8 @@
     {"name":"authorized_candidate_scheduler_static","result":"PASS","command":"node --check src/service.mjs && node --check test/service.test.mjs && git diff --check"},
     {"name":"campaign_queue_observability_focused","result":"PASS_BOUNDED","tests":46,"passed":46,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs","notes":"Read-only /health and dashboard queue projection; lifecycle and redaction assertions; no authority/browser/canonical/UNKNOWN mutation"},
     {"name":"campaign_queue_observability_static","result":"PASS","command":"node --check src/server.mjs && node --check test/server.test.mjs && node --check test/server-lifecycle.test.mjs && git diff --check"},
-    {"name":"full_node_suite_after_campaign_queue_observability","result":"PASS","tests":406,"passed":404,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"}
+    {"name":"full_node_suite_after_campaign_queue_observability","result":"PASS","tests":406,"passed":404,"failed":0,"skipped":2,"exitCode":0,"command":"npm test"},
+    {"name":"campaign_queue_failure_isolation_focused","result":"PASS_BOUNDED","tests":47,"passed":47,"failed":0,"skipped":0,"command":"node --test test/service.test.mjs test/server.test.mjs test/server-lifecycle.test.mjs","notes":"One failing campaign does not starve the next; bounded failure reason; no authority/browser/canonical/UNKNOWN mutation"},
+    {"name":"campaign_queue_failure_isolation_static","result":"PASS","command":"node --check src/service.mjs && node --check src/server.mjs && node --check test/service.test.mjs && git diff --check"}
   ]
 }

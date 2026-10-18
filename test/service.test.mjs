@@ -359,6 +359,32 @@ test("queue scheduler leaves candidates draft-only when campaign is inactive eve
   assert.equal(after.liveExecutionGrants.length, 0);
 });
 
+test("queue scheduler isolates one campaign failure and continues the next campaign", async () => {
+  const { service, campaign, target } = await fixture("seeding-queue-failure-isolation-test-");
+  const secondCampaign = await service.createCampaign({ name: "Second course", objective: "Continue queue", productRepo: campaign.productRepo }, "operator");
+  await service.store.mutate("fixture", "queue_failure_isolation_fixture", (state) => {
+    state.posts.push(
+      { id: "queue-failure-post", campaignId: campaign.id, targetId: target.id, campaignAuthorizationId: "auth-failure", status: "blocked", readinessAttempts: 0 },
+      { id: "queue-healthy-post", campaignId: secondCampaign.id, targetId: target.id, campaignAuthorizationId: "auth-healthy", status: "blocked", readinessAttempts: 0 }
+    );
+    return state;
+  });
+  const calls = [];
+  service.queueAuthorizedCampaignJobs = async (campaignId) => {
+    calls.push(campaignId);
+    if (campaignId === campaign.id) throw Object.assign(new Error("internal details must not escape"), { code: "BROKEN_FIXTURE" });
+    return [{ postId: "queue-healthy-post", status: "blocked", reasons: [] }];
+  };
+
+  const results = await service.queueDueCampaignJobs("queue-failure-isolation-test");
+  assert.deepEqual(calls, [campaign.id, secondCampaign.id]);
+  assert.deepEqual(results, [
+    { campaignId: campaign.id, decisions: [], failed: true, reason: "BROKEN_FIXTURE" },
+    { campaignId: secondCampaign.id, decisions: [{ postId: "queue-healthy-post", status: "blocked", reasons: [] }] }
+  ]);
+  assert.equal(JSON.stringify(results).includes("internal details"), false);
+});
+
 test("materialize content candidate revalidates grounding source bytes before creating a post", async () => {
   const { service, campaign, productRepo } = await fixture("seeding-content-materialize-grounding-test-");
   const document = buildProductIntelligence({

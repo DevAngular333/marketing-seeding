@@ -69,6 +69,11 @@ const DYNAMIC_EXECUTION_REASONS = new Set([
 const METRIC_FIELDS = Object.freeze(["impressions", "reactions", "comments", "shares", "clicks", "leads"]);
 const METRIC_COVERAGE = new Set(["measured", "unknown", "unsupported"]);
 
+function boundedQueueFailureReason(error) {
+  const code = String(error?.code || "").trim();
+  return /^[A-Z][A-Z0-9_.-]{0,79}$/.test(code) ? code : "campaign_queue_failed";
+}
+
 const MAX_DISCOVERY_SOURCES = 20;
 function normalizeDiscoverySources(value) {
   if (value === undefined) return undefined;
@@ -2078,9 +2083,14 @@ export class SeedingService {
     await this.expireOneTimeExecutionWindows(actor);
     await this.expireCampaignAuthorizations(actor);
     const candidateSnapshot = await this.store.read();
+    const candidateFailures = new Map();
     for (const campaign of candidateSnapshot.campaigns || []) {
       if ((campaign.contentCandidates || []).some((candidate) => candidate.status === "draft")) {
-        await this.materializeAuthorizedContentCandidates(campaign.id, actor);
+        try {
+          await this.materializeAuthorizedContentCandidates(campaign.id, actor);
+        } catch (error) {
+          candidateFailures.set(campaign.id, boundedQueueFailureReason(error));
+        }
       }
     }
     const state = await this.store.read();
@@ -2114,9 +2124,20 @@ export class SeedingService {
         }, new Date(now), this.readinessTtlMs);
       })
       .map((post) => post.campaignId))];
+    for (const campaignId of candidateFailures.keys()) {
+      if (!campaignIds.includes(campaignId)) campaignIds.push(campaignId);
+    }
     const results = [];
     for (const campaignId of campaignIds) {
-      results.push({ campaignId, decisions: await this.queueAuthorizedCampaignJobs(campaignId, actor) });
+      try {
+        const decisions = await this.queueAuthorizedCampaignJobs(campaignId, actor);
+        const failureReason = candidateFailures.get(campaignId);
+        results.push(failureReason
+          ? { campaignId, decisions, failed: true, reason: failureReason }
+          : { campaignId, decisions });
+      } catch (error) {
+        results.push({ campaignId, decisions: [], failed: true, reason: boundedQueueFailureReason(error) });
+      }
     }
     return results;
   }
