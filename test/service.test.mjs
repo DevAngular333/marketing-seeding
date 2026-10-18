@@ -1691,6 +1691,7 @@ test("collectAllMetrics isolates one official provider failure and keeps manual 
   await service.store.mutate("test", "publish_metric_fixture", (state) => {
     const saved = state.posts.find((item) => item.id === post.id);
     saved.status = "published";
+    saved.publishedAt = "2026-10-06T00:00:00.000Z";
     saved.externalId = null;
     saved.publicationUrl = "https://www.threads.net/@fixture/post/failure";
     const manualTarget = { ...state.targets.find((item) => item.id === target.id), id: "manual-target", channel: "linkedin", url: "https://www.linkedin.com/feed/" };
@@ -1708,4 +1709,26 @@ test("collectAllMetrics isolates one official provider failure and keeps manual 
   assert.equal(state.metricSnapshots.length, 0);
   assert.equal(state.collectorRuns.filter((run) => run.postId === post.id)[0].status, "failed");
   assert.equal(state.collectorRuns.find((run) => run.postId === "manual-post").reason, "manual_only");
+});
+
+test("collectAllMetrics fails closed for invalid publication timestamps in manual mode", async () => {
+  const { service, post } = await fixture("seeding-invalid-published-at-metrics-test-");
+  await service.store.mutate("test", "publish_invalid_timestamp_metric_fixture", (state) => {
+    const saved = state.posts.find((item) => item.id === post.id);
+    saved.status = "published";
+    saved.publishedAt = "not-a-date";
+    return saved;
+  });
+  let requests = 0;
+  const result = await service.collectAllMetrics("fixture-collector", {
+    env: { THREADS_GRAPH_VERSION: "v1", THREADS_ACCESS_TOKEN: "fixture-token" },
+    fetchImpl: async () => { requests += 1; return { ok: true, status: 200, json: async () => ({ data: [] }) }; },
+    retries: 0
+  });
+  assert.equal(requests, 0);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].status, "not_collected");
+  assert.equal(result[0].reason, "published_at_invalid");
+  const state = await service.snapshot();
+  assert.equal(state.collectorRuns.some((run) => run.postId === post.id), false);
 });

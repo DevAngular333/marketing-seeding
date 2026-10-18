@@ -84,7 +84,9 @@ test("canonical envelope requires the provider-neutral version contract", async 
 test("versioned replay reuses a legacy pre-version row", async () => {
   const f = await fixture(); const base = canonicalInput(f);
   const validation = validateDistributionHandoff(base, { state: await f.service.snapshot(), campaignId: f.campaign.id });
-  const legacy = { ...validation.handoff }; delete legacy.handoffVersion; legacy.handoffHash = legacyHandoffIdentity(validation.handoff);
+  const legacyPayload = { ...validation.handoff }; delete legacyPayload.handoffVersion; delete legacyPayload.handoffHash;
+  const legacy = { ...legacyPayload, handoffHash: createHash("sha256").update(JSON.stringify(legacyPayload)).digest("hex") };
+  assert.equal(legacy.handoffHash, legacyHandoffIdentity(validation.handoff));
   await f.service.store.mutate("fixture", "legacy_handoff_seeded", state => {
     const campaign = state.campaigns.find(item => item.id === f.campaign.id);
     campaign.distributionHandoffs = [legacy];

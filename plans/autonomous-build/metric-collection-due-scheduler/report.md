@@ -3,7 +3,7 @@
 Implemented a narrow local seam for checkpoint-aware official metric collection.
 `buildMetricCollectionPlan()` deterministically projects due checkpoints from existing persisted posts, snapshots, and collector runs. `collectAllMetrics()` accepts opt-in `dueOnly`; the server traffic timer uses that opt-in, while direct/manual calls preserve the previous all-published-post behavior.
 
-Invalid publication timestamps fail closed and are not sent to providers. Existing per-post failure isolation and manual/unconfigured outcomes are unchanged. No browser, ORCA, credential, network, canonical state, or external system was touched.
+Invalid publication timestamps fail closed and are not sent to providers in both scheduled and manual collection modes. A collector `unknown`/failed run remains observation evidence rather than an automatic retry trigger; later checkpoint windows remain independently eligible. Existing per-post failure isolation and manual/unconfigured outcomes are unchanged. No browser, ORCA, credential, network, canonical state, or external system was touched.
 
 ## Verification
 

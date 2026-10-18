@@ -4285,8 +4285,8 @@ export class SeedingService {
     const planByPostId = new Map(buildMetricCollectionPlan(state, { now: options.now || new Date(), dueOnly: options.dueOnly === true }).map((item) => [item.postId, item]));
     for (const post of state.posts.filter((item) => item.status === "published")) {
       const plan = planByPostId.get(post.id);
-      if (options.dueOnly === true && plan && !plan.shouldCollect) {
-        results.push({ postId: post.id, ok: null, status: "not_due", reason: plan.reason || "checkpoint_not_due", dueCheckpoints: plan.dueCheckpoints });
+      if (plan && !plan.shouldCollect && (options.dueOnly === true || plan.reason === "published_at_invalid")) {
+        results.push({ postId: post.id, ok: null, status: plan.reason === "published_at_invalid" ? "not_collected" : "not_due", reason: plan.reason || "checkpoint_not_due", dueCheckpoints: plan.dueCheckpoints });
         continue;
       }
       const target = state.targets.find((item) => item.id === post.targetId);

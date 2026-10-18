@@ -24,4 +24,4 @@ Canonical provider-neutral distribution envelopes now require `handoffVersion: 1
 
 Independent review found that adding `handoffVersion` to the normalized hash could append a duplicate when replaying a pre-version persisted row. The attach path now compares both the current versioned hash and a legacy-equivalent hash that omits `handoffVersion`. A regression seeds a pre-version row and verifies reattachment remains one row. New canonical envelopes still require version 1 and mismatches fail closed.
 
-Rework evidence: focused 9/9; full suite 437 total, 435 passed, 0 failed, 2 skipped; syntax and diff checks pass.
+Rework evidence: focused 9/9; full suite is rerun at integration gate. The legacy fixture now computes the true pre-version hash from a payload excluding both `handoffVersion` and the appended `handoffHash`, so replay compatibility is tested against historical row shape rather than a helper-generated approximation.

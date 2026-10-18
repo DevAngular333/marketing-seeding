@@ -188,7 +188,9 @@ export function stableHandoffIdentity(handoff) { return handoff?.handoffHash || 
 // versioned and fail closed.
 export function legacyHandoffIdentity(handoff) {
   if (!handoff || typeof handoff !== "object") return hash(handoff);
-  const { handoffVersion: _ignored, ...legacy } = handoff;
+  // The persisted legacy hash was computed before handoffHash was appended.
+  // Exclude both fields to reproduce that original hash input exactly.
+  const { handoffVersion: _version, handoffHash: _hash, ...legacy } = handoff;
   return hash(legacy);
 }
 export const DISTRIBUTION_HANDOFF_LIMITS = Object.freeze({ MAX_JSON_BYTES, MAX_TEXT, MAX_ARRAY });
