@@ -201,6 +201,11 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   const health = await (await fetch(`${baseUrl}/health`)).json();
   assert.equal(health.controlCycle.enabled, false);
   assert.equal(health.controlCycle.intervalMinutes, null);
+  assert.equal(health.campaignQueue.enabled, true);
+  assert.equal(health.campaignQueue.intervalSeconds, 30);
+  assert.equal(health.campaignQueue.running, false);
+  assert.ok(health.campaignQueue.nextRunAt);
+  assert.equal("stateFile" in health.campaignQueue, false);
   assert.equal(health.trafficCollector.enabled, true);
   assert.equal(health.trafficCollector.intervalMinutes, 240);
   assert.ok(health.trafficCollector.nextRunAt);
@@ -213,6 +218,10 @@ test("HTTP mutations require the local operator bearer token", async (context) =
   assert.equal(health.browserTracking.mode, "browser_verified");
   const dashboard = await (await fetch(`${baseUrl}/api/dashboard`)).json();
   assert.equal(dashboard.automation.controlCycle.enabled, false);
+  assert.equal(dashboard.automation.campaignQueue.enabled, true);
+  assert.equal(dashboard.automation.campaignQueue.intervalSeconds, 30);
+  assert.equal(dashboard.automation.campaignQueue.running, false);
+  assert.ok(dashboard.automation.campaignQueue.nextRunAt);
   assert.equal(dashboard.automation.dailyProduction.rrule, "FREQ=DAILY;BYHOUR=6;BYMINUTE=0");
   assert.equal(dashboard.automation.browserTracking.rrule, "30 23 * * *");
 });

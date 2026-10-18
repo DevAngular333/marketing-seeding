@@ -10,6 +10,7 @@
 - **No live real website publish was attempted.** Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant or lease. ORCA is unavailable in this shell. This is an external authorization/input blocker.
 - No fresh execution ID, durable submit intent, autonomous final click, semantic activation, platform acceptance, permalink, post ID or real `PUBLISHED` receipt exists.
 - Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10; this does not certify LinkedIn.
+- The campaign queue runtime projection is locally verified only; it reports scheduler health and bounded counts but does not prove a live queue cycle or external publication.
 - Product intelligence, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection, persistent product-factory candidate evidence and content-candidate authorization binding added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch has not been merged or deployed; the canonical service has not been redeployed.
 
 ## Outcome
@@ -30,6 +31,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - Mission Control/API now projects registered account health, bound-target count, readiness state, bounded blocker reason, `SESSION_REUSE` / `MANUAL_AUTH` mode and fail-closed eligibility reasons with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. The UI renders this through the existing GET-only dashboard and adds no action controls. This is observability only and does not select, authenticate or fail over accounts.
 - Mission Control overview now also projects control-cycle status, advisory strategy and learning actions/reasons, verified/UNKNOWN publication counts and measured metric coverage. It is explicitly read-only and advisory; it does not grant authority or execute actions.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
+- Campaign queue runtime health is visible through existing read-only `/health` and dashboard surfaces, with no new authority or action controls.
 - Strategy fit gate excludes explicit mismatched/unknown audience-channel-locale fit while preserving matched and legacy observations; focused 36/36 and the prior full gate 381/379/0/2 pass.
 - Strategy consumes only current, valid learning feedback as bounded explanatory context; publish/discovery/wait precedence and UNKNOWN quarantine remain unchanged. Focused 49/49 and the prior full gate 384/382/0/2 pass.
 
@@ -39,6 +41,7 @@ The integration branch now contains local, tested foundations for bounded standi
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
  Full Node suite: latest 406 total, 404 passed, 0 failed, 2 skipped; exit 0
+ Queue observability focused gate: 46 passed, 0 failed, 0 skipped
  Product Factory project-evidence/runtime/service gate: 45 passed, 0 failed, 0 skipped; independent safety review PASS (bounded)
  UI typecheck: `cd ui && npx tsc --noEmit` → PASS
  UI production build: `cd ui && npm run build` → PASS (existing Vite config warnings only)
@@ -57,7 +60,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 ## Git/release state
 
-- Integration branch includes the learning-aware advisory strategy context on top of `3bf46f4`; Product Factory project-evidence safety changes and strategy fit gate are committed. The new milestone is pending its own commit. Main was not merged, pushed or deployed.
+- Integration branch includes the learning-aware advisory strategy context on top of `3bf46f4`; Product Factory project-evidence safety changes, strategy fit gate, authorized candidate scheduler and queue observability are committed on this integration branch. Main was not merged, pushed or deployed.
 - Main was not merged, pushed or deployed.
 - Main worktree and `SYSTEM_AGENTIC_AI` Core were not changed.
 
@@ -75,4 +78,5 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 - An exact active `standing_autonomous` authorization with `approved_copy_set` can bind the candidate to the existing queue/readiness/request/one-time-window/live-grant path without a per-post approval step.
 - Paused, revoked and expired authorizations remain draft-only and create no execution artifacts. Multiple active or mismatched authority fails closed. `approved_template_set` remains draft-only in this path.
 - The queue now materializes exact approved-copy candidates only for an active campaign with one exact active standing authorization; inactive campaign, ambiguous/inactive authority and template-set cases stay draft-only. Focused scheduler/service/server gate: 42 passed, 0 failed, 0 skipped. Full Node suite: 406 total, 404 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
+- The queue runtime projection is bounded and read-only on `/health` and the existing dashboard; focused server/lifecycle gate: 46 passed, 0 failed, 0 skipped. It does not expose raw errors, credentials, state paths or execution controls.
 - Canonical runtime remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; no social mutation and no historical UNKNOWN mutation occurred.

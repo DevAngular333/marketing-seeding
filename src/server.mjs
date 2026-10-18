@@ -104,6 +104,15 @@ let jevExecutionTimer = null;
 let jevExecutionRunning = false;
 const jevExecutionStarted = new Set();
 let campaignQueueRunning = false;
+const campaignQueueRuntime = {
+  enabled: true,
+  intervalSeconds: 30,
+  running: false,
+  lastStartedAt: null,
+  lastCompletedAt: null,
+  nextRunAt: null,
+  lastSummary: null
+};
 let shuttingDown = false;
 
 function scheduleTrafficCollection(delayMs = trafficIntervalMs) {
@@ -179,15 +188,31 @@ function scheduleCampaignQueueEvaluation(delayMs = 30_000) {
   campaignQueueTimer = setTimeout(async () => {
     if (campaignQueueRunning || shuttingDown) return scheduleCampaignQueueEvaluation();
     campaignQueueRunning = true;
+    campaignQueueRuntime.running = true;
+    campaignQueueRuntime.lastStartedAt = new Date().toISOString();
     try {
-      await service.queueDueCampaignJobs("campaign-queue-scheduler");
+      const results = await service.queueDueCampaignJobs("campaign-queue-scheduler");
+      campaignQueueRuntime.lastSummary = {
+        campaigns: results.length,
+        decisions: results.reduce((count, item) => count + (Array.isArray(item?.decisions) ? item.decisions.length : 0), 0),
+        failed: 0
+      };
     } catch (error) {
-      process.stderr.write(`Campaign queue evaluation failed: ${error.message}\n`);
+      campaignQueueRuntime.lastSummary = {
+        campaigns: 0,
+        decisions: 0,
+        failed: 1,
+        reason: String(error?.code || "queue_evaluation_failed").slice(0, 80)
+      };
+      process.stderr.write(`Campaign queue evaluation failed: ${campaignQueueRuntime.lastSummary.reason}\n`);
     } finally {
       campaignQueueRunning = false;
+      campaignQueueRuntime.running = false;
+      campaignQueueRuntime.lastCompletedAt = new Date().toISOString();
       scheduleCampaignQueueEvaluation();
     }
   }, Math.max(1_000, delayMs));
+  campaignQueueRuntime.nextRunAt = new Date(Date.now() + Math.max(1_000, delayMs)).toISOString();
   campaignQueueTimer.unref();
 }
 
@@ -421,6 +446,7 @@ const server = http.createServer(async (request, response) => {
         ok: true, service: "global-seeding", stateFile,
         runtime: runtimeMetadata({ pid: process.pid, sourceCommit, sourceDirty, state }),
         trafficCollector: trafficRuntime,
+        campaignQueue: campaignQueueRuntime,
         controlCycle: controlCycleRuntime,
         discovery: discoveryRuntime,
         dailyProduction: await readDailyProductionAutomation(),
@@ -511,6 +537,7 @@ const server = http.createServer(async (request, response) => {
         autoGtm: await readAutoGtmFeed(autoGtmFeedFile),
         automation: {
           trafficCollector: trafficRuntime,
+          campaignQueue: campaignQueueRuntime,
           controlCycle: controlCycleRuntime,
           discovery: discoveryRuntime,
           dailyProduction: await readDailyProductionAutomation(),

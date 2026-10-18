@@ -96,6 +96,12 @@ test("managed service health reports its process and graceful shutdown releases 
       schemaVersion: 8,
       stateRevision: 0
     });
+    assert.equal(health.campaignQueue.enabled, true);
+    assert.equal(health.campaignQueue.intervalSeconds, 30);
+    assert.equal(health.campaignQueue.running, false);
+    assert.ok(health.campaignQueue.nextRunAt);
+    assert.equal("stateFile" in health.campaignQueue, false);
+    assert.equal("error" in health.campaignQueue, false);
     const lockPath = path.join(dataDir, "state.json.writer.lock");
     const lock = JSON.parse(await readFile(lockPath, "utf8"));
     assert.equal(lock.pid, child.pid);
