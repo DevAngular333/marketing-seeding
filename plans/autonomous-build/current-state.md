@@ -285,3 +285,21 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   publication remain unverified. Canonical schema 8 revision 194 SHA-256
   `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` and
   all protected UNKNOWN records remain unchanged.
+
+## Product Factory sandbox capability preflight (2026-10-18)
+
+- Added a versioned pure `probeFactorySandboxCapability()` seam in
+  `src/product-factory.mjs`. It reports backend invocation, profile integrity,
+  network, filesystem, child-process, timeout-cleanup and resource-limit checks
+  separately; unknown checks remain `UNSUPPORTED`.
+- The host probe found `/usr/bin/sandbox-exec` and a harmless wrapper command
+  returned successfully, but no audited profile or resource limits are proven.
+  The result is `status: UNSUPPORTED`, `executionEligible: false`, and
+  `unsafeCommandDisposition: NOT_EXECUTED_UNSAFE`.
+- Focused Product Factory/runtime/service/server gate: 94 passed, 0 failed,
+  0 skipped. Full Node suite: 464 total, 462 passed, 0 failed, 2 skipped.
+  `node --check src/*.mjs` and `git diff --check` passed.
+- This is local capability evidence only. No arbitrary project command, build,
+  render, browser, ORCA, network, credential, canonical, LinkedIn, social or
+  historical UNKNOWN mutation occurred. Existing unsafe-manifest rejection
+  remains unchanged.

@@ -20,12 +20,128 @@ const SAFE_MANIFEST_KEYS = new Set(['build', 'test', 'render', 'validate']);
 const SAFE_MANIFEST_SOURCE_EXTENSIONS = new Set(['.js', '.mjs']);
 const INTERNAL_PYTHON_SYNTAX_SCRIPT = "import pathlib\nfor p in pathlib.Path('.').rglob('*.py'):\n compile(p.read_text(), str(p), 'exec')";
 const INTERNAL_STATIC_VALIDATION_ARGV = Object.freeze(['echo', 'static-artifact-ready']);
+const SANDBOX_PREFLIGHT_VERSION = 1;
+const SANDBOX_CHECKS = Object.freeze([
+  'backendInvocation',
+  'profileIntegrity',
+  'networkDenied',
+  'filesystemScope',
+  'childProcessPolicy',
+  'timeoutCleanup',
+  'resourceLimits'
+]);
+const SANDBOX_CHECK_STATUS = new Set(['PASS', 'FAIL', 'UNSUPPORTED', 'UNAVAILABLE']);
 
 const redact = (value) => String(value ?? '').replace(SECRET_RE, '$1=[REDACTED]');
 const within = (root, candidate) => {
   const relative = path.relative(root, candidate);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 };
+
+function sandboxCheckStatus(value, fallback = 'UNSUPPORTED') {
+  const normalized = String(value || '').trim().toUpperCase();
+  return SANDBOX_CHECK_STATUS.has(normalized) ? normalized : fallback;
+}
+
+function evaluateSandboxCapability({ backend, present, checks }) {
+  const normalizedChecks = Object.fromEntries(SANDBOX_CHECKS.map((key) => [key, sandboxCheckStatus(checks?.[key])]));
+  if (!present) normalizedChecks.backendInvocation = 'UNAVAILABLE';
+  const allPass = SANDBOX_CHECKS.every((key) => normalizedChecks[key] === 'PASS');
+  const status = !present || normalizedChecks.backendInvocation === 'UNAVAILABLE' || normalizedChecks.backendInvocation === 'FAIL'
+    ? 'UNAVAILABLE'
+    : (allPass ? 'AVAILABLE' : 'UNSUPPORTED');
+  return {
+    version: SANDBOX_PREFLIGHT_VERSION,
+    backend,
+    profile: { id: 'factory-sandbox-v1', version: 1, status: normalizedChecks.profileIntegrity },
+    status,
+    checks: normalizedChecks,
+    limits: {
+      network: normalizedChecks.networkDenied,
+      filesystem: normalizedChecks.filesystemScope,
+      childProcesses: normalizedChecks.childProcessPolicy,
+      timeoutCleanup: normalizedChecks.timeoutCleanup,
+      resourceLimits: normalizedChecks.resourceLimits
+    },
+    executionEligible: status === 'AVAILABLE' && allPass,
+    unsafeCommandDisposition: 'NOT_EXECUTED_UNSAFE'
+  };
+}
+
+/** Pure evaluator used by tests and future audited profile adapters. */
+export function evaluateFactorySandboxCapability(input = {}) {
+  return evaluateSandboxCapability({
+    backend: String(input.backend || 'sandbox-exec'),
+    present: input.backendPresent === true,
+    checks: input.checks
+  });
+}
+
+async function executableFile(pathname) {
+  if (!pathname) return false;
+  try {
+    const { constants } = await import('node:fs');
+    await fs.access(pathname, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function invokeSandboxBackend(backendPath, timeoutMs = 2_000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timedOut = false;
+    const child = spawn(backendPath, ['-n', 'no-network', '/usr/bin/true'], {
+      shell: false,
+      stdio: ['ignore', 'ignore', 'ignore'],
+      env: { PATH: '/usr/bin:/bin' }
+    });
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill('SIGTERM'); } catch {}
+    }, timeoutMs);
+    child.on('error', () => finish({ ok: false, status: 'FAIL' }));
+    child.on('close', (code) => finish({ ok: !timedOut && code === 0, status: timedOut ? 'FAIL' : (code === 0 ? 'PASS' : 'FAIL') }));
+  });
+}
+
+/**
+ * Inspect whether an audited Product Factory sandbox is available.
+ *
+ * Backend presence or a successful harmless wrapper invocation is not enough
+ * to make arbitrary project commands eligible. Required checks default to
+ * UNSUPPORTED and must be independently attested before this result can ever
+ * become AVAILABLE. No caller currently consumes executionEligible to run a
+ * project command.
+ */
+export async function probeFactorySandboxCapability(options = {}) {
+  const backend = String(options.backend || 'sandbox-exec');
+  const backendPath = options.backendPath ?? (process.platform === 'darwin' ? '/usr/bin/sandbox-exec' : null);
+  const present = options.backendPresent === undefined
+    ? await executableFile(backendPath)
+    : options.backendPresent === true;
+  const checks = Object.fromEntries(SANDBOX_CHECKS.map((key) => [key, 'UNSUPPORTED']));
+  let invocation = { ok: false, status: present ? 'UNSUPPORTED' : 'UNAVAILABLE' };
+  if (!present) checks.backendInvocation = 'UNAVAILABLE';
+  else {
+    try {
+      invocation = options.invoke
+        ? await options.invoke({ backend, profileId: 'factory-sandbox-v1' })
+        : await invokeSandboxBackend(backendPath, Math.min(5_000, Math.max(100, Number(options.timeoutMs) || 2_000)));
+    } catch {
+      invocation = { ok: false, status: 'FAIL' };
+    }
+    checks.backendInvocation = invocation?.ok === true ? 'PASS' : sandboxCheckStatus(invocation?.status, 'FAIL');
+  }
+  return evaluateSandboxCapability({ backend, present, checks });
+}
 
 export async function classifyRepository(repositoryPath) {
   const root = await fs.realpath(path.resolve(repositoryPath));

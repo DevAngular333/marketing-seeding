@@ -96,6 +96,12 @@ Result: local implementation gates pass (latest full Node suite 457 total, 455 p
 5. Extend the local deterministic discovery and advisory strategy foundations into continuous authorized observation, audience/channel/community eligibility, outcome-driven NBA and grounded content generation; per-post attribution and bounded learning context now exist as advisory evidence, while authority rerouting remains unimplemented.
 6. Add contextual engagement, account/session registry/recovery, metrics learning, restart/24-7 hardening and deeper Mission Control projections; the current account view exposes session/auth mode and eligibility read-only but does not select, fail over or execute accounts; certify platforms incrementally.
 
+7. Add a Product Factory sandbox capability/profile preflight before any
+   project-specific build, run or render execution. Detect backend presence
+   separately from effective isolation, require explicit proof for every
+   boundary and resource limit, and keep arbitrary commands fail-closed while
+   the host cannot provide an audited sandbox.
+
 ## Frozen seams
 
 Reuse `JsonStore`, `SeedingService`, campaign authorization, one-time windows, live grants, execution leases, exact dispatch, LinkedIn adapter/verifier, browser transport evidence, UNKNOWN quarantine, dashboard and platform registry. Do not create a duplicate store/router/state machine/browser abstraction/LinkedIn publisher or change System-Agentic Core.
@@ -121,3 +127,11 @@ Latest local gate after item 34: `node --test test/readiness-execution.test.mjs 
 Latest local gate after item 35: targeted rehearsal handoff regressions report 2 passed, 0 failed, 0 skipped; `node --test test/readiness-execution.test.mjs test/jev-execution-worker.test.mjs` reports 76 passed, 0 failed, 0 skipped; `npm test` reports 449 total, 447 passed, 0 failed, 2 skipped; source syntax, journal JSON parsing and `git diff --check` pass. Independent review `ACCEPT`. Canonical runtime schema 8 revision 194 SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remains unchanged. No live provider, browser, ORCA, credential, social or UNKNOWN mutation occurred.
 
 Latest local gate after item 36: execution evidence projection service/server gate reports 72 passed, 0 failed, 0 skipped; full `npm test` reports 456 total, 454 passed, 0 failed, 2 skipped; UI typecheck/build, source syntax and `git diff --check` pass. The projection is read-only, hashes identifiers, caps recent/blocker output, preserves UNKNOWN quarantine and exposes no permalink without independent VERIFIED evidence. Canonical runtime schema 8 revision 194 SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remains unchanged. No live provider, browser, ORCA, credential, social or UNKNOWN mutation occurred.
+
+Latest local gate after item 38: Product Factory sandbox preflight focused
+Product Factory/runtime/service/server gate reports 94 passed, 0 failed, 0
+skipped; host probe reports `sandbox-exec` invocation PASS but overall
+`UNSUPPORTED` and `executionEligible: false`; full `npm test` reports 464 total,
+462 passed, 0 failed, 2 skipped; source syntax and `git diff --check` pass.
+Arbitrary project commands remain `NOT_EXECUTED_UNSAFE`. No browser, ORCA,
+network, credential, social, canonical or historical UNKNOWN mutation occurred.

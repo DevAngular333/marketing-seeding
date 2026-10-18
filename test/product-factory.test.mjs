@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
-import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, deriveProjectEvidencePlan, executeStagedFactoryProbe, redact } from '../src/product-factory.mjs';
+import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, deriveProjectEvidencePlan, executeStagedFactoryProbe, evaluateFactorySandboxCapability, probeFactorySandboxCapability, redact } from '../src/product-factory.mjs';
 
 async function fixture(files = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'product-factory-'));
@@ -147,4 +147,42 @@ test('missing manifest truthfully remains unexecuted', async () => {
   const result = await executeStagedFactoryProbe(root);
   assert.equal(result.plan.status, 'NOT_EXECUTED_UNSAFE');
   assert.equal(result.execution.status, 'NOT_EXECUTED_UNSAFE');
+});
+
+test('sandbox preflight fails closed when the backend is unavailable', async () => {
+  const result = await probeFactorySandboxCapability({ backendPath: '/tmp/does-not-exist', backendPresent: false });
+  assert.equal(result.status, 'UNAVAILABLE');
+  assert.equal(result.executionEligible, false);
+  assert.equal(result.checks.backendInvocation, 'UNAVAILABLE');
+  assert.equal(result.unsafeCommandDisposition, 'NOT_EXECUTED_UNSAFE');
+});
+
+test('sandbox preflight distinguishes backend invocation from an audited profile', async () => {
+  const result = await probeFactorySandboxCapability({
+    backend: 'synthetic-backend',
+    backendPresent: true,
+    invoke: async () => ({ ok: true, status: 'PASS' })
+  });
+  assert.equal(result.status, 'UNSUPPORTED');
+  assert.equal(result.executionEligible, false);
+  assert.equal(result.checks.backendInvocation, 'PASS');
+  assert.equal(result.checks.profileIntegrity, 'UNSUPPORTED');
+  assert.equal(result.checks.resourceLimits, 'UNSUPPORTED');
+});
+
+test('sandbox preflight output is deterministic and only all proven checks can enable execution', async () => {
+  const checks = {
+    profileIntegrity: 'PASS',
+    networkDenied: 'PASS',
+    filesystemScope: 'PASS',
+    childProcessPolicy: 'PASS',
+    timeoutCleanup: 'PASS',
+    resourceLimits: 'PASS'
+  };
+  const first = evaluateFactorySandboxCapability({ backend: 'synthetic-backend', backendPresent: true, checks: { backendInvocation: 'PASS', ...checks } });
+  const second = evaluateFactorySandboxCapability({ backend: 'synthetic-backend', backendPresent: true, checks: { backendInvocation: 'PASS', ...checks } });
+  assert.deepEqual(first, second);
+  assert.equal(first.status, 'AVAILABLE');
+  assert.equal(first.executionEligible, true);
+  assert.equal(first.limits.network, 'PASS');
 });

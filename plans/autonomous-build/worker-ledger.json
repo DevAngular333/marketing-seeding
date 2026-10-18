@@ -487,6 +487,13 @@
       "status": "COMPLETE_LOCAL_GATES",
       "scope": "versioned SYSTEM_AGENTIC_AI handoff bridge",
       "evidence": "Focused bridge/distribution/server 14/14; full npm test 461/459/0/2; syntax/diff pass; wrapped/raw route compatibility; restart replay retains one sanitized handoff and zero execution artifacts; no upstream producer, ORCA/browser/social/canonical/UNKNOWN mutation"
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_FAIL_CLOSED",
+      "scope": "Product Factory sandbox capability/profile preflight",
+      "evidence": "Probe tests and host capability report pass fail-closed; focused 94/94, full npm test 464/462/0/2, syntax/diff pass; sandbox-exec invocation detected but no audited profile or resource limits; arbitrary commands remain NOT_EXECUTED_UNSAFE; no external, canonical, browser, ORCA, social or UNKNOWN mutation"
     }
   ]
 }

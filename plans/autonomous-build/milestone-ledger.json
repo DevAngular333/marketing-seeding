@@ -240,6 +240,11 @@
       "id": "system-agentic-handoff-bridge",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "evidence": "Versioned SYSTEM_AGENTIC_AI bridgeVersion 1 envelope with stable hash/source/time/mode and route campaign binding delegates to existing attachDistributionHandoff; wrapped/raw HTTP compatibility, restart replay idempotency and zero execution artifacts; focused 14/14, full npm test 461/459/0/2, syntax/diff pass; no upstream producer, ORCA/browser/network/social/canonical/UNKNOWN mutation; artifacts in plans/autonomous-build/system-agentic-handoff-bridge/"
+    },
+    {
+      "id": "product-factory-sandbox-preflight",
+      "status": "COMPLETE_LOCAL_FAIL_CLOSED",
+      "evidence": "Added versioned probeFactorySandboxCapability() with explicit backend/profile/check status and fail-closed executionEligible; macOS sandbox-exec harmless invocation passed but profile, network/filesystem/process/timeout/resource limits remain UNSUPPORTED; focused Product Factory/runtime/service/server gate 94/94, full npm test 464/462/0/2, node syntax and diff checks pass; no arbitrary project command, browser, ORCA, network, social, canonical or UNKNOWN mutation; artifacts in plans/autonomous-build/product-factory-sandbox-preflight/"
     }
   ]
 }

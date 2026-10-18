@@ -48,6 +48,22 @@
       "resume_point": "Authorized provider credentials/network and a durable collection cadence policy.",
       "external_dependency": "Live provider access and policy authorization",
       "last_checked_at": "2026-10-18T00:00:00Z"
+    },
+    {
+      "blocker_id": "PRODUCT-FACTORY-SANDBOX-001",
+      "classification": "ENVIRONMENT_BLOCKER",
+      "milestone": "product-factory-sandbox-preflight",
+      "root_cause": "The host can invoke deprecated sandbox-exec, but no audited profile, network/filesystem/process policy, descendant cleanup or CPU/memory/resource limits are proven.",
+      "affected_scope": "arbitrary project build/run/render execution and automatic media generation",
+      "detected_at": "2026-10-18T00:00:00Z",
+      "status": "OPEN",
+      "owner_worker": "master",
+      "remediation": "Added a versioned capability preflight and kept execution fail-closed; obtain and independently audit a resource-limited sandbox backend/profile before enabling arbitrary commands.",
+      "verification": "Host probe: backend invocation PASS, overall UNSUPPORTED, executionEligible false. Focused 94/94 and full 464/462/0/2 pass; no project command executed.",
+      "resolved_at": null,
+      "resume_point": "An independently reviewed sandbox with explicit network/filesystem/process/resource policy and descendant cleanup",
+      "external_dependency": "Audited OS/container sandbox capability on the execution host",
+      "last_checked_at": "2026-10-18T00:00:00Z"
     }
   ]
 }
