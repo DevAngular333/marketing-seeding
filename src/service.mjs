@@ -2310,7 +2310,32 @@ export class SeedingService {
       targetChannel: input.targetChannel,
       targetLocale: input.targetLocale
     }, actor) : { campaignId, accepted: 0, total: null, observations: [] };
-    return { ...result, persisted };
+    // Persist a bounded observer checkpoint through the existing campaign store.
+    // The checkpoint is advisory/read-only runtime state: it contains no raw URLs,
+    // credentials, or execution authority and makes restart/resume observability
+    // explicit even when every fetched source is UNKNOWN.
+    const sourceFingerprint = createHash("sha256")
+      .update(JSON.stringify((Array.isArray(input.urls) ? input.urls : []).map((url) => String(url)).sort()))
+      .digest("hex");
+    const checkpointAt = nowIso();
+    const checkpoint = {
+      schemaVersion: 1,
+      attemptedAt: checkpointAt,
+      sourceFingerprint,
+      requested: result.requested,
+      accepted: persisted.accepted || 0,
+      unknown: (result.observations || []).filter((item) => item.observationStatus === "UNKNOWN").length,
+      truncated: result.truncated === true
+    };
+    const checkpointResult = await this.store.mutate(actor, "discovery_observer_checkpoint_recorded", (state) => {
+      const campaign = requireItem(state.campaigns, campaignId, "Campaign");
+      campaign.discovery ||= { schemaVersion: 1, observations: [], updatedAt: null };
+      campaign.discovery.observerCheckpoint = checkpoint;
+      campaign.discovery.updatedAt = checkpointAt;
+      campaign.updatedAt = checkpointAt;
+      return checkpoint;
+    });
+    return { ...result, persisted, checkpoint: checkpointResult.result };
   }
 
   async authorizeCampaign(campaignId, input, actor = "operator") {

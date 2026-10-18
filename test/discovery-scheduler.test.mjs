@@ -57,10 +57,35 @@ test('discovery observation preserves authority collections and records only suc
   const fixtureFetch = async (url) => ({ ok: true, status: 200, headers: new Headers({ 'content-type': 'text/plain' }), body: new Blob(['Need workflow help']) .stream() });
   const result = await f.service.observeDiscoveries(campaign.id, { urls: ['https://example.com/public'], options: { fetchImpl: fixtureFetch }, keywords: ['workflow'] });
   assert.equal(result.persisted.accepted, 1);
+  assert.equal(result.checkpoint.schemaVersion, 1);
+  assert.equal(result.checkpoint.requested, 1);
+  assert.equal(result.checkpoint.accepted, 1);
+  assert.equal(result.checkpoint.unknown, 0);
+  assert.match(result.checkpoint.sourceFingerprint, /^[a-f0-9]{64}$/);
   const after = await f.store.read();
   assert.deepEqual(after.campaignAuthorizations, before.campaignAuthorizations);
   assert.deepEqual(after.executionRequests, before.executionRequests);
   assert.equal(after.campaigns[0].discovery.observations.length, 1);
+  assert.deepEqual(after.campaigns[0].discovery.observerCheckpoint, result.checkpoint);
+});
+
+test('discovery observer persists an UNKNOWN checkpoint and replaces it deterministically on restart', async () => {
+  const f = await fixture();
+  const campaign = await f.service.createCampaign({ name: 'C', objective: 'O', productRepo: f.root });
+  const first = await f.service.observeDiscoveries(campaign.id, {
+    urls: ['https://example.com/private'],
+    options: { fetchImpl: async () => { throw new Error('fixture unavailable'); } }
+  });
+  assert.equal(first.persisted.accepted, 0);
+  assert.equal(first.checkpoint.unknown, 1);
+  assert.equal((await f.store.read()).campaigns[0].discovery.observations.length, 0);
+  const second = await f.service.observeDiscoveries(campaign.id, {
+    urls: ['https://example.com/private'],
+    options: { fetchImpl: async () => { throw new Error('fixture unavailable'); } }
+  });
+  assert.notEqual(second.checkpoint.attemptedAt, first.checkpoint.attemptedAt);
+  assert.deepEqual({ ...second.checkpoint, attemptedAt: null }, { ...first.checkpoint, attemptedAt: null });
+  assert.deepEqual((await f.store.read()).campaigns[0].discovery.observerCheckpoint, second.checkpoint);
 });
 
 test('pollConfiguredDiscoveries is bounded, isolates campaign errors and skips unconfigured campaigns', async () => {

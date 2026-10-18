@@ -1,0 +1,2 @@
+- Added `observerCheckpoint` persistence to `SeedingService.observeDiscoveries`.
+- Added success and UNKNOWN/repeat checkpoint regression coverage.

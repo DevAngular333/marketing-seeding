@@ -1,0 +1,2 @@
+- Checkpoint is observability only; it does not schedule future crawls or derive execution authority.
+- Live public discovery and source-specific cursor semantics remain unverified.
