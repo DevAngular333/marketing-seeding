@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 
 const DEFAULTS = Object.freeze({ maxUrls: 20, maxBytes: 256_000, maxText: 12_000, maxRedirects: 3, timeoutMs: 8_000 });
 const PUBLIC_TYPES = new Set(["text/html", "text/plain", "application/xhtml+xml"]);
+const FEED_TYPES = new Set(["application/rss+xml", "application/atom+xml", "application/xml", "text/xml"]);
 
 function privateAddress(address) {
   const normalized = String(address).toLowerCase();
@@ -126,6 +127,89 @@ function htmlText(body) {
   return { title, text };
 }
 
+function decodeXml(value) {
+  return String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => {
+      const number = Number.parseInt(code, 16);
+      return Number.isFinite(number) ? String.fromCodePoint(Math.min(number, 0x10ffff)) : "";
+    })
+    .replace(/&#(\d+);/g, (_match, code) => {
+      const number = Number.parseInt(code, 10);
+      return Number.isFinite(number) ? String.fromCodePoint(Math.min(number, 0x10ffff)) : "";
+    })
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'");
+}
+
+function xmlText(value) {
+  return decodeXml(value).replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
+}
+
+function tagValue(block, names) {
+  for (const name of names) {
+    const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = String(block).match(new RegExp(`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${escaped}>`, "i"));
+    if (match) return xmlText(match[1]).replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
+
+function atomLink(block) {
+  const match = String(block).match(/<link\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/i);
+  return match ? decodeXml(match[1]).trim() : tagValue(block, ["link"]);
+}
+
+function safeFeedItemUrl(raw, feedUrl) {
+  try {
+    const feed = new URL(String(feedUrl));
+    const candidate = new URL(String(raw || ""), feed);
+    if (!["http:", "https:"].includes(candidate.protocol) || candidate.username || candidate.password) return feed.toString();
+    const host = normalizedHostname(candidate);
+    // Item links are observations, not fetch permissions. Keep links on the
+    // already validated feed host so an untrusted feed cannot inject an
+    // unvalidated private or credential-bearing destination into state.
+    if (host !== normalizedHostname(feed) || candidate.origin !== feed.origin) return feed.toString();
+    candidate.hash = "";
+    return candidate.toString();
+  } catch {
+    return String(feedUrl);
+  }
+}
+
+function feedBlocks(body) {
+  const source = String(body || "");
+  const rss = [...source.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].map((match) => ({ kind: "rss", block: match[1] }));
+  const atom = [...source.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry>/gi)].map((match) => ({ kind: "atom", block: match[1] }));
+  return rss.length ? rss : atom;
+}
+
+/** Extract bounded RSS/Atom item observations. The caller still applies the
+ * existing URL policy, normalization, dedupe and fit evaluation. */
+export function extractFeedObservations(body, contentType, { feedUrl, maxItems = 32, maxText = DEFAULTS.maxText } = {}) {
+  const blocks = feedBlocks(body).slice(0, Math.min(64, Math.max(0, Number(maxItems) || 32)));
+  if (!blocks.length) return [];
+  return blocks.map(({ kind, block }) => {
+    const id = tagValue(block, kind === "rss" ? ["guid", "id"] : ["id", "guid"]);
+    const title = tagValue(block, ["title"]);
+    const text = tagValue(block, kind === "rss" ? ["content:encoded", "description", "summary", "content"] : ["content", "summary", "description"]);
+    const author = tagValue(block, ["author", "dc:creator", "creator", "name"]);
+    const published = tagValue(block, kind === "rss" ? ["pubDate", "dc:date", "published", "updated"] : ["published", "updated", "pubDate"]);
+    const parsed = Date.parse(published);
+    return {
+      url: safeFeedItemUrl(kind === "atom" ? atomLink(block) : tagValue(block, ["link"]), feedUrl),
+      title: redact(title).slice(0, maxText), text: redact(text).slice(0, maxText), author: redact(author).slice(0, 240),
+      source: "public-feed-observer", observedAt: new Date().toISOString(),
+      ...(Number.isFinite(parsed) ? { publishedAt: new Date(parsed).toISOString() } : {}),
+      ...(id ? { sourceId: redact(id).slice(0, 240) } : {}),
+      fetch: { contentType, feed: true, itemCount: blocks.length }
+    };
+  });
+}
+
 export function extractObservation(body, contentType, { maxText = DEFAULTS.maxText } = {}) {
   const source = String(body || "");
   const extracted = contentType.includes("html") ? htmlText(source) : { title: "", text: source };
@@ -213,13 +297,22 @@ export async function observePublicUrls(urls, options = {}) {
             throw new Error(`HTTP_${response.status}`);
           }
           const contentType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-          if (!PUBLIC_TYPES.has(contentType)) {
-            await response.body?.cancel().catch(() => undefined);
+          // Read once under the existing byte bound before inspecting an
+          // octet-stream body. This avoids trusting a response header and
+          // keeps malformed/oversized payloads fail-closed.
+          const body = await readBounded(response, config.maxBytes, controller.signal);
+          const feedPayload = FEED_TYPES.has(contentType) || (contentType === "application/octet-stream" && /<(?:item|entry)\b/i.test(body));
+          if (!PUBLIC_TYPES.has(contentType) && !feedPayload) {
             throw new Error("unsupported content type");
           }
-          const body = await readBounded(response, config.maxBytes, controller.signal);
-          const extracted = extractObservation(body, contentType, config);
-          results.push({ url: finalUrl, title: extracted.title, text: extracted.text, source: "public-http-observer", observedAt: new Date().toISOString(), fetch: { status: response.status, contentType, redirects } });
+          if (feedPayload) {
+            const feedItems = extractFeedObservations(body, contentType, { feedUrl: finalUrl, maxItems: config.maxItems || 32, maxText: config.maxText });
+            if (!feedItems.length) throw new Error("feed contains no bounded items");
+            for (const item of feedItems) results.push({ ...item, fetch: { ...item.fetch, status: response.status, redirects } });
+          } else {
+            const extracted = extractObservation(body, contentType, config);
+            results.push({ url: finalUrl, title: extracted.title, text: extracted.text, source: "public-http-observer", observedAt: new Date().toISOString(), fetch: { status: response.status, contentType, redirects } });
+          }
           break;
         } finally {
           clearTimeout(timer);

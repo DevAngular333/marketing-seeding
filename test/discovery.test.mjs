@@ -10,6 +10,15 @@ test('normalizes URL, text, provenance and stable id', () => {
   assert.equal(a.url, b.url); assert.equal(a.discoveryId, b.discoveryId); assert.equal(a.policy.status, 'ELIGIBLE'); assert.equal(a.provenance.source, 'fixture');
 });
 
+test('normalizes feed publication time separately from observation time', () => {
+  const item = normalizeDiscovery({
+    url: 'https://example.com/item', title: 'A', text: 'B',
+    observedAt: '2026-10-20T12:00:00Z', publishedAt: 'Tue, 20 Oct 2026 10:00:00 GMT', source: 'public-feed-observer'
+  }, { policies, now: '2026-10-20T12:01:00Z' });
+  assert.equal(item.provenance.observedAt, '2026-10-20T12:00:00Z');
+  assert.equal(item.publishedAt, '2026-10-20T10:00:00.000Z');
+});
+
 test('fails closed for unsafe and unsupported targets', () => {
   assert.throws(() => normalizeDiscovery({ url: 'javascript:alert(1)' }, { policies }), /unsafe|unsupported/);
   const item = normalizeDiscovery({ url: 'https://unknown.test/a' }, { policies });

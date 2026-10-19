@@ -66,6 +66,12 @@ function redactText(value) {
   return normalizeText(value).replace(SECRET_VALUE, 'credential/session material exists').replace(SECRET_ASSIGNMENT, '$1=credential/session material exists');
 }
 
+function normalizeTimestamp(value) {
+  const text = redactText(value);
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
 function normalizeUrl(raw) {
   const url = new URL(String(raw));
   if (!ALLOWED_SCHEMES.has(url.protocol) || UNSAFE_SCHEMES.test(String(raw)) || url.username || url.password) throw new Error('unsupported or unsafe URL');
@@ -98,6 +104,7 @@ export function normalizeDiscovery(observation, { policies = {}, now = new Date(
     observedAt: redactText(observation.observedAt || now),
     sourceId: observation.sourceId ? redactText(observation.sourceId) : undefined,
   };
+  const publishedAt = normalizeTimestamp(observation.publishedAt);
   const normalized = {
     url,
     title,
@@ -109,6 +116,7 @@ export function normalizeDiscovery(observation, { policies = {}, now = new Date(
   };
   const locale = redactText(observation.locale || observation.localeHint);
   if (locale) normalized.locale = locale;
+  if (publishedAt) normalized.publishedAt = publishedAt;
   const discoveryId = hash({ url, title, text, author: normalized.author });
   return { ...normalized, discoveryId, normalizedAt: now, status: policy.status };
 }

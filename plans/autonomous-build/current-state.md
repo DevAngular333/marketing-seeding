@@ -1,5 +1,22 @@
 # Current State (latest verified 2026-10-20; 5aa4b42 release-owner reconciliation)
 
+## Discovery feed observer continuation (2026-10-20)
+
+- Added bounded RSS/Atom item extraction through the existing public discovery
+  observer and normalization path. Item links remain same-origin observations;
+  unsafe/cross-origin links fall back to the validated feed URL.
+- Feed publication time is retained as normalized `publishedAt`, separate from
+  collection `observedAt`. Empty/malformed/oversized/unsupported feeds remain
+  UNKNOWN under the existing bounds.
+- Focused observer/normalization/scheduler/service regression: **28 passed, 0
+  failed, 0 skipped**. Final full suite after this patch: **536 total, 534
+  passed, 0 failed, 2 skipped**. Static syntax, diff, journal JSON and UI
+  checks pass.
+- This lane is advisory only and created no authority, execution request,
+  browser action, canonical runtime mutation, credential/session mutation,
+  social mutation or historical UNKNOWN change.
+- Artifact: `plans/autonomous-build/discovery-feed-observer/`.
+
 ## Follow-up release gate (2026-10-20)
 
 - Fresh rerun remains green: `npm test` **530 total, 528 passed, 0 failed, 2 skipped**; standard focused transport/JEV/LinkedIn/authority/recovery gate **152/152**; broader focused product/service gate **337/337**.

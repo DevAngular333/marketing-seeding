@@ -69,6 +69,26 @@ test('discovery observation preserves authority collections and records only suc
   assert.deepEqual(after.campaigns[0].discovery.observerCheckpoint, result.checkpoint);
 });
 
+test('feed observations flow through normalization and remain advisory', async () => {
+  const f = await fixture();
+  const campaign = await f.service.createCampaign({ name: 'Feed', objective: 'O', productRepo: f.root });
+  const feed = '<rss><channel><item><guid>feed-1</guid><title>Automation discussion</title><description>Workflow pain</description><pubDate>Tue, 20 Oct 2026 10:00:00 GMT</pubDate><link>https://example.com/posts/1</link></item></channel></rss>';
+  const result = await f.service.observeDiscoveries(campaign.id, {
+    urls: ['https://example.com/feed'],
+    options: { fetchImpl: async () => new Response(feed, { status: 200, headers: { 'content-type': 'application/rss+xml' } }) },
+    policies: { 'example.com': { channel: 'example', actions: ['observe'] } },
+    keywords: ['automation']
+  });
+  assert.equal(result.persisted.accepted, 1);
+  assert.equal(result.persisted.observations[0].status, 'ELIGIBLE');
+  assert.equal(result.persisted.observations[0].classification.label, 'RELEVANT');
+  assert.equal(result.persisted.observations[0].provenance.sourceId, 'feed-1');
+  assert.equal(result.persisted.observations[0].publishedAt, '2026-10-20T10:00:00.000Z');
+  const saved = await f.store.read();
+  assert.equal(saved.executionRequests.length, 0);
+  assert.equal(saved.campaigns[0].discovery.observations[0].provenance.source, 'public-feed-observer');
+});
+
 test('discovery observer persists an UNKNOWN checkpoint and replaces it deterministically on restart', async () => {
   const f = await fixture();
   const campaign = await f.service.createCampaign({ name: 'C', objective: 'O', productRepo: f.root });

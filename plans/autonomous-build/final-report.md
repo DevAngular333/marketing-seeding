@@ -2,6 +2,16 @@
 
 ## Follow-up release-owner gate (2026-10-20)
 
+### Discovery feed observer continuation
+
+- The existing bounded discovery observer now accepts RSS/Atom feeds and
+  emits item-level advisory observations with safe same-origin links, source
+  IDs and separate normalized publication timestamps.
+- Focused feed/normalization/scheduler tests: **28/28**. Final full suite after
+  this lane: **536 total, 534 passed, 0 failed, 2 skipped**. No authority,
+  browser, canonical, credential/session, social or UNKNOWN mutation occurred.
+- Artifact: `plans/autonomous-build/discovery-feed-observer/`.
+
 - Source HEAD remains `fd253dd`; latest journal commit is `5aa4b42`. The fresh full suite is **530 total, 528 passed, 0 failed, 2 skipped** and the standard focused transport/JEV/LinkedIn/authority/recovery gate is **152/152**. A broader focused product/service run is **337/337**.
 - Syntax, journal JSON, diff, UI typecheck and UI build checks pass. Read-only ORCA executable and connected runtime both report `1.4.229`, `ready`, `connected`.
 - A read-only ORCA tab/profile inventory found one existing LinkedIn feed tab on the host-managed `marketing-linkedin-mac-primary` profile. No tab interaction occurred, and this observation does not substitute for exact campaign authority or fresh persisted readiness.

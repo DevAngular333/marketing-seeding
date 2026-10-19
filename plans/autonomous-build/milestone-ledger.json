@@ -325,6 +325,11 @@
       "id": "mission-control-engagement-detail",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "evidence": "c2e084a: existing engagementContext and conversationContinuity projections are rendered read-only in Mission Control with at most five conversation rows and five candidate rows, explicit status/reasons/reply and continuity counts, no action controls, and complete bounded credential redaction including Authorization Bearer headers. Dashboard test 2/2, focused gate 151/151, full npm 527/525/0/2, UI typecheck/build and diff checks pass; independent reviewer ACCEPT. No authority, browser, canonical, external or UNKNOWN mutation. Artifacts: plans/autonomous-build/mission-control-engagement-detail/"
+    },
+    {
+      "id": "discovery-feed-observer",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Existing bounded public discovery observer now parses RSS/Atom items through normalization, policy, deduplication and fit; safe same-origin links, source IDs and separate normalized publishedAt are covered by 28 focused tests. Final npm test 536/534/0/2; syntax, diff, JSON and UI gates pass. Advisory only: no authority, execution, browser, canonical, social or historical UNKNOWN mutation. Artifacts: plans/autonomous-build/discovery-feed-observer/"
     }
   ]
 }
