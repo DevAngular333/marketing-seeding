@@ -1,10 +1,10 @@
 # Autonomous Build — Current Release Report
 
-## Follow-up release-owner gate (2026-10-20)
+## Follow-up release-owner gate (2026-10-20; source 43322b8)
 
 ### Discovery feed observer continuation
 
-- The existing bounded discovery observer now accepts RSS/Atom feeds and
+- Source commit `43322b8` adds the bounded RSS/Atom feed observer. The existing bounded discovery observer now accepts RSS/Atom feeds and
   emits item-level advisory observations with safe same-origin links, source
   IDs and separate normalized publication timestamps.
 - Focused feed/normalization/scheduler tests: **28/28**. Final full suite after

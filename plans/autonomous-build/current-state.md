@@ -1,4 +1,4 @@
-# Current State (latest verified 2026-10-20; 5aa4b42 release-owner reconciliation)
+# Current State (latest verified 2026-10-20; 43322b8 discovery-feed release)
 
 ## Discovery feed observer continuation (2026-10-20)
 

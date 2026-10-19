@@ -1,4 +1,4 @@
-# Product Readiness Snapshot (verified 2026-10-20; fd253dd continuation reconciliation)
+# Product Readiness Snapshot (verified 2026-10-20; 43322b8 discovery-feed release)
 
 Latest post-HEAD gate: `npm test` **536 total, 534 passed, 0 failed, 2 skipped** on the integration branch; focused discovery feed gate **28/28** and the prior focused transport/JEV/LinkedIn/authority/recovery gate **152/152** remain green. Canonical service is not redeployed from this branch. Older milestone counts below are historical.
 
