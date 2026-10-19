@@ -154,16 +154,16 @@
   ],
   "protectedUncertainty": "df39df1c-2f06-4c20-8e9a-4ed07f5df34c",
   "focusedTransportTests": {
-    "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs",
-    "total": 106,
-    "passed": 106,
+    "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs test/live-execution-grant.test.mjs test/standing-autonomous-delegation-proof.test.mjs test/authorized-account-candidate-projection.test.mjs",
+    "total": 154,
+    "passed": 154,
     "failed": 0,
     "skipped": 0
   },
   "fullNodeSuite": {
     "command": "npm test",
-    "total": 527,
-    "passed": 525,
+    "total": 538,
+    "passed": 536,
     "failed": 0,
     "skipped": 2
   },
@@ -195,29 +195,25 @@
     "linkedinPostClickCount": 0
   },
   "auditReconciliation": {
-    "date": "2026-10-19T00:29:26Z",
+    "date": "2026-10-20T22:25:30Z",
     "runtimeVersion": "1.4.229",
     "orcaVersionCommand": "/Applications/Orca 2.app/Contents/Resources/bin/orca --version",
-    "orcaVersionOutput": "1.4.229",
+    "orcaStatus": "ready/connected read-only",
     "focusedTransportTests": {
-      "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs",
-      "total": 106,
-      "passed": 106,
+      "total": 154,
+      "passed": 154,
       "failed": 0,
       "skipped": 0
     },
-    "scope": "read-only audit; no LinkedIn or social mutation; no canonical state or UNKNOWN mutation",
+    "scope": "read-only continuation audit; no composer opened, no content entered, no Post click, no social mutation, no canonical or UNKNOWN mutation",
     "latestFullNodeSuite": {
-      "total": 527,
-      "passed": 525,
+      "total": 538,
+      "passed": 536,
       "failed": 0,
       "skipped": 2
     },
-    "orcaStatusCommand": "/Applications/Orca 2.app/Contents/Resources/bin/orca status --json",
-    "connectedRuntimeVersion": "1.4.229",
-    "connectedRuntimeState": "ready",
-    "connectedRuntimeConnection": "connected",
-    "versionPinMatch": true
+    "versionPinMatch": true,
+    "irreversibleSubmitCertified": false
   },
   "certificationBoundary": "Reversible LinkedIn composer control activation is proven; irreversible final-submit certification still requires a fresh exact authorization and one controlled live publish/verify execution.",
   "releaseReconciliation": {

@@ -24,5 +24,38 @@
     "activeGrants": 0,
     "activeLeases": 0
   },
-  "blocker": "No active exact LIVE campaign authorization exists. All existing authorizations are expired, paused, or superseded; all existing windows/grants are consumed or revoked. Creating a new authorization would require a fresh explicit operator authorization/input, so no new execution controls or live dispatch were created."
+  "blocker": "No fresh exact LIVE campaign authorization exists. The user scope still lacks exact campaign/productRepo binding, target ID+URL, account/profile identifiers in the authority, approved LinkedIn content bytes/contentId/SHA-256, explicit media declaration, canonical audience serialization, UTC bounds and schedule fields. Existing terminal controls/readiness cannot be rebound; no new execution controls or live dispatch were created.",
+  "latestReadOnlyOrcaObservation": {
+    "version": "1.4.229",
+    "state": "ready",
+    "connection": "connected",
+    "linkedinFeedObserved": true,
+    "composerOpened": false,
+    "contentEntered": false,
+    "finalPostClicked": false,
+    "socialMutationCount": 0,
+    "identityEvidenceObserved": true,
+    "persistedReadinessRefreshed": false
+  },
+  "focusedRegressionGate": {
+    "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs test/live-execution-grant.test.mjs test/standing-autonomous-delegation-proof.test.mjs test/authorized-account-candidate-projection.test.mjs",
+    "total": 154,
+    "passed": 154,
+    "failed": 0,
+    "skipped": 0
+  },
+  "selectorGate": {
+    "command": "node --test test/authorized-account-candidate-projection.test.mjs test/campaign-authorization.test.mjs test/standing-campaign-delegation.test.mjs test/readiness-execution.test.mjs test/linkedin-verification.test.mjs",
+    "total": 75,
+    "passed": 75,
+    "failed": 0,
+    "skipped": 0
+  },
+  "fullNodeSuite": {
+    "command": "npm test",
+    "total": 538,
+    "passed": 536,
+    "failed": 0,
+    "skipped": 2
+  }
 }

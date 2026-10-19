@@ -1,6 +1,13 @@
 # Current State (latest verified 2026-10-20; 43322b8 discovery-feed release)
 
 
+
+## Read-only live-session recheck (2026-10-20)
+
+- Pinned ORCA 1.4.229 is `ready`/`connected`. Read-only tab inventory observed one LinkedIn feed tab under the existing `marketing-linkedin-mac-primary` profile; a page identity link matched the existing account identity. No composer was opened, no content entered, no Post/Publish or other social control clicked, and no persisted readiness was refreshed.
+- This observation confirms session visibility only. It does not create campaign authority or prove fresh target readiness. Canonical state remains schema 8/revision 194 with the same SHA-256, active authorization/window/grant/lease counts `0/0/0/0`, four immutable UNKNOWN executions and zero published/social mutations.
+- The exact Design OS LinkedIn payload is still unavailable as immutable bytes/contentId/SHA-256; no media declaration/hashes or exact campaign scope fields were inferred.
+
 ## Fresh continuation checkpoint (2026-10-20; selector hardening and release gate)
 
 - Added a pure, deterministic, fail-closed authorized account selector over the existing account-pool projection. It accepts only a unique/policy-selected eligible row with a non-empty exact account ID and a 64-character profile fingerprint; it does not create authority, rebind a post, mutate state, or dispatch browser work.

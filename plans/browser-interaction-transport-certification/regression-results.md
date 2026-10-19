@@ -8,7 +8,7 @@ node --test test/browser-interaction-transport.test.mjs \
   test/linkedin-verification.test.mjs \
   test/jev-execution-worker.test.mjs
 
-106 passed, 0 failed, 0 skipped
+154 passed, 0 failed, 0 skipped
 ```
 
 Coverage includes command completion versus activation, pointer and
@@ -20,7 +20,7 @@ quarantine, duplicate dispatch prevention and no second final click.
 
 ```text
 npm test
-527 total, 525 passed, 0 failed, 2 skipped
+538 total, 536 passed, 0 failed, 2 skipped
 ```
 
 ## Static checks

@@ -51,12 +51,15 @@ selection remains deterministic and cannot change after durable submit intent.
 See `live-evidence.json` for machine-readable evidence and the exact protected
 execution IDs.
 
-The focused transport/LinkedIn/JEV gate is 106/106. The current full Node suite
-is 527 total, 525 passed, 0 failed and 2 skipped. The configured ORCA executable
+The current broader transport/JEV/LinkedIn/authority/recovery gate is 154/154, and the full Node suite is 538 total, 536 passed, 0 failed and 2 skipped. The selector/authority/readiness/LinkedIn gate is 75/75. The configured ORCA executable
 and connected daemon both match the pinned version 1.4.229 in read-only probes. An earlier direct ORCA probe
 remains historical failure evidence (`chrome-error://chromewebdata/` followed
 by `browser_stale_ref`); the later clean localhost run used a fresh tab and
 fixture server and independently observed all 20 reversible transitions.
+
+## 2026-10-20 selector-gate reconciliation
+
+Read-only runtime inspection confirms ORCA 1.4.229 is ready/connected and the host-managed LinkedIn feed session exposes the existing account identity. No composer was opened and no control was activated in this audit. The local reversible transport evidence remains 10/10 for accessibility and pointer transports; irreversible Post remains unproven and blocked by exact live authority/content/readiness.
 
 ## 2026-10-19 audit reconciliation
 
