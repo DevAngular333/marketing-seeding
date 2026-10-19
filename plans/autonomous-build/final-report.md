@@ -12,7 +12,9 @@
   browser, canonical, credential/session, social or UNKNOWN mutation occurred.
 - Artifact: `plans/autonomous-build/discovery-feed-observer/`.
 
-- Source HEAD remains `fd253dd`; latest journal commit is `5aa4b42`. The fresh full suite is **530 total, 528 passed, 0 failed, 2 skipped** and the standard focused transport/JEV/LinkedIn/authority/recovery gate is **152/152**. A broader focused product/service run is **337/337**.
+### Historical pre-feed gate (5aa4b42)
+
+- Source safety HEAD was `fd253dd`; the pre-feed journal commit was `5aa4b42`. That historical gate recorded **530 total, 528 passed, 0 failed, 2 skipped**, standard focused transport/JEV/LinkedIn/authority/recovery **152/152**, and broader focused product/service **337/337**.
 - Syntax, journal JSON, diff, UI typecheck and UI build checks pass. Read-only ORCA executable and connected runtime both report `1.4.229`, `ready`, `connected`.
 - A read-only ORCA tab/profile inventory found one existing LinkedIn feed tab on the host-managed `marketing-linkedin-mac-primary` profile. No tab interaction occurred, and this observation does not substitute for exact campaign authority or fresh persisted readiness.
 - The supplied Design OS Studio authority still lacks exact runtime campaign binding, target/account/profile tuple, approved LinkedIn content hash, media declaration, canonical audience and explicit UTC bounds. No live controls were derived and no external action occurred.
@@ -20,12 +22,12 @@
 
 ## Current release-owner reconciliation (2026-10-20; release 6e37177)
 
-- Source implementation commit `43322b8` and journal commit `6e37177` are pushed to `origin/integration/autonomous-build`; main and the canonical service remain untouched.
+- Source implementation commit `43322b8` and release gate commit `6e37177` are pushed to `origin/integration/autonomous-build`; the current branch also contains documentation-only reconciliation, while main and the canonical service remain untouched.
 - Final full suite: **536 total, 534 passed, 0 failed, 2 skipped**. Focused discovery feed gate: **28/28**. Syntax, diff, journal JSON, UI typecheck and UI build pass.
 - Canonical state remains schema 8/revision 194, hash `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`, with active authorization/window/grant/lease counts `0/0/0/0`; four historical UNKNOWN records remain immutable.
 - No browser command, external URL fetch, authority creation, canonical write, credential/session mutation, social mutation or historical UNKNOWN retry occurred.
 
-## Current continuation release reconciliation overlay (2026-10-20)
+## Historical continuation release reconciliation overlay (2026-10-20)
 
 - HEAD is `fd253dd` (`fix: reject ambiguous transport certifications`) on `integration/autonomous-build`.
 - A fresh post-HEAD gate reports `npm test` **530 total, 528 passed, 0 failed, 2 skipped**, focused 152/152, syntax/diff/UI/JSON pass.
@@ -37,7 +39,7 @@
   handoff, outcome and Mission Control seams; it found no safe narrow source
   change without duplicating a contract or requiring external authority/auth.
 
-## Release reconciliation overlay (2026-10-19)
+## Historical release reconciliation overlay (2026-10-19)
 
 - Fresh current-tree full gate: `npm test` **530 total, 528 passed, 0 failed, 2 skipped**.
 - Focused transport/JEV/LinkedIn/authority/recovery gate: **152/152**.
@@ -50,7 +52,7 @@
   protected UNKNOWN executions remain immutable; social mutation and final Post click counts are `0`.
 - Detailed evidence: `plans/autonomous-build/reports/release-journal-reconciliation-20261019.md`.
 
-## Latest continuation overlay (2026-10-19)
+## Historical latest continuation overlay (2026-10-19)
 
 - Repaired the stale private ORCA executable reference in canonical
   `runtime.env` to the installed verified ORCA `1.4.229` executable; mode
@@ -269,11 +271,11 @@ RESTART_RECOVERY = PARTIAL_LOCAL_DRY_RUN_PROVEN
 24_7_READINESS = NOT_PROVEN
 
 Git:
-MAIN_HEAD = untouched by this wave; integration source HEAD = 6e37177; latest journal HEAD = 6e37177
+MAIN_HEAD = untouched by this wave; integration source release gate = 6e37177; current branch includes documentation-only reconciliation after that gate
 MAIN_STATUS = unchanged; no merge or deployment performed
 INTEGRATION_BRANCHES = integration/autonomous-build
 WORKER_BRANCHES = accepted worker evidence and review artifacts; no worker branch was merged into main
-PUSH_STATUS = integration/autonomous-build pushed to origin at 6e37177; main/canonical service not deployed
+PUSH_STATUS = integration/autonomous-build pushed to origin; source release gate 6e37177 and docs-only reconciliation are present; main/canonical service not deployed
 MERGED_WORK = accepted local implementation and journal work is present on the integration branch; only intentional untracked post-HEAD audit reports remain
 
 Tests:

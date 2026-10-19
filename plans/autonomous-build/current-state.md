@@ -19,7 +19,7 @@
 
 ## Current release gate after discovery feed lane (2026-10-20; release 6e37177)
 
-- Source implementation commit `43322b8` and journal commit `6e37177` are pushed on `origin/integration/autonomous-build`.
+- Source implementation commit `43322b8` and release gate commit `6e37177` are pushed on `origin/integration/autonomous-build`; later commits are documentation-only reconciliation.
 - Final full suite on this tree: `npm test` **536 total, 534 passed, 0 failed, 2 skipped**; focused discovery feed gate **28/28**; syntax, diff, journal JSON and UI typecheck/build pass.
 - Canonical runtime remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorization/window/grant/lease counts remain `0/0/0/0`.
 - This release remains local/integration only; main and `SYSTEM_AGENTIC_AI` Core were not changed or deployed.
