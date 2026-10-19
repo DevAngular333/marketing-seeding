@@ -1170,3 +1170,6 @@ html[data-theme="light"] .intelligence-list time { color: #626b7b; }
 html[data-theme="light"] .report-grid > *,
 html[data-theme="light"] .integration-grid > *,
 html[data-theme="light"] .export-panel { border-color: var(--border-soft); background: #fff; color: var(--text); }
+
+.mission-intelligence-runtime { margin-top: 16px; }
+.mission-intelligence-runtime .mission-detail-list { padding-bottom: 4px; }

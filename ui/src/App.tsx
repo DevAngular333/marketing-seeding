@@ -1167,6 +1167,9 @@ function MissionControlPanel({ data }: { data: R }) {
   const currentBlockerCount = executionBlockers.length + accountBlockers + authorityBlockers.length + blockedAccountPools.length + blockedChannels.length + (factorySandbox?.executionEligible === true ? 0 : factorySandbox ? 1 : 0)
   const opportunityRows = discoveryOpportunities.slice(0, 5)
   const intelligenceRows = productIntelligence.slice(0, 4)
+  const productIntelligenceRuntime = Array.isArray(data?.productIntelligenceRuntime)
+    ? data.productIntelligenceRuntime.slice(0, 64)
+    : []
   const compactText = compactDisplayText
   const fitLabel = (fit: R | null | undefined) => fit
     ? [fit.audience?.status, fit.channel?.status, fit.locale?.status].map((value) => String(value || "UNKNOWN")).join(" · ")
@@ -1302,6 +1305,34 @@ function MissionControlPanel({ data }: { data: R }) {
             <small>{factorySandbox?.executionEligible === true ? "Preflight đủ điều kiện" : "Build/render unsafe vẫn fail-closed"}</small>
           </article>
         </div>
+        <section className="mission-detail-section mission-intelligence-runtime" aria-label="Product intelligence readiness">
+          <div className="mission-account-head">
+            <div>
+              <span className="mission-eyebrow">Product intelligence readiness</span>
+              <small>Read-only projection · status, coverage và lineage metadata; không suy ra publish readiness</small>
+            </div>
+            <span className="status">{productIntelligenceRuntime.length}/64</span>
+          </div>
+          {productIntelligenceRuntime.length ? (
+            <div className="mission-detail-list">
+              {productIntelligenceRuntime.map((item: R) => {
+                const fields = item?.requiredFields && typeof item.requiredFields === "object" ? item.requiredFields : {}
+                const covered = Object.values(fields).filter(Boolean).length
+                const validationErrors = Array.isArray(item?.validationErrors) ? item.validationErrors.slice(0, 3) : []
+                return <article key={String(item.campaignId || "UNKNOWN")}>
+                  <div className="mission-detail-title">
+                    <strong>{compactText(item.campaignId, "UNKNOWN", 90)}</strong>
+                    <span className={item.status === "READY" ? "status completed" : item.status === "BLOCKED" ? "status failed" : "status draft"}>{compactText(item.status, "UNKNOWN", 32)}</span>
+                  </div>
+                  <small>Readiness: {compactText(item.readinessStatus, "UNKNOWN", 32)} · Required fields: {covered}/4</small>
+                  <small>Evidence: {Number(item.evidenceCount || 0)} · Claims proved: {Number(item.supportedClaimCount || 0)} · Unsupported: {Number(item.unsupportedClaimCount || 0)}</small>
+                  <small>Inspection: {compactText(item.inspection?.status, "UNKNOWN", 24)} · Hash: {item.inspection?.inspectionHash ? "present" : "missing"} · Source fingerprint: {item.inspection?.sourceFingerprint ? "present" : "missing"}</small>
+                  {validationErrors.length ? <small>Validation: {validationErrors.map((error: unknown) => compactText(error, "UNKNOWN", 100)).join(" · ")}</small> : null}
+                </article>
+              })}
+            </div>
+          ) : <div className="empty-state">Chưa có product intelligence runtime projection.</div>}
+        </section>
         <div className="mission-detail-grid">
           <section className="mission-detail-section" aria-label="Discovery opportunity detail">
             <div className="mission-account-head">

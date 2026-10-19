@@ -1,0 +1,3 @@
+- Added Product Intelligence readiness section to Mission Control.
+- UI consumes only `data.productIntelligenceRuntime`, capped at 64 rows.
+- Added minimal responsive-safe spacing styles.

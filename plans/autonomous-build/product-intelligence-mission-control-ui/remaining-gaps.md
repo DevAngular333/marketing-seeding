@@ -1,0 +1,2 @@
+- Existing legacy Product Evidence lineage panel still displays persisted claim text/locators; this change does not expand or alter that panel.
+- No browser, authority, or publication action is exposed.
