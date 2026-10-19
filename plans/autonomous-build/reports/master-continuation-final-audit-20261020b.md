@@ -61,6 +61,15 @@ Commands rerun on `integration/autonomous-build` at `fd253dd`:
 | ORCA executable `--version` | `1.4.229` |
 | ORCA `status --json` | runtime `1.4.229`, `ready`, `connected` |
 
+## Read-only session inventory
+
+An ORCA read-only inventory found five configured profiles and one existing
+LinkedIn feed tab using the profile label `marketing-linkedin-mac-primary`.
+Profile and tab identifiers were redacted. This confirms that a host-managed
+browser lane exists, but it does not authorize the Design OS Studio campaign,
+prove current readiness, or supply the missing exact authority fields. No tab
+was opened, navigated, filled, clicked or changed.
+
 ## Protected state
 
 - Canonical state: schema 8, revision 194, SHA-256

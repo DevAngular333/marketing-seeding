@@ -1764,7 +1764,14 @@
       "version": "1.4.229",
       "state": "ready",
       "connection": "connected",
-      "commandIssued": "read-only"
+      "commandIssued": "read-only",
+      "sessionInventory": {
+        "profileCount": 5,
+        "linkedinFeedTabs": 1,
+        "profileLabel": "marketing-linkedin-mac-primary",
+        "identifiersRedacted": true,
+        "tabInteraction": false
+      }
     },
     "canonicalState": {
       "schemaVersion": 8,

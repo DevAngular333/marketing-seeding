@@ -4,6 +4,7 @@
 
 - HEAD remains `fd253dd`; the fresh full suite is **530 total, 528 passed, 0 failed, 2 skipped** and the standard focused transport/JEV/LinkedIn/authority/recovery gate is **152/152**. A broader focused product/service run is **337/337**.
 - Syntax, journal JSON, diff, UI typecheck and UI build checks pass. Read-only ORCA executable and connected runtime both report `1.4.229`, `ready`, `connected`.
+- A read-only ORCA tab/profile inventory found one existing LinkedIn feed tab on the host-managed `marketing-linkedin-mac-primary` profile. No tab interaction occurred, and this observation does not substitute for exact campaign authority or fresh persisted readiness.
 - The supplied Design OS Studio authority still lacks exact runtime campaign binding, target/account/profile tuple, approved LinkedIn content hash, media declaration, canonical audience and explicit UTC bounds. No live controls were derived and no external action occurred.
 - Current follow-up evidence: `plans/autonomous-build/reports/master-continuation-final-audit-20261020b.md`.
 

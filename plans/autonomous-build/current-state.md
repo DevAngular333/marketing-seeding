@@ -5,6 +5,7 @@
 - Fresh rerun remains green: `npm test` **530 total, 528 passed, 0 failed, 2 skipped**; standard focused transport/JEV/LinkedIn/authority/recovery gate **152/152**; broader focused product/service gate **337/337**.
 - `node --check src/*.mjs`, journal JSON parsing, `git diff --check`, UI typecheck and UI build pass. UI build emits only existing Vite configuration warnings.
 - Read-only ORCA probes report executable and connected runtime `1.4.229`, `ready` / `connected`; no browser command was issued.
+- A separate read-only ORCA inventory found five configured profiles and one existing LinkedIn feed tab on the host-managed `marketing-linkedin-mac-primary` profile; identifiers were redacted and no tab interaction occurred. This does not create authority or make persisted readiness fresh.
 - Canonical state remains schema 8, revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorizations/windows/grants/leases remain `0/0/0/0`; four historical UNKNOWN executions remain immutable; published posts, social mutations and final Post clicks remain `0`.
 - Exact Design OS Studio authority is still absent. The reply does not bind the runtime campaign, target ID/URL, account ID, ORCA profile UUID, approved LinkedIn copy hash, media declaration/hashes, canonical audience or explicit UTC validity timestamps. No authorization, window, grant, lease or live execution was created.
 - Follow-up evidence: `plans/autonomous-build/reports/master-continuation-final-audit-20261020b.md`.
