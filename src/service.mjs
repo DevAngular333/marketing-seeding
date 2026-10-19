@@ -1382,6 +1382,8 @@ export function projectAuthorizedAccountPool(state = {}, options = {}) {
           : ordered.length ? { status: selected ? "ORDERED" : "ORDERED_NO_ELIGIBLE", reason: selected ? null : "ordered_destinations_not_eligible" }
             : { status: "UNSPECIFIED", reason: "no_explicit_account_preference_policy" },
         selectedCandidateKey: selected?.candidateKey || null,
+        selectedAccountId: selected?.accountId || null,
+        selectedProfileFingerprint: selected?.profileFingerprint || null,
         candidateKeys: rows.map((candidate) => candidate.candidateKey).sort(),
         eligibleAccounts: eligible.map((candidate) => ({
           accountId: candidate.accountId,
@@ -1391,6 +1393,44 @@ export function projectAuthorizedAccountPool(state = {}, options = {}) {
         })).sort((left, right) => `${left.accountId}\u0000${left.profileFingerprint || ""}`.localeCompare(`${right.accountId}\u0000${right.profileFingerprint || ""}`))
       };
     });
+}
+
+/**
+ * Select one already-authorized account candidate from the read-only pool
+ * projection. This is intentionally a pure planning helper: it never
+ * rebinds a target, creates authority, or writes execution state. Ambiguous
+ * pools fail closed so callers must obtain an exact policy-selected or unique
+ * eligible destination before preparing an execution request.
+ */
+export function selectAuthorizedAccountCandidate(pool = [], { campaignId = null, targetId = null, candidateKey = null } = {}) {
+  if (!Array.isArray(pool)) throw new Error("Authorized account pool must be an array");
+  const matching = pool.filter((row) => row &&
+    (campaignId == null || String(row.campaignId) === String(campaignId)) &&
+    (targetId == null || String(row.targetId) === String(targetId)));
+  if (matching.length !== 1) {
+    throw new Error(matching.length === 0
+      ? "No exact authorized account pool destination"
+      : "Authorized account pool selection is ambiguous");
+  }
+  const row = matching[0];
+  if (!new Set(["UNIQUE_ELIGIBLE", "POLICY_SELECTED"]).has(row.selectionStatus)) {
+    throw new Error(`Authorized account pool is not selectable: ${String(row.selectionStatus || "UNKNOWN")}`);
+  }
+  if (!row.selectedCandidateKey || !Array.isArray(row.candidateKeys) || !row.candidateKeys.includes(row.selectedCandidateKey)) {
+    throw new Error("Authorized account pool selection is missing an exact candidate key");
+  }
+  if (candidateKey != null && String(candidateKey) !== String(row.selectedCandidateKey)) {
+    throw new Error("Authorized account pool candidate key mismatch");
+  }
+  const selected = row.selectedCandidateKey;
+  return Object.freeze({
+    campaignId: String(row.campaignId || ""),
+    targetId: String(row.targetId || ""),
+    candidateKey: String(selected),
+    selectionStatus: String(row.selectionStatus),
+    accountId: row.selectedAccountId || null,
+    profileFingerprint: row.selectedProfileFingerprint || null
+  });
 }
 
 /**

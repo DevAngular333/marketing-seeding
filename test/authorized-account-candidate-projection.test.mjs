@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { JsonStore } from "../src/store.mjs";
-import { SeedingService, projectAuthorizedAccountCandidates, projectAuthorizedAccountPool, projectAuthorizedAccountPoolSummary, projectCampaignAuthorityRuntime } from "../src/service.mjs";
+import { SeedingService, projectAuthorizedAccountCandidates, projectAuthorizedAccountPool, projectAuthorizedAccountPoolSummary, projectCampaignAuthorityRuntime, selectAuthorizedAccountCandidate } from "../src/service.mjs";
 import { campaignAuthorizationFingerprint, campaignScopeFingerprint, normalizeCampaignAuthorization } from "../src/campaign-authorization.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
 
@@ -192,6 +192,32 @@ test("ordered authorization policy deterministically selects the first eligible 
   assert.equal(result[0].selectionPolicy.status, "ORDERED");
   assert.equal(result[0].selectionStatus, "POLICY_SELECTED");
   assert.ok(result[0].selectedCandidateKey);
+});
+
+test("pure account selector returns only an exact policy or unique pool row", () => {
+  const state = fixture();
+  const pool = projectAuthorizedAccountPool(state, { now });
+  const selected = selectAuthorizedAccountCandidate(pool, { campaignId: state.campaigns[0].id, targetId: state.targets[0].id });
+  assert.equal(selected.candidateKey, pool[0].selectedCandidateKey);
+  assert.equal(selected.accountId, "candidate-account");
+  assert.equal(selected.profileFingerprint, pool[0].selectedProfileFingerprint);
+  assert.throws(() => selectAuthorizedAccountCandidate(pool, { candidateKey: "wrong" }), /candidate key mismatch/);
+  assert.deepEqual(state, fixture());
+});
+
+test("pure account selector fails closed on ambiguous or blocked destinations", () => {
+  const state = fixture();
+  const secondAuthorization = structuredClone(state.campaignAuthorizations[0]);
+  secondAuthorization.id = "authorization-candidate-projection-2";
+  secondAuthorization.binding = campaignAuthorizationFingerprint(secondAuthorization);
+  state.campaignAuthorizations.push(secondAuthorization);
+  const ambiguous = projectAuthorizedAccountPool(state, { now });
+  assert.throws(() => selectAuthorizedAccountCandidate(ambiguous, { campaignId: state.campaigns[0].id, targetId: state.targets[0].id }), /not selectable: AMBIGUOUS_AUTHORIZATION/);
+  const blockedState = fixture();
+  blockedState.campaignAuthorizations[0].status = "paused";
+  blockedState.campaignAuthorizations[0].binding = campaignAuthorizationFingerprint(blockedState.campaignAuthorizations[0]);
+  const blocked = projectAuthorizedAccountPool(blockedState, { now });
+  assert.throws(() => selectAuthorizedAccountCandidate(blocked, { campaignId: blockedState.campaigns[0].id, targetId: blockedState.targets[0].id }), /not selectable/);
 });
 
 test("normalization requires an exact policy profile binding", () => {
