@@ -1,6 +1,39 @@
-# Current State (verified 2026-10-19; release reconciliation 08:55 UTC)
+# Current State (latest verified 2026-10-20; fd253dd release-owner reconciliation)
 
-## Current release gate (2026-10-19)
+## Follow-up release gate (2026-10-20)
+
+- Fresh rerun remains green: `npm test` **530 total, 528 passed, 0 failed, 2 skipped**; standard focused transport/JEV/LinkedIn/authority/recovery gate **152/152**; broader focused product/service gate **337/337**.
+- `node --check src/*.mjs`, journal JSON parsing, `git diff --check`, UI typecheck and UI build pass. UI build emits only existing Vite configuration warnings.
+- Read-only ORCA probes report executable and connected runtime `1.4.229`, `ready` / `connected`; no browser command was issued.
+- Canonical state remains schema 8, revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorizations/windows/grants/leases remain `0/0/0/0`; four historical UNKNOWN executions remain immutable; published posts, social mutations and final Post clicks remain `0`.
+- Exact Design OS Studio authority is still absent. The reply does not bind the runtime campaign, target ID/URL, account ID, ORCA profile UUID, approved LinkedIn copy hash, media declaration/hashes, canonical audience or explicit UTC validity timestamps. No authorization, window, grant, lease or live execution was created.
+- Follow-up evidence: `plans/autonomous-build/reports/master-continuation-final-audit-20261020b.md`.
+
+## Current verification overlay (2026-10-20)
+
+- Integration HEAD is `fd253dd` (`fix: reject ambiguous transport certifications`).
+- Fresh `npm test`: **530 total, 528 passed, 0 failed, 2 skipped**.
+- Focused transport/JEV/LinkedIn/authority/recovery gate: **152 passed, 0 failed, 0 skipped**.
+- An expanded transport/JEV/LinkedIn/authority gate also passed **201/201**; the
+  standard journal gate is retained as 152/152 for comparability.
+- `node --check` on changed runtime modules, `git diff --check`, UI typecheck and
+  UI production build pass (Vite emitted only existing config warnings).
+- Read-only ORCA probes report executable and connected runtime `1.4.229`,
+  `ready` / `connected`; no browser command was issued in this continuation.
+- Canonical state remains schema 8, revision 194, SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`.
+  Active authorizations/windows/grants/leases are `0/0/0/0`; four historical
+  UNKNOWN executions remain immutable; published posts, social mutations and
+  final Post clicks remain `0`.
+- The latest authority reply still lacks exact campaign/product record binding,
+  target ID and URL, account ID, ORCA profile UUID, approved LinkedIn copy
+  bytes/hash, explicit media declaration, canonical audience serialization and
+  explicit UTC validity timestamps. Read-only Design OS campaign artifacts still
+  mark LinkedIn `AUTH_REQUIRED` with no approved LinkedIn content or publication.
+  No fresh authority, window, grant, lease or live execution was created.
+- Latest evidence: `plans/autonomous-build/reports/master-continuation-final-audit-20261020.md`.
+
+## Historical release gate (2026-10-19)
 
 - Fresh post-HEAD integration-branch `npm test`: **529 total, 527 passed, 0 failed, 2 skipped** (last full suite before documentation-only audits).
 - Focused transport/JEV/LinkedIn/authority and local continuity gate: **151 total, 151 passed, 0 failed, 0 skipped**.
@@ -32,11 +65,12 @@ See `plans/autonomous-build/reports/journal-reconcile-authority-product-20261019
   `ORCA-TRANSPORT-LIVE-CERT-001` remain open; no irreversible LinkedIn action
   or social mutation occurred.
 
-## Final release-owner audit overlay (2026-10-19)
+## Historical final release-owner audit overlay (2026-10-19)
 
-- Integration HEAD is `5d1a0e3` on `integration/autonomous-build`; the worktree
-  contains only the intentional untracked post-HEAD audit reports.
-- Latest full gate remains `npm test` **529 total, 527 passed, 0 failed, 2 skipped**; subsequent commits are documentation-only authority/product audits. The 522/520 figure in this historical overlay predates the latest test additions.
+- Integration HEAD at that historical checkpoint was `5d1a0e3` on
+  `integration/autonomous-build`; later source safety hardening is recorded in
+  the 2026-10-20 overlay above.
+- That historical full gate was `npm test` **529 total, 527 passed, 0 failed, 2 skipped**.
   `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI build pass.
 - Independent master release review is **ACCEPT — bounded foundation only**.
 - No additional safe implementation lane was found after re-review. Remaining
@@ -53,7 +87,7 @@ See `plans/autonomous-build/reports/journal-reconcile-authority-product-20261019
 - No LinkedIn Post click, social mutation, credential/session mutation or
   historical UNKNOWN retry occurred. The current shell also has no `orca` on PATH; the pinned application executable was probed read-only.
 
-## Latest release gate
+## Historical latest release gate (superseded by 2026-10-20 overlay)
 
 - Latest completed full suite: **529 total, 527 passed, 0 failed, 2 skipped** (no source changes since; audit commits only). `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI production build pass.
 - This is local branch evidence only. Canonical `/health` still runs source commit `b4fa42b…`, schema 8 revision 194; the integration branch is not deployed.
@@ -430,7 +464,7 @@ independent publication verification.
 - Mission Control now exposes authority, pool, channel, sandbox and unsupported-claim boundaries. No external action, canonical state mutation, browser/session mutation or UNKNOWN mutation occurred.
 
 
-## Post-HEAD continuation audit (2026-10-19; 08:55 UTC)
+## Historical post-HEAD continuation audit (2026-10-19; 08:55 UTC)
 
 - Fresh release gate at HEAD `9c09793`: `npm test` 527 total / 525 passed / 0 failed / 2 skipped; focused transport/JEV/LinkedIn/authority/continuity gate 151/151; source syntax, diff, UI typecheck/build and journal JSON parsing pass.
 - Read-only ORCA probe through the pinned application executable reports version `1.4.229`, runtime `ready`, connection `connected`; no browser command was issued.
@@ -439,4 +473,5 @@ independent publication verification.
 - Canonical state remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorization/window/grant/lease counts are `0/0/0/0`, posts `7`, protected UNKNOWN submissions `4`, and no social mutation/final Post click occurred.
 
 
-- Documentation-only release commit `59f70fc` is the current integration HEAD; the post-journal gate remains 527 total, 525 passed, 0 failed, 2 skipped with focused 151/151. See `plans/autonomous-build/reports/release-gate-reconciliation-20261019c.md`.
+- Documentation-only release commit `59f70fc` was the current integration HEAD at
+  that historical checkpoint; see `plans/autonomous-build/reports/release-gate-reconciliation-20261019c.md`.

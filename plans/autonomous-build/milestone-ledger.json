@@ -312,6 +312,16 @@
       "evidence": "HEAD 59f70fc post-HEAD release gate: npm test 527 total (525 passed, 0 failed, 2 skipped); focused safety/transport/authority/continuity gate 151/151; syntax, diff, UI typecheck/build and journal JSON pass. Read-only ORCA pinned executable and connected runtime report 1.4.229 ready/connected. No safe dependency-independent source lane found. Canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; active authority/window/grant/lease 0/0/0/0; social mutation 0; protected UNKNOWN records unchanged. Reports: plans/autonomous-build/reports/release-gate-reconciliation-20261019c.md and plans/autonomous-build/reports/next-bounded-implementation-scout-20261019.md"
     },
     {
+      "id": "post-head-transport-certification-reconciliation",
+      "status": "COMPLETE_LOCAL_VERIFIED_LIVE_UNPROVEN",
+      "evidence": "HEAD fd253dd rejects ambiguous transport certification records fail-closed; latest full npm test 530/528/0/2 and focused transport/JEV/LinkedIn/authority/recovery gate 152/152 pass. ORCA 1.4.229 executable/runtime are ready/connected by read-only pin; local reversible fixture activation remains 10/10 accessibility and 10/10 pointer. Canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; active authority/window/grant/lease 0/0/0/0; four historical UNKNOWN immutable; no social mutation or Post click. Report: plans/autonomous-build/reports/master-continuation-final-audit-20261020.md"
+    },
+    {
+      "id": "master-continuation-followup-20261020",
+      "status": "COMPLETE_LOCAL_VERIFIED_LIVE_UNPROVEN",
+      "evidence": "Fresh authority exactness audit and release-owner follow-up at fd253dd. Full npm test 530/528/0/2, focused transport/JEV/LinkedIn/authority/recovery 152/152, broader focused product/service gate 337/337, syntax/JSON/diff/UI gates pass; ORCA 1.4.229 ready/connected read-only pin; canonical state schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; active authority/window/grant/lease 0/0/0/0; four historical UNKNOWN immutable; no external/social mutation. Fresh Design OS authority still lacks exact campaign/target/account/profile/content/media/audience/UTC bindings. Report: plans/autonomous-build/reports/master-continuation-final-audit-20261020b.md"
+    },
+    {
       "id": "mission-control-engagement-detail",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "evidence": "c2e084a: existing engagementContext and conversationContinuity projections are rendered read-only in Mission Control with at most five conversation rows and five candidate rows, explicit status/reasons/reply and continuity counts, no action controls, and complete bounded credential redaction including Authorization Bearer headers. Dashboard test 2/2, focused gate 151/151, full npm 527/525/0/2, UI typecheck/build and diff checks pass; independent reviewer ACCEPT. No authority, browser, canonical, external or UNKNOWN mutation. Artifacts: plans/autonomous-build/mission-control-engagement-detail/"
