@@ -354,6 +354,11 @@ function labelChannel(value: any) {
 function labelStatus(value: any) {
   return statusLabels[String(value || "")] || String(value || "Unknown")
 }
+function boundedDisplayText(value: any, fallback = "UNKNOWN", max = 140) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim()
+  if (!text) return fallback
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
 function asNumber(value: any): number | null {
   const parsed = Number(value)
   return value === null ||
@@ -1842,6 +1847,9 @@ function CommunityDirectory({ data }: { data: R }) {
 function PlatformsPage({ data }: { data: R }) {
   const navigate = useNavigate()
   const stats = channelStats(data)
+  const channelCapabilities = Array.isArray(data.channelCapabilities)
+    ? data.channelCapabilities.slice(0, 64)
+    : []
   return (
     <div className="page-shell route-page">
       <PageHeader
@@ -1945,6 +1953,61 @@ function PlatformsPage({ data }: { data: R }) {
             </tbody>
           </table>
         </div>
+      </section>
+      <section className="panel platform-capability-panel" aria-label="Channel capability readiness">
+        <div className="panel-head">
+          <div>
+            <h2>Channel capability readiness</h2>
+            <p>
+              Projection chỉ đọc từ runtime; status không cấp quyền và không
+              chứng minh platform đã được publish.
+            </p>
+          </div>
+          <span className="status">{channelCapabilities.length ? `${channelCapabilities.length} channel` : "UNKNOWN"}</span>
+        </div>
+        {channelCapabilities.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                  <th>Targets</th>
+                  <th>Fresh ready</th>
+                  <th>Policy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {channelCapabilities.map((capability: R, index: number) => {
+                  const channel = String(capability?.channel || `channel-${index}`)
+                  const status = String(capability?.status || "UNKNOWN")
+                  const policy = [
+                    capability?.requiresRulesReview === true ? "rules review" : null,
+                    capability?.requiresHumanApproval === true ? "human approval" : null,
+                  ].filter(Boolean).join(" · ") || "bounded policy"
+                  return (
+                    <tr key={channel}>
+                      <td>
+                        <span className="platform-cell">
+                          <Mark name={capability?.label || channel} />
+                          <b>{boundedDisplayText(capability?.label || labelChannel(channel), "UNKNOWN", 80)}</b>
+                        </span>
+                      </td>
+                      <td><span className={`status ${slug(status)}`}>{boundedDisplayText(status, "UNKNOWN", 40)}</span></td>
+                      <td>{boundedDisplayText(capability?.reason)}</td>
+                      <td>{formatValue(capability?.targetCount)}</td>
+                      <td>{formatValue(capability?.freshReadyTargetCount)}</td>
+                      <td>{boundedDisplayText(policy, "bounded policy", 100)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">Chưa có channel capability projection.</div>
+        )}
       </section>
       <CommunityDirectory data={data} />
     </div>
