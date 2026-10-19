@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { clampPage, pageCountFor, paginateRows } from "../ui/src/pagination.mjs";
+import { compactDisplayText } from "../ui/src/display-safe.mjs";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -18,6 +19,13 @@ test("Figma-derived dashboard shell is wired to real local data", async () => {
   assert.match(app, /Không có dữ liệu mock/);
   assert.match(app, /Không tải được dữ liệu/);
   assert.match(app, /Đăng theo ủy quyền chủ sở hữu/);
+  assert.match(app, /Conversation detail/);
+  assert.match(app, /Engagement candidate detail/);
+  assert.match(app, /slice\(0, 5\)/);
+  assert.match(app, /không có nút approve, reply hoặc send/);
+  assert.match(app, /compactDisplayText/);
+  assert.equal(compactDisplayText("author token=abc123 password: hunter2 cookie=abc Bearer abcdef authorization: xyz Authorization: Bearer abcdefgh authorization=Bearer xyz", "UNKNOWN", 180), "author token=[REDACTED] password: [REDACTED] cookie=[REDACTED] Bearer [REDACTED] authorization: [REDACTED] Authorization: [REDACTED] authorization=[REDACTED]");
+  assert.equal(compactDisplayText("  ", "UNKNOWN", 10), "UNKNOWN");
   assert.match(css, /--purple:\s*#8778f8/);
   for (const mockValue of ["1.84M", "127.8K", "84.2K", "Relay AI Launch", "Nam Hoang"]) {
     assert.doesNotMatch(app, new RegExp(mockValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

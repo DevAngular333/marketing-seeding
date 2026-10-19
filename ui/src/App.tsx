@@ -17,6 +17,7 @@ import RoutedPage, {
   metricForPost,
   usePagedRows,
 } from "./Pages"
+import { compactDisplayText } from "./display-safe.mjs"
 
 type R = Record<string, any>
 type Theme = "dark" | "light"
@@ -1128,6 +1129,12 @@ function MissionControlPanel({ data }: { data: R }) {
   const conversationContinuity = data?.conversationContinuity && typeof data.conversationContinuity === "object"
     ? data.conversationContinuity
     : null
+  const conversationRows = Array.isArray(data?.engagementContext?.conversations)
+    ? data.engagementContext.conversations.slice(0, 5)
+    : []
+  const continuityRows = Array.isArray(conversationContinuity?.conversations)
+    ? conversationContinuity.conversations
+    : []
   const productIntelligence = Array.isArray(data?.productIntelligence)
     ? data.productIntelligence
     : []
@@ -1160,13 +1167,13 @@ function MissionControlPanel({ data }: { data: R }) {
   const currentBlockerCount = executionBlockers.length + accountBlockers + authorityBlockers.length + blockedAccountPools.length + blockedChannels.length + (factorySandbox?.executionEligible === true ? 0 : factorySandbox ? 1 : 0)
   const opportunityRows = discoveryOpportunities.slice(0, 5)
   const intelligenceRows = productIntelligence.slice(0, 4)
-  const compactText = (value: unknown, fallback = "UNKNOWN", max = 180) => {
-    const text = String(value ?? "").replace(/\s+/g, " ").trim()
-    return text ? (text.length > max ? `${text.slice(0, max - 1)}…` : text) : fallback
-  }
+  const compactText = compactDisplayText
   const fitLabel = (fit: R | null | undefined) => fit
     ? [fit.audience?.status, fit.channel?.status, fit.locale?.status].map((value) => String(value || "UNKNOWN")).join(" · ")
     : "No fit projection"
+  const continuityFor = (row: R) => continuityRows.find(
+    (item: R) => item?.postRef && row?.postRef && item.postRef === row.postRef,
+  ) || null
   return (
     <section className="panel mission-control-panel full-span">
       <div className="panel-head">
@@ -1362,6 +1369,65 @@ function MissionControlPanel({ data }: { data: R }) {
                 })}
               </div>
             ) : <div className="empty-state">Chưa có product intelligence handoff.</div>}
+          </section>
+          <section className="mission-detail-section" aria-label="Conversation detail">
+            <div className="mission-account-head">
+              <div>
+                <span className="mission-eyebrow">Conversation detail</span>
+                <small>Top 5 read-only rows · nội dung và trạng thái lấy từ engagement projection</small>
+              </div>
+              <span className="status">{conversationRows.length}/{Number(data?.engagementContext?.total || 0)}</span>
+            </div>
+            {conversationRows.length ? (
+              <div className="mission-detail-list">
+                {conversationRows.map((row: R, index: number) => {
+                  const continuity = continuityFor(row)
+                  const status = String(row?.status || "UNKNOWN").toUpperCase()
+                  const statusClass = status === "QUARANTINED" ? "status failed" : status === "ACTIONABLE" ? "status completed" : "status draft"
+                  const reasons = Array.isArray(row?.reasonCodes) ? row.reasonCodes : []
+                  return (
+                    <article key={String(row?.conversationRef || row?.interactionRef || `conversation-${index}`)}>
+                      <div className="mission-detail-title">
+                        <strong>{compactText(row?.channel, "UNKNOWN", 70)} · {compactText(row?.authorLabel, "unknown", 80)}</strong>
+                        <span className={statusClass}>{status}</span>
+                      </div>
+                      <small>{compactText(row?.text, "No conversation text", 180)}</small>
+                      <small>{Number(row?.replyCount || 0)} replies · latest {formatDate(row?.latestReplyAt || row?.capturedAt)}</small>
+                      <small>Reasons: {reasons.length ? reasons.map((reason: unknown) => compactText(reason, "UNKNOWN", 80)).join(" · ") : "UNKNOWN"}</small>
+                      <small>Continuity: {continuity ? `${Number(continuity.turnCount || 0)} turns · ${compactText(continuity.status, "UNKNOWN", 40)}` : "UNKNOWN"}</small>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : <div className="empty-state">Chưa có conversation detail.</div>}
+          </section>
+          <section className="mission-detail-section" aria-label="Engagement candidate detail">
+            <div className="mission-account-head">
+              <div>
+                <span className="mission-eyebrow">Engagement candidate detail</span>
+                <small>Top 5 advisory rows · không có nút approve, reply hoặc send</small>
+              </div>
+              <span className="status">{Math.min(5, engagementCandidates.length)}/{engagementCandidates.length}</span>
+            </div>
+            {engagementCandidates.length ? (
+              <div className="mission-detail-list">
+                {engagementCandidates.slice(0, 5).map((candidate: R, index: number) => {
+                  const status = String(candidate?.status || "UNKNOWN").toUpperCase()
+                  const statusClass = status === "QUARANTINED" ? "status failed" : status === "ACTIONABLE" ? "status completed" : "status draft"
+                  const reasons = Array.isArray(candidate?.reasonCodes) ? candidate.reasonCodes : []
+                  return (
+                    <article key={String(candidate?.candidateRef || `candidate-${index}`)}>
+                      <div className="mission-detail-title">
+                        <strong>{compactText(candidate?.channel, "UNKNOWN", 70)} · ref {compactText(candidate?.candidateRef, "UNKNOWN", 24)}</strong>
+                        <span className={statusClass}>{status}</span>
+                      </div>
+                      <small>Conversation {compactText(candidate?.conversationRef, "UNKNOWN", 24)} · target {compactText(candidate?.targetRef, "UNKNOWN", 24)}</small>
+                      <small>Reasons: {reasons.length ? reasons.map((reason: unknown) => compactText(reason, "UNKNOWN", 90)).join(" · ") : "UNKNOWN"}</small>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : <div className="empty-state">Chưa có engagement candidate.</div>}
           </section>
         </div>
       </div>
