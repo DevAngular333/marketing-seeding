@@ -1,0 +1,2 @@
+- Projection does not independently re-inspect repositories; it reports persisted inspection lineage only.
+- Live publication/authentication remains blocked by absent active authorization and expired readiness.

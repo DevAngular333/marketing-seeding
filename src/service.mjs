@@ -30,6 +30,7 @@ import { projectEngagementContext } from "./engagement-context.mjs";
 import { projectConversationContinuity } from "./conversation-continuity.mjs";
 import { projectDiscoveryOpportunities } from "./opportunity-projection.mjs";
 import { projectChannelCapabilities } from "./channel-capability-projection.mjs";
+import { projectProductIntelligence } from "./product-intelligence-projection.mjs";
 import { appRoot } from "./paths.mjs";
 
 export async function pollConfiguredDiscoveries(service, { actor = "scheduled-discovery-observer", shuttingDown = false } = {}) {
@@ -5607,6 +5608,7 @@ export class SeedingService {
     const authorizedAccountPool = projectAuthorizedAccountPool(state, { readinessTtlMs: this.readinessTtlMs });
     const authorizedAccountPoolSummary = projectAuthorizedAccountPoolSummary(authorizedAccountCandidates);
     const campaignAuthorityRuntime = projectCampaignAuthorityRuntime(state, { readinessTtlMs: this.readinessTtlMs });
+    const productIntelligenceRuntime = projectProductIntelligence(state);
     const engagementContext = projectEngagementContext(state, { now: new Date() });
     const conversationContinuity = projectConversationContinuity(state, { now: new Date() });
     const executionRuntime = projectExecutionRuntime(state);
@@ -5691,6 +5693,7 @@ export class SeedingService {
       authorizedAccountPool,
       authorizedAccountPoolSummary,
       campaignAuthorityRuntime,
+      productIntelligenceRuntime,
       engagementContext,
       conversationContinuity,
       executionRuntime,

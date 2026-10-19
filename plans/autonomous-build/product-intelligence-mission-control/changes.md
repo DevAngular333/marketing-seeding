@@ -1,0 +1,3 @@
+- Added `src/product-intelligence-projection.mjs`.
+- Added `productIntelligenceRuntime` to `SeedingService.dashboard()`.
+- Added deterministic/redaction/blocking tests in `test/product-intelligence-projection.test.mjs`.
