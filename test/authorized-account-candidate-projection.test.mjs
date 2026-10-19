@@ -218,6 +218,9 @@ test("pure account selector fails closed on ambiguous or blocked destinations", 
   blockedState.campaignAuthorizations[0].binding = campaignAuthorizationFingerprint(blockedState.campaignAuthorizations[0]);
   const blocked = projectAuthorizedAccountPool(blockedState, { now });
   assert.throws(() => selectAuthorizedAccountCandidate(blocked, { campaignId: blockedState.campaigns[0].id, targetId: blockedState.targets[0].id }), /not selectable/);
+  const missingIdentity = projectAuthorizedAccountPool(fixture(), { now });
+  missingIdentity[0].selectedAccountId = null;
+  assert.throws(() => selectAuthorizedAccountCandidate(missingIdentity), /missing exact account\/profile identity/);
 });
 
 test("normalization requires an exact policy profile binding", () => {

@@ -1422,6 +1422,9 @@ export function selectAuthorizedAccountCandidate(pool = [], { campaignId = null,
   if (candidateKey != null && String(candidateKey) !== String(row.selectedCandidateKey)) {
     throw new Error("Authorized account pool candidate key mismatch");
   }
+  if (!String(row.selectedAccountId || "").trim() || !/^[a-f0-9]{64}$/i.test(String(row.selectedProfileFingerprint || ""))) {
+    throw new Error("Authorized account pool selection is missing exact account/profile identity");
+  }
   const selected = row.selectedCandidateKey;
   return Object.freeze({
     campaignId: String(row.campaignId || ""),
