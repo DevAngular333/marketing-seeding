@@ -35,7 +35,7 @@
     "9ea1270 feat(metrics): make official collection idempotent",
     "28798e8 docs(metrics): record collector milestone evidence",
     "d764783 fix(jev): isolate autonomous dry-run reconciliation",
-    "working-tree seam: explicit rehearsal candidate \u2192 existing JEV dry-run queue handoff with strict lineage, readiness and idempotency",
+    "working-tree seam: explicit rehearsal candidate → existing JEV dry-run queue handoff with strict lineage, readiness and idempotency",
     "working-tree seam: bounded read-only execution evidence projection for Mission Control dashboard and /health",
     "working-tree seam: versioned SYSTEM_AGENTIC_AI DRY_RUN handoff bridge with wrapped/raw route compatibility and restart-safe zero-side-effect proof",
     "working-tree seam: Product Factory sandbox capability/profile preflight with fail-closed eligibility",
@@ -1534,6 +1534,42 @@
       "externalSideEffects": false,
       "canonicalRuntimeMutated": false,
       "historicalUnknownMutated": false
+    },
+    {
+      "name": "post_head_continuation_audit_latest",
+      "result": "PASS_LOCAL_FOUNDATION_ONLY",
+      "head": "9c09793e7e69fe15732d4b441c1d0bb795e9a811",
+      "tests": 527,
+      "passed": 525,
+      "failed": 0,
+      "skipped": 2,
+      "command": "npm test",
+      "exitCode": 0,
+      "focusedGate": {
+        "tests": 151,
+        "passed": 151,
+        "failed": 0,
+        "skipped": 0,
+        "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs test/live-execution-grant.test.mjs test/standing-autonomous-delegation-proof.test.mjs test/authorized-account-candidate-projection.test.mjs test/channel-capability-projection.test.mjs test/conversation-continuity.test.mjs test/engagement-context.test.mjs test/opportunity-projection.test.mjs"
+      },
+      "syntax": "passed",
+      "gitDiffCheck": "passed",
+      "uiTypecheck": "passed",
+      "uiBuild": "passed",
+      "journalJson": "passed",
+      "orcaReadOnlyPin": {
+        "version": "1.4.229",
+        "state": "ready",
+        "connection": "connected",
+        "commandIssued": "read-only"
+      },
+      "safeDependencyIndependentLane": "none_found",
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false,
+      "report": "plans/autonomous-build/reports/release-gate-reconciliation-20261019b.md"
     }
-  ]
+  ],
+  "latestHead": "9c09793e7e69fe15732d4b441c1d0bb795e9a811",
+  "latestGate": "post_head_continuation_audit_latest"
 }

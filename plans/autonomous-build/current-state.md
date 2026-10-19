@@ -1,8 +1,8 @@
-# Current State (verified 2026-10-19; release reconciliation 04:04 UTC)
+# Current State (verified 2026-10-19; release reconciliation 08:40 UTC)
 
 ## Current release gate (2026-10-19)
 
-- Fresh integration-branch `npm test`: **527 total, 525 passed, 0 failed, 2 skipped**.
+- Fresh post-audit integration-branch `npm test`: **527 total, 525 passed, 0 failed, 2 skipped**.
 - Focused transport/JEV/LinkedIn/authority and local continuity gate: **151 total, 151 passed, 0 failed, 0 skipped**.
 - `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI build pass.
 - Older 522/520/0/2 and 523/521/0/2 values below are historical milestone snapshots.
@@ -13,7 +13,7 @@
 - No LinkedIn Post click, social mutation, credential/session mutation, canonical
   write, or UNKNOWN retry occurred.
 
-See `plans/autonomous-build/reports/release-journal-reconciliation-20261019.md`.
+See `plans/autonomous-build/reports/release-journal-reconciliation-20261019b.md` for the post-HEAD gate and `plans/autonomous-build/reports/next-bounded-implementation-scout-20261019.md` for the dependency-independent lane audit.
 
 ## ORCA runtime configuration remediation overlay (2026-10-19)
 
@@ -34,8 +34,8 @@ See `plans/autonomous-build/reports/release-journal-reconciliation-20261019.md`.
 
 ## Final release-owner audit overlay (2026-10-19)
 
-- Integration HEAD is `5519b80` on `integration/autonomous-build`; the worktree
-  retains the accepted implementation/journal changes intentionally.
+- Integration HEAD is `9c09793` on `integration/autonomous-build`; the worktree
+  contains only the intentional untracked post-HEAD audit reports.
 - Fresh full gate at the latest release reconciliation: `npm test` **527 total, 525 passed, 0 failed, 2 skipped**. The 522/520 figure in this historical overlay predates the latest test additions.
   `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI build pass.
 - Independent master release review is **ACCEPT — bounded foundation only**.
@@ -51,11 +51,11 @@ See `plans/autonomous-build/reports/release-journal-reconciliation-20261019.md`.
   Active authorizations/windows/grants/leases: `0/0/0/0`; published posts: `0`;
   protected UNKNOWN submissions: `4`.
 - No LinkedIn Post click, social mutation, credential/session mutation or
-  historical UNKNOWN retry occurred.
+  historical UNKNOWN retry occurred. The current shell also has no `orca` on PATH; the pinned application executable was probed read-only.
 
 ## Latest release gate
 
-- Latest integration-branch `npm test`: **527 total, 525 passed, 0 failed, 2 skipped**. `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI production build pass.
+- Latest post-HEAD integration-branch `npm test`: **527 total, 525 passed, 0 failed, 2 skipped**. `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI production build pass.
 - This is local branch evidence only. Canonical `/health` still runs source commit `b4fa42b…`, schema 8 revision 194; the integration branch is not deployed.
 - Canonical runtime has zero active `campaignAuthorizations`, one-time execution windows, `liveExecutionGrants` or execution leases; four historical UNKNOWN executions remain immutable.
 - ORCA 1.4.229 is available and its executable/connected daemon pin matches. Accessibility and pointer transports each pass 10/10 semantic activation trials on the resettable local fixture; real LinkedIn irreversible submit remains unproven.
@@ -428,3 +428,12 @@ independent publication verification.
 - Focused transport/LinkedIn/JEV remains `104/104` in the combined changed-area gate; ORCA runtime pin is still `1.4.229`.
 - The new `campaignAuthorityRuntime` dashboard projection is advisory and read-only: it reports active standing authorization, derived windows/grants/leases, account candidate eligibility and deterministic blocker reasons without creating or changing execution controls.
 - Mission Control now exposes authority, pool, channel, sandbox and unsupported-claim boundaries. No external action, canonical state mutation, browser/session mutation or UNKNOWN mutation occurred.
+
+
+## Post-HEAD continuation audit (2026-10-19; 08:40 UTC)
+
+- Fresh release gate at HEAD `9c09793`: `npm test` 527 total / 525 passed / 0 failed / 2 skipped; focused transport/JEV/LinkedIn/authority/continuity gate 151/151; source syntax, diff, UI typecheck/build and journal JSON parsing pass.
+- Read-only ORCA probe through the pinned application executable reports version `1.4.229`, runtime `ready`, connection `connected`; no browser command was issued.
+- Host probe finds only macOS `sandbox-exec`; harmless backend invocation is available but the audited profile, network/filesystem/process policy, descendant cleanup and resource-limit proof remain absent, so Product Factory stays fail-closed.
+- Independent bounded scout found no safe dependency-independent source lane. Account selection/failover, engagement execution, arbitrary factory commands and live metrics would require new versioned contracts or external capability.
+- Canonical state remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorization/window/grant/lease counts are `0/0/0/0`, posts `7`, protected UNKNOWN submissions `4`, and no social mutation/final Post click occurred.

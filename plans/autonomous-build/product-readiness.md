@@ -1,6 +1,6 @@
-# Product Readiness Snapshot (verified 2026-10-19; release reconciliation 04:04 UTC)
+# Product Readiness Snapshot (verified 2026-10-19; post-HEAD reconciliation 08:40 UTC)
 
-Latest gate: `npm test` **527 total, 525 passed, 0 failed, 2 skipped** on the integration branch; focused transport/JEV/LinkedIn/authority gate **151/151**. Canonical service is not redeployed from this branch. Older milestone counts below are historical.
+Latest post-HEAD gate: `npm test` **527 total, 525 passed, 0 failed, 2 skipped** on the integration branch; focused transport/JEV/LinkedIn/authority gate **151/151**. Canonical service is not redeployed from this branch. Older milestone counts below are historical.
 
 | Area | Status | Evidence | Blocker / limit |
 |---|---|---|---|
@@ -74,3 +74,8 @@ Latest gate: `npm test` **527 total, 525 passed, 0 failed, 2 skipped** on the in
 | Authorized account candidate projection | READY (LOCAL) | Exact authorization/destination/target/account/profile/readiness projection; deterministic stable key/order, cap 128, secret-safe allowlist and restart-safe dashboard read model; focused candidate/account/authority 56/56 and full `npm test` 527/525/0/2; independent review PASS (bounded) | Advisory pre-dispatch projection only; no account selection, failover, authority, browser execution or live platform proof |
 | Browser interaction transport | PARTIAL | ORCA 1.4.229 local resettable fixture: accessibility 10/10 and pointer 10/10 semantic activation, zero wrong-target/no-transition/silent fallback; focused 106/106 | Real LinkedIn submit, acceptance and independent publication remain unproven |
 | Full suite | PASS (LOCAL) | `npm test`: 527 total, 525 passed, 0 failed, 2 skipped | Existing skips remain; canonical service not redeployed from integration branch |
+
+
+## Post-HEAD continuation audit (2026-10-19)
+
+The release gate was rerun after the fresh authority audit: full Node suite 527/525/0/2, focused safety/transport/authority/continuity 151/151, syntax/diff/UI/JSON checks pass. The pinned ORCA executable and connected runtime both report 1.4.229, ready/connected (read-only probe; no browser command). No fresh exact authority exists; the canonical service remains undeployed from this branch. A bounded implementation scout found no safe dependency-independent source lane.

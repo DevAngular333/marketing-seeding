@@ -31,7 +31,7 @@
       "resolved_at": null,
       "resume_point": "Fresh exact authorized LinkedIn campaign/account/profile/session input and policy permitting one harmless live test",
       "external_dependency": "Authorized campaign objective/content, account/profile, target and policy permitting one harmless live test",
-      "last_checked_at": "2026-10-19T02:02:27Z"
+      "last_checked_at": "2026-10-19T14:02:27Z"
     },
     {
       "blocker_id": "ORCA-TRANSPORT-LIVE-CERT-001",
@@ -47,7 +47,7 @@
       "resolved_at": null,
       "resume_point": "Use either pinned transport only after a fresh exact live authority and readiness are available; irreversible LinkedIn publication still requires independent acceptance and publication proof.",
       "external_dependency": "Fresh authorized LinkedIn live lane is required for irreversible-submit/publication proof; transport control-activation certification itself is complete.",
-      "last_checked_at": "2026-10-19T08:28:40Z"
+      "last_checked_at": "2026-10-19T14:02:27Z"
     },
     {
       "blocker_id": "METRICS-CHECKPOINT-LIVE-001",
@@ -63,7 +63,7 @@
       "resolved_at": null,
       "resume_point": "Authorized provider credentials/network and a durable collection cadence policy.",
       "external_dependency": "Live provider access and policy authorization",
-      "last_checked_at": "2026-10-19T02:02:27Z"
+      "last_checked_at": "2026-10-19T14:02:27Z"
     },
     {
       "blocker_id": "PRODUCT-FACTORY-SANDBOX-001",
@@ -79,7 +79,7 @@
       "resolved_at": null,
       "resume_point": "An independently reviewed sandbox with explicit network/filesystem/process/resource policy and descendant cleanup",
       "external_dependency": "Audited OS/container sandbox capability on the execution host",
-      "last_checked_at": "2026-10-19T02:02:27Z"
+      "last_checked_at": "2026-10-19T14:02:27Z"
     },
     {
       "blocker_id": "RELEASE-JOURNAL-DRIFT-001",
@@ -97,5 +97,13 @@
       "external_dependency": "None.",
       "last_checked_at": "2026-10-19T04:04:17Z"
     }
-  ]
+  ],
+  "last_audit": {
+    "at": "2026-10-19T14:02:27Z",
+    "head": "9c09793e7e69fe15732d4b441c1d0bb795e9a811",
+    "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
+    "externalSideEffects": false,
+    "canonicalRuntimeMutated": false,
+    "historicalUnknownMutated": false
+  }
 }
