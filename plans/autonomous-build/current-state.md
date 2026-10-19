@@ -24,7 +24,7 @@
 - Canonical runtime remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorization/window/grant/lease counts remain `0/0/0/0`.
 - This release remains local/integration only; main and `SYSTEM_AGENTIC_AI` Core were not changed or deployed.
 
-## Follow-up release gate (2026-10-20)
+## Historical follow-up release gate (2026-10-20)
 
 - Fresh rerun remains green: `npm test` **536 total, 534 passed, 0 failed, 2 skipped**; focused discovery feed gate **28/28**; standard focused transport/JEV/LinkedIn/authority/recovery gate **152/152**; broader focused product/service gate **337/337**.
 - `node --check src/*.mjs`, journal JSON parsing, `git diff --check`, UI typecheck and UI build pass. UI build emits only existing Vite configuration warnings.
@@ -34,9 +34,9 @@
 - Exact Design OS Studio authority is still absent. The reply does not bind the runtime campaign, target ID/URL, account ID, ORCA profile UUID, approved LinkedIn copy hash, media declaration/hashes, canonical audience or explicit UTC validity timestamps. No authorization, window, grant, lease or live execution was created.
 - Follow-up evidence: `plans/autonomous-build/reports/master-continuation-final-audit-20261020b.md`.
 
-## Current verification overlay (2026-10-20)
+## Historical verification overlay (2026-10-20)
 
-- Integration source HEAD remains `6e37177` (discovery-feed release journal); source safety HEAD remains `fd253dd`; latest journal commit is `6e37177`.
+- Integration source HEAD remains `6e37177` (discovery-feed release journal); source safety HEAD remains `fd253dd`; source release gate is `6e37177`; later branch commits are documentation-only.
 - Fresh `npm test`: **536 total, 534 passed, 0 failed, 2 skipped**.
 - Focused transport/JEV/LinkedIn/authority/recovery gate: **152 passed, 0 failed, 0 skipped**.
 - An expanded transport/JEV/LinkedIn/authority gate also passed **201/201**; the

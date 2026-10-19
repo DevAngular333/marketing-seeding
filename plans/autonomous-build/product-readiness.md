@@ -37,7 +37,7 @@ Latest post-HEAD gate: `npm test` **536 total, 534 passed, 0 failed, 2 skipped**
 |---|---|---|---|
 | Standing template candidate scheduling | READY (LOCAL) | Queue derives exact versioned template candidates from persisted stories under one active standing authority; focused 47/47; full 412/410/0/2 | No live authorization/session/ORCA proof |
 | Candidate lineage integrity | READY (LOCAL) | Immutable identity preservation, source/claim/render/fingerprint revalidation and tamper regressions | Real platform behavior unverified |
-| Autonomous irreversible publication | BLOCKED | Existing JEV/LinkedIn/UNKNOWN contracts remain intact; no live execution attempted; latest full suite 530 total, 528 passed, 0 failed, 2 skipped | Fresh exact authorization/session and real LinkedIn irreversible-submit acceptance lane unproven; ORCA is available locally and certified only for reversible fixture control activation |
+| Autonomous irreversible publication | BLOCKED | Existing JEV/LinkedIn/UNKNOWN contracts remain intact; no live execution attempted; latest full suite 536 total, 534 passed, 0 failed, 2 skipped | Fresh exact authorization/session and real LinkedIn irreversible-submit acceptance lane unproven; ORCA is available locally and certified only for reversible fixture control activation |
 | Product Factory artifact lifecycle | PARTIAL | Exact operator promotion from successful factory candidate to existing verified artifact schema; focused independent gate 72/72; restart idempotency and source drift checks | No sandboxed build/render execution or automatic artifact selection/attachment |
 
 
@@ -73,7 +73,7 @@ Latest post-HEAD gate: `npm test` **536 total, 534 passed, 0 failed, 2 skipped**
 |---|---|---|---|
 | Authorized account candidate projection | READY (LOCAL) | Exact authorization/destination/target/account/profile/readiness projection; deterministic stable key/order, cap 128, secret-safe allowlist and restart-safe dashboard read model; focused candidate/account/authority 56/56 and full `npm test` 527/525/0/2; independent review PASS (bounded) | Advisory pre-dispatch projection only; no account selection, failover, authority, browser execution or live platform proof |
 | Browser interaction transport | PARTIAL | ORCA 1.4.229 local resettable fixture: accessibility 10/10 and pointer 10/10 semantic activation, zero wrong-target/no-transition/silent fallback; focused current gate 152/152 | Real LinkedIn submit, acceptance and independent publication remain unproven |
-| Full suite | PASS (LOCAL) | `npm test`: 530 total, 528 passed, 0 failed, 2 skipped | Existing skips remain; canonical service not redeployed from integration branch |
+| Historical full suite snapshot | PASS (LOCAL) | Earlier `npm test`: 530 total, 528 passed, 0 failed, 2 skipped | Existing skips remain; canonical service not redeployed from integration branch |
 
 
 ## Historical post-journal continuation audit (2026-10-19)

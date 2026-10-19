@@ -6,10 +6,9 @@ Build a bounded, evidence-driven distribution runtime in `marketing-seeding` tha
 
 ## Current gate (2026-10-20)
 
-Post-continuation release reconciliation at `fd253dd` confirms the local safety
-hardening; the dependency-independent scout found no additional safe source lane.
+Release reconciliation at source gate `6e37177` and docs-only branch HEAD after it confirms the local safety hardening; the dependency-independent scout found no additional safe source lane.
 
-Latest local integration evidence: `npm test` **530 total, 528 passed, 0 failed, 2 skipped**; focused transport/JEV/LinkedIn/authority/recovery gate **152/152**; no live social mutation. Canonical runtime remains on its older deployed source and has no active exact live authority. Older counts in milestone history are retained as historical evidence.
+Latest local integration evidence: `npm test` **536 total, 534 passed, 0 failed, 2 skipped**; focused discovery feed gate **28/28** and prior focused transport/JEV/LinkedIn/authority/recovery gate **152/152**; no live social mutation. Canonical runtime remains on its older deployed source and has no active exact live authority. Older counts in milestone history are retained as historical evidence.
 
 ## Current wave — locally implemented and verified
 
@@ -92,7 +91,7 @@ provider lane.
     execution artifacts. Keep LIVE authority, browser execution and external
     publication blocked until a separately authorized lane exists.
 
-Result: local implementation gates pass (latest full Node suite **530 total, 528 passed, 0 failed, 2 skipped**); the current focused transport/JEV/LinkedIn/authority/recovery gate is **152/152**. Earlier subsystem counts in this paragraph remain historical snapshots. UI typecheck/build pass, and no social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA local reversible control activation is certified, but real LinkedIn activation and publication remain unproven.
+Result: local implementation gates pass (latest full Node suite **536 total, 534 passed, 0 failed, 2 skipped**); the focused discovery feed gate is **28/28** and the prior focused transport/JEV/LinkedIn/authority/recovery gate is **152/152**. Earlier subsystem counts in this paragraph remain historical snapshots. UI typecheck/build pass, and no social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA local reversible control activation is certified, but real LinkedIn activation and publication remain unproven.
 
 ## Later waves (dependency order)
 
@@ -150,9 +149,22 @@ Arbitrary project commands remain `NOT_EXECUTED_UNSAFE`. No browser, ORCA,
 network, credential, social, canonical or historical UNKNOWN mutation occurred.
 
 
-## Continuation decision (2026-10-19)
+## Continuation decision (2026-10-20)
 
 The fresh authority audit, pinned ORCA read-only probe, host sandbox probe, bounded implementation scout and post-HEAD release gate agree: the local bounded foundation is release-ready, while the remaining paths require genuine external inputs or an audited host capability. Standing autonomous authorization is implemented and proven in isolated state; it cannot synthesize fresh live authority from terminal records. ORCA accessibility and pointer transports are certified for local/reversible control activation only; neither may be promoted to irreversible LinkedIn submit without one fresh authorized live acceptance/publication run. No further source implementation is authorized by current evidence.
 
 
-Current release record: `plans/autonomous-build/reports/master-continuation-final-audit-20261020.md` (HEAD `fd253dd`, full 530/528/0/2, focused 152/152). Commit `fd253dd` rejects conflicting certification records for one transport identity; local reversible activation remains certified, while irreversible LinkedIn publication remains unproven.
+Current release record: `plans/autonomous-build/discovery-feed-observer/` and `plans/autonomous-build/final-report.md` (source gate `6e37177`, current branch docs-only reconciliation, full 536/534/0/2, focused feed 28/28, prior safety gate 152/152). Commit `fd253dd` rejects conflicting certification records for one transport identity; local reversible activation remains certified, while irreversible LinkedIn publication remains unproven.
+
+
+## Current bounded-product decision (2026-10-20)
+
+The current bounded foundation is locally verified and pushed on
+`integration/autonomous-build`. Discovery now accepts bounded RSS/Atom item
+observations through the existing advisory path. Remaining Product Definition of
+Done gaps are not safely closable with local-only changes: exact live LinkedIn
+authority/session/content binding, audited build sandbox capability, live metric
+provider access, upstream live handoff, platform search/community rules,
+production model/provider content, contextual engagement execution and
+secure multi-account recovery remain external-capability or larger-contract
+lanes. No historical UNKNOWN or external side effect was touched.
