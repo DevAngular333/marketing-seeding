@@ -1733,8 +1733,8 @@
       "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020.md"
     }
   ],
-  "latestHead": "fdf3419",
-  "latestGate": "discovery_feed_observer_20261020",
+  "latestHead": "7c9f813",
+  "latestGate": "authorized_account_selector_hardening_20261020",
   "followupGate": {
     "name": "master_continuation_followup_20261020b",
     "result": "PASS_LOCAL_FOUNDATION_ONLY",
@@ -1792,9 +1792,24 @@
     "name": "master_continuation_audit_20261020c",
     "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
     "head": "fdf3419",
-    "fullSuite": {"tests": 536, "passed": 534, "failed": 0, "skipped": 2},
-    "focusedDiscoveryFeed": {"tests": 28, "passed": 28, "failed": 0, "skipped": 0},
-    "priorSafetyGate": {"tests": 152, "passed": 152, "failed": 0, "skipped": 0},
+    "fullSuite": {
+      "tests": 536,
+      "passed": 534,
+      "failed": 0,
+      "skipped": 2
+    },
+    "focusedDiscoveryFeed": {
+      "tests": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0
+    },
+    "priorSafetyGate": {
+      "tests": 152,
+      "passed": 152,
+      "failed": 0,
+      "skipped": 0
+    },
     "externalSideEffects": false,
     "canonicalRuntimeMutated": false,
     "historicalUnknownMutated": false,
@@ -1824,5 +1839,38 @@
     "canonicalRuntimeMutated": false,
     "historicalUnknownMutated": false,
     "artifact": "plans/autonomous-build/discovery-feed-observer/"
+  },
+  "selectorGate": {
+    "name": "authorized_account_selector_hardening_20261020",
+    "result": "PASS_LOCAL_FOUNDATION_ONLY",
+    "head": "7c9f813",
+    "focusedSelectorAuthorityReadinessLinkedIn": {
+      "tests": 75,
+      "passed": 75,
+      "failed": 0,
+      "skipped": 0
+    },
+    "broaderFocusedTransportJevLinkedInAuthorityRecovery": {
+      "tests": 154,
+      "passed": 154,
+      "failed": 0,
+      "skipped": 0
+    },
+    "fullSuite": {
+      "tests": 538,
+      "passed": 536,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0
+    },
+    "syntax": "passed",
+    "gitDiffCheck": "passed",
+    "journalJson": "passed",
+    "uiBuild": "passed",
+    "orcaReadOnlyVersion": "1.4.229",
+    "externalSideEffects": false,
+    "canonicalRuntimeMutated": false,
+    "historicalUnknownMutated": false,
+    "artifact": "plans/autonomous-build/account-selector-next/"
   }
 }

@@ -330,10 +330,16 @@
       "id": "discovery-feed-observer",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "evidence": "Existing bounded public discovery observer now parses RSS/Atom items through normalization, policy, deduplication and fit; safe same-origin links, source IDs and separate normalized publishedAt are covered by 28 focused tests. Final npm test 536/534/0/2; syntax, diff, JSON and UI gates pass. Advisory only: no authority, execution, browser, canonical, social or historical UNKNOWN mutation. Artifacts: plans/autonomous-build/discovery-feed-observer/"
-    }    ,{
+    },
+    {
       "id": "master-continuation-audit-20261020c",
       "status": "COMPLETE_LOCAL_VERIFIED_EXTERNAL_BLOCKERS_REMAIN",
       "evidence": "Fresh post-feed release audit over tested source lineage through continuation reconciliation fdf3419 (current branch audit commits are documentation-only): full npm 536/534/0/2, focused discovery feed 28/28, prior transport/JEV/LinkedIn/authority/recovery 152/152, syntax/diff/JSON/UI pass; canonical state unchanged, active authority/window/grant/lease 0/0/0/0, historical UNKNOWN immutable, no external side effects. No safe narrow source lane remains. Report: plans/autonomous-build/reports/master-continuation-final-audit-20261020c.md"
+    },
+    {
+      "id": "authorized-account-selector-hardening-20261020",
+      "status": "COMPLETE_LOCAL_VERIFIED_EXTERNAL_BLOCKERS_REMAIN",
+      "evidence": "Pure selector over existing authorized account pool requires unique/policy-selected eligible row plus exact account ID and 64-char profile fingerprint; focused selector/authority/readiness/LinkedIn 75/75, broader transport/JEV/LinkedIn/authority/recovery 154/154, full npm 538/536/0/2, no runtime/browser/social/UNKNOWN mutation. Artifact: plans/autonomous-build/account-selector-next/report.md"
     }
   ]
 }

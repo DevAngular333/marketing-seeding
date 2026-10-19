@@ -1,3 +1,15 @@
+# Product Readiness Snapshot (verified 2026-10-20; selector hardening release)
+
+Fresh gate after commits `f28de78` and `7c9f813`: full `npm test` **538 total, 536 passed, 0 failed, 2 skipped**; broader transport/JEV/LinkedIn/authority/recovery gate **154/154**; selector/authority/readiness/LinkedIn gate **75/75**; syntax, `git diff --check`, journal JSON and `npm --prefix ui run build` pass. UI build emits only existing Vite configuration warnings. Canonical service remains undeployed from this branch.
+
+The selector is local and fail-closed: it reuses the existing authorized account pool projection, permits only `UNIQUE_ELIGIBLE`/`POLICY_SELECTED` rows with exact account identity and profile fingerprint, and performs no authority, state, browser or external mutation.
+
+Canonical state remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorization/window/grant/lease counts are `0/0/0/0`; four historical UNKNOWN records are immutable; no social mutation or final Post click occurred.
+
+| Fresh live lane | BLOCKED | Exact Design OS authority still lacks runtime campaign/productRepo, target ID+URL, account ID, ORCA profile UUID, approved content bytes/contentId/SHA-256, media declaration/hashes, canonical audience, UTC bounds and schedule fields | Cannot safely derive fresh authorization/window/grant/lease or run live submit |
+
+---
+
 # Product Readiness Snapshot (verified 2026-10-20; 43322b8 discovery-feed release)
 
 Latest post-HEAD gate: `npm test` **536 total, 534 passed, 0 failed, 2 skipped** on the integration branch; focused discovery feed gate **28/28** and the prior focused transport/JEV/LinkedIn/authority/recovery gate **152/152** remain green. Canonical service is not redeployed from this branch. Older milestone counts below are historical.

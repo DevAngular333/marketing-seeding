@@ -74,6 +74,12 @@
 **Branch:** `integration/autonomous-build`
 **Core:** `SYSTEM_AGENTIC_AI` Production Core remains frozen and unchanged.
 
+## Latest release gate (selector hardening)
+
+The fresh integration-branch gate after `f28de78` and `7c9f813` is **538 total, 536 passed, 0 failed, 2 skipped**. The broader transport/JEV/LinkedIn/authority/recovery gate is **154/154** and selector/authority/readiness/LinkedIn is **75/75**. Syntax, diff, journal JSON and UI build pass. The selector is a read-only/fail-closed planning primitive; this branch is not deployed to the canonical service.
+
+Canonical state remains schema 8/revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`, with active authorizations/windows/grants/leases `0/0/0/0` and four immutable UNKNOWN submissions. No browser action, Post click, social mutation, authority creation or credential/session mutation occurred.
+
 ## Latest release gate
 
 The latest integration-branch `npm test` run is **536 total, 534 passed, 0 failed, 2 skipped**. Focused feed gate 28/28, syntax, diff, UI typecheck and UI build checks pass. This branch is not deployed to the canonical service.

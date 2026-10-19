@@ -1,5 +1,15 @@
 # Current State (latest verified 2026-10-20; 43322b8 discovery-feed release)
 
+
+## Fresh continuation checkpoint (2026-10-20; selector hardening and release gate)
+
+- Added a pure, deterministic, fail-closed authorized account selector over the existing account-pool projection. It accepts only a unique/policy-selected eligible row with a non-empty exact account ID and a 64-character profile fingerprint; it does not create authority, rebind a post, mutate state, or dispatch browser work.
+- Focused selector/authority/readiness/LinkedIn gate: **75 passed, 0 failed, 0 skipped**. Broader transport/JEV/LinkedIn/authority/recovery gate: **154 passed, 0 failed, 0 skipped**. Full `npm test`: **538 total, 536 passed, 0 failed, 2 skipped**. `node --check src/*.mjs`, `git diff --check`, journal JSON parsing and `npm --prefix ui run build` pass; Vite reports only existing configuration warnings.
+- Canonical runtime remains schema 8, revision 194, SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorizations/windows/grants/leases remain `0/0/0/0`; four historical UNKNOWN executions remain immutable; published posts and social mutations remain `0`.
+- No browser command, ORCA input, final Post click, fresh execution, submit intent, authority/window/grant/lease, credential/session mutation or external side effect occurred. ORCA CLI executable reports `1.4.229`; no new browser interaction was issued.
+- The Design OS Studio authority reply still does not bind exact runtime campaign/productRepo, LinkedIn target ID+URL, account ID, ORCA profile UUID, approved content bytes/contentId/SHA-256, media declaration/hashes, canonical audience, explicit UTC bounds or required schedule fields. Existing runtime identities/hashes belong to terminal historical campaigns and were not reused.
+- The selector artifact is `plans/autonomous-build/account-selector-next/report.md`; the dependency-independent gap audit is `plans/autonomous-build/independent-product-gap-audit/report.md`.
+
 ## Discovery feed observer continuation (2026-10-20)
 
 - Added bounded RSS/Atom item extraction through the existing public discovery
