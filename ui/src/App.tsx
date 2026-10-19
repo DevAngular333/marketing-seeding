@@ -1171,6 +1171,14 @@ function MissionControlPanel({ data }: { data: R }) {
     ? data.productIntelligenceRuntime.slice(0, 64)
     : []
   const compactText = compactDisplayText
+  const strategyHistory = (Array.isArray(data?.strategy) ? data.strategy : [])
+    .flatMap((row: R) => (Array.isArray(row?.recent) ? row.recent : row?.latest ? [row.latest] : []).map((item: R) => ({ ...item, campaignId: row.campaignId })))
+    .sort((left: R, right: R) => String(right?.createdAt || right?.timestamp || "").localeCompare(String(left?.createdAt || left?.timestamp || "")))
+    .slice(0, 5)
+  const learningHistory = (Array.isArray(data?.learning) ? data.learning : [])
+    .flatMap((row: R) => (Array.isArray(row?.recent) ? row.recent : row?.latest ? [row.latest] : []).map((item: R) => ({ ...item, campaignId: row.campaignId })))
+    .sort((left: R, right: R) => String(right?.generatedAt || right?.createdAt || "").localeCompare(String(left?.generatedAt || left?.createdAt || "")))
+    .slice(0, 5)
   const fitLabel = (fit: R | null | undefined) => fit
     ? [fit.audience?.status, fit.channel?.status, fit.locale?.status].map((value) => String(value || "UNKNOWN")).join(" · ")
     : "No fit projection"
@@ -1221,6 +1229,64 @@ function MissionControlPanel({ data }: { data: R }) {
               : "Chưa có outcome summary"}
           </small>
         </article>
+      </div>
+      <div className="mission-detail-grid" aria-label="Advisory strategy and learning history">
+        <section className="mission-detail-section" aria-label="Recent strategy decisions">
+          <div className="mission-account-head">
+            <div>
+              <span className="mission-eyebrow">Recent strategy decisions</span>
+              <small>Top 5 advisory records · không thay đổi authority hoặc execution</small>
+            </div>
+            <span className="status">{strategyHistory.length}/5</span>
+          </div>
+          {strategyHistory.length ? (
+            <div className="mission-detail-list">
+              {strategyHistory.map((item: R, index: number) => {
+                const action = String(item?.action || "UNKNOWN")
+                const reasons = Array.isArray(item?.reasons) ? item.reasons.slice(0, 8) : []
+                const evidence = Array.isArray(item?.evidence) ? item.evidence.slice(0, 8) : []
+                return <article key={String(item?.decisionId || `${item?.campaignId || "UNKNOWN"}-${index}`)}>
+                  <div className="mission-detail-title">
+                    <strong>{compactText(item?.campaignId, "UNKNOWN", 70)}</strong>
+                    <span className={action === "do_nothing" || action === "wait" ? "status draft" : "status completed"}>{advisoryAction(action)}</span>
+                  </div>
+                  <small>{formatDate(item?.createdAt || item?.timestamp)} · decision {compactText(item?.decisionId, "UNKNOWN", 24)}</small>
+                  <small>Reasons: {reasons.length ? reasons.map((reason: unknown) => compactText(reason, "UNKNOWN", 90)).join(" · ") : "UNKNOWN"}</small>
+                  <small>Evidence: {evidence.length ? evidence.map((ref: unknown) => compactText(ref, "UNKNOWN", 90)).join(" · ") : "UNKNOWN"}</small>
+                </article>
+              })}
+            </div>
+          ) : <div className="empty-state">Chưa có strategy decision.</div>}
+        </section>
+        <section className="mission-detail-section" aria-label="Recent learning feedback">
+          <div className="mission-account-head">
+            <div>
+              <span className="mission-eyebrow">Recent learning feedback</span>
+              <small>Top 5 advisory records · UNKNOWN và metric uncertainty được giữ nguyên</small>
+            </div>
+            <span className="status">{learningHistory.length}/5</span>
+          </div>
+          {learningHistory.length ? (
+            <div className="mission-detail-list">
+              {learningHistory.map((item: R, index: number) => {
+                const observation = item?.observation && typeof item.observation === "object" ? item.observation : {}
+                const metricAdvisory = item?.postAttributionContext?.metricAdvisory
+                const metricCounts = metricAdvisory?.counts && typeof metricAdvisory.counts === "object" ? metricAdvisory.counts : null
+                const reasons = Array.isArray(item?.reasons) ? item.reasons.slice(0, 8) : []
+                return <article key={String(item?.feedbackId || `${item?.campaignId || "UNKNOWN"}-${index}`)}>
+                  <div className="mission-detail-title">
+                    <strong>{compactText(item?.campaignId, "UNKNOWN", 70)}</strong>
+                    <span className="status draft">{advisoryAction(item?.action)}</span>
+                  </div>
+                  <small>{formatDate(item?.generatedAt || item?.createdAt)} · feedback {compactText(item?.feedbackId, "UNKNOWN", 24)}</small>
+                  <small>Reasons: {reasons.length ? reasons.map((reason: unknown) => compactText(reason, "UNKNOWN", 90)).join(" · ") : "UNKNOWN"}</small>
+                  <small>Publication: {compactText(observation?.publication?.verified, "UNKNOWN", 24)} verified · {compactText(observation?.publication?.unknown, "UNKNOWN", 24)} UNKNOWN</small>
+                  <small>Metric assessment: {metricCounts ? Object.entries(metricCounts).filter(([, count]) => Number(count) > 0).map(([name, count]) => `${name}:${count}`).join(" · ") || "UNOBSERVED" : "UNKNOWN"}</small>
+                </article>
+              })}
+            </div>
+          ) : <div className="empty-state">Chưa có learning feedback.</div>}
+        </section>
       </div>
       <div className="mission-account-runtime">
         <div className="mission-account-head">
