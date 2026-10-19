@@ -1,6 +1,6 @@
 # Remaining gaps
 
-- No platform-specific conversation crawler or reply adapter.
-- No autonomous reply execution or independent reply publication verification.
-- No live account/session, provider, LinkedIn or external platform proof.
-- Candidate output remains advisory and never creates authority or send work.
+- No autonomous reply execution or independent reply publication verification exists.
+- No live conversation crawler or platform search/community-rule adapter exists.
+- Candidate projection remains advisory and approval-gated by current channel policy.
+- No live LinkedIn publication or metric evidence is added by this lane.

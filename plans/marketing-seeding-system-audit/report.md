@@ -1,18 +1,18 @@
 # Full System Audit — Autonomous Marketing Seeding / Distribution OS
 
-**Audit date:** 2026-10-18
-**Repository:** `marketing-seeding`  
-**Audit worktree:** `/Users/nam/Documents/marketing-seeding-integration`  
-**Branch:** `integration/autonomous-build`  
+**Audit date:** 2026-10-19
+**Repository:** `marketing-seeding`
+**Audit worktree:** `/Users/nam/Documents/marketing-seeding-integration`
+**Branch:** `integration/autonomous-build`
 **Evidence rule:** source, tests, configuration and read-only runtime evidence outrank README/plan claims. Synthetic and local evidence are never treated as live platform proof.
 
-**Release snapshot:** integration HEAD `3bf46f4` plus the pending learning-aware advisory strategy context includes canonical dry-run handoff validation, read-only Mission Control projections, fail-closed Product Factory project evidence and the strategy fit gate. The canonical service remains an older deployed source revision; no deployment was performed.
+**Release snapshot:** integration branch HEAD `5519b80` plus reviewed working-tree projection and journal changes includes standing autonomous delegation, canonical dry-run handoff validation, read-only Mission Control projections, fail-closed Product Factory project evidence, strategy fit gating, account-pool observability and conversation continuity. The canonical service remains an older deployed source revision; no deployment was performed.
 
 ## 1. What is this system?
 
 This repository is a local marketing distribution runtime that keeps campaign, product, content, target, publication and outcome state in an auditable JSON store. A user supplies a product repository, campaign objective, target/account configuration and policy scope; the service can inspect bounded repository evidence, create grounded artifacts, stories and channel drafts, evaluate campaign authorization, and project state in a local dashboard. Its strongest implemented path is bounded execution governance: exact account/profile/target/content/visibility binding, quotas, cadence, concurrency, readiness, leases, one-time windows, single-use grants, durable submit intent, and UNKNOWN quarantine. The LinkedIn path connects JEV to a LinkedIn adapter, ORCA browser commands, semantic post-action evidence and a read-only publication verifier. Product intelligence and discovery foundations exist on the integration branch, but discovery accepts caller-supplied observations and claims remain explicit rather than autonomously researched or generated. Product factory runs are persisted as bounded campaign lineage, while the factory remains a local syntax/check runner rather than a general build/render/media system. The dashboard is a Mission Control projection, while normal operations still depend on configured policy, existing browser sessions and human handling of mandatory security challenges. This is more than a generic browser bot because campaign governance, persistence, content/artifact graph and verification contracts are first-class; it is not yet a proven unattended multi-channel Distribution OS.
 
-**CURRENT_SYSTEM_CLASSIFICATION:** `MARKETING_AUTOMATION_TOOL`, `BROWSER_AUTOMATION_SYSTEM`, `CAMPAIGN_ORCHESTRATOR`, `AUTONOMOUS_DISTRIBUTION_RUNTIME` (bounded/local), `MARKETING_AGENT` (partial).  
+**CURRENT_SYSTEM_CLASSIFICATION:** `MARKETING_AUTOMATION_TOOL`, `BROWSER_AUTOMATION_SYSTEM`, `CAMPAIGN_ORCHESTRATOR`, `AUTONOMOUS_DISTRIBUTION_RUNTIME` (bounded/local), `MARKETING_AGENT` (partial).
 **Not classified as:** `AUTONOMOUS_DISTRIBUTION_OS` in the production/live sense, because live publish and the observe → learn loop are unproven or absent.
 
 ## 2. North Star status
@@ -195,7 +195,7 @@ The canonical health endpoint was read-only and reported PID 64620, source commi
 
 ### SYNTHETIC / LOCAL
 
-- 381 Node tests: 379 pass, 0 fail, 2 skip.
+- 527 Node tests: 525 pass, 0 fail, 2 skip (latest release reconciliation; older milestone counts are historical).
 - Focused discovery/service/server gate: 50 pass, 0 fail, 0 skip.
 - 242 focused transport/governance/JEV/LinkedIn/intelligence/factory/discovery/service tests: 242 pass, 0 fail, 0 skip.
 - Local browser fixture: 10/10 reversible control activation trials, 100% rate under policy (minimum 10, ≥95%, zero wrong-target, zero silent fallback).
@@ -235,7 +235,7 @@ See [readiness.json](./readiness.json) and [gaps.md](./gaps.md). The material bl
 ```text
 CURRENT_PRODUCT = Bounded local marketing distribution runtime with auditable campaign governance, a LinkedIn/JEV/ORCA execution contract, evidence-grounded draft foundations and a Mission Control dashboard.
 CURRENT_AUTONOMY_LEVEL = L3 local bounded execution; L1–L2 for intelligence/discovery/content; L0 live publication proof.
-CURRENT_PRODUCTION_READINESS = PARTIAL; blocked for irreversible live publishing certification.
+CURRENT_PRODUCTION_READINESS = BLOCKED for irreversible live publishing certification; PARTIAL for local foundation capabilities.
 CURRENT_STRONGEST_CAPABILITY = Exact campaign-to-browser safety boundary with durable submit intent, one-time grants/windows, leases, semantic evidence separation and UNKNOWN quarantine.
 CURRENT_BIGGEST_BLOCKER = No fresh exact authorized LinkedIn live lane; therefore no real submit/acceptance/permalink receipt.
 
@@ -249,3 +249,27 @@ NEXT_RECOMMENDED_MILESTONE = Obtain a fresh explicitly authorized harmless Linke
 ### ONE-SENTENCE SUMMARY
 
 `marketing-seeding` is a locally verified, safety-focused campaign distribution runtime with a guarded LinkedIn/JEV/ORCA execution path and dashboard, but it remains a foundation rather than a live-proven unattended Autonomous Distribution OS.
+
+## 18. Final audited release overlay (2026-10-19)
+
+The independent master release review accepted the integration branch as a
+bounded foundation release. A second dependency-independent review found no
+safe implementation lane remaining without duplicating frozen authority,
+browser or platform contracts. The latest full gate is **527 total, 525 passed,
+0 failed, 2 skipped**; syntax, diff and UI checks pass. Canonical state remains
+schema 8/revision 194 with SHA-256
+`5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active
+authorizations/windows/grants/leases are `0/0/0/0`; four protected UNKNOWN
+executions remain unchanged.
+
+The host probe found `/usr/bin/sandbox-exec`, but no audited profile with
+filesystem, network, child-process, cleanup and resource limits. The configured
+ORCA CLI reports `1.4.229`; older host process observations (`1.4.227` and a
+translocated `1.4.224`) are version-skew evidence only. No process, browser
+profile or session was changed. Future live execution must pin the executable
+and verify the running process version before readiness.
+
+**Final classification:** `FOUNDATION_ONLY`, with true external/environment
+blockers for live campaign authority, irreversible LinkedIn proof, audited
+factory sandbox and live metric provider behavior. No live platform is certified
+for irreversible publication.

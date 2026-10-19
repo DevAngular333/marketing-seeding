@@ -4,8 +4,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { JsonStore } from "../src/store.mjs";
-import { SeedingService, projectAuthorizedAccountCandidates, projectAuthorizedAccountPoolSummary } from "../src/service.mjs";
-import { campaignAuthorizationFingerprint, campaignScopeFingerprint } from "../src/campaign-authorization.mjs";
+import { SeedingService, projectAuthorizedAccountCandidates, projectAuthorizedAccountPool, projectAuthorizedAccountPoolSummary, projectCampaignAuthorityRuntime } from "../src/service.mjs";
+import { campaignAuthorizationFingerprint, campaignScopeFingerprint, normalizeCampaignAuthorization } from "../src/campaign-authorization.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
 
 const now = new Date("2026-10-19T12:00:00.000Z");
@@ -152,16 +152,98 @@ test("summarizes exact destination pool availability without selecting or mutati
   assert.equal("profileId" in summaries[0], false);
 });
 
+test("account pool projection selects only a unique eligible candidate and fails closed on ambiguity", () => {
+  const state = fixture();
+  const unique = projectAuthorizedAccountPool(state, { now });
+  assert.equal(unique.length, 1);
+  assert.equal(unique[0].selectionStatus, "UNIQUE_ELIGIBLE");
+  assert.deepEqual(unique[0].selectionPolicy, { status: "UNSPECIFIED", reason: "no_explicit_account_preference_policy" });
+  assert.equal(unique[0].eligibleCandidateCount, 1);
+  assert.ok(unique[0].selectedCandidateKey);
+  assert.equal(unique[0].eligibleAccounts.length, 1);
+  assert.equal(unique[0].eligibleAccounts[0].accountId, "candidate-account");
+  assert.match(unique[0].eligibleAccounts[0].profileFingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(unique[0].eligibleAccounts[0].sessionMode, "SESSION_REUSE");
+  assert.equal(unique[0].eligibleAccounts[0].authMode, "MANUAL_AUTH");
+
+  state.campaignAuthorizations[0].destinations.push(structuredClone(state.campaignAuthorizations[0].destinations[0]));
+  state.campaignAuthorizations[0].binding = campaignAuthorizationFingerprint(state.campaignAuthorizations[0]);
+  const duplicate = projectAuthorizedAccountPool(state, { now });
+  assert.equal(duplicate[0].selectionStatus, "UNIQUE_ELIGIBLE");
+  assert.equal(duplicate[0].candidateCount, 1);
+
+  const secondAuthorization = structuredClone(state.campaignAuthorizations[0]);
+  secondAuthorization.id = "authorization-candidate-projection-2";
+  secondAuthorization.binding = campaignAuthorizationFingerprint(secondAuthorization);
+  state.campaignAuthorizations.push(secondAuthorization);
+  const ambiguous = projectAuthorizedAccountPool(state, { now });
+  assert.equal(ambiguous[0].selectionStatus, "AMBIGUOUS_AUTHORIZATION");
+  assert.equal(ambiguous[0].selectionPolicy.status, "AMBIGUOUS_AUTHORIZATION");
+  assert.equal(ambiguous[0].selectedCandidateKey, null);
+  assert.equal(ambiguous[0].selectionReason, "multiple_active_authorizations");
+});
+
+test("ordered authorization policy deterministically selects the first eligible exact destination", () => {
+  const state = fixture();
+  const destination = state.campaignAuthorizations[0].destinations[0];
+  state.campaignAuthorizations[0].accountSelectionPolicy = { mode: "ordered", order: [{ ...destination, profileId }] };
+  state.campaignAuthorizations[0].binding = campaignAuthorizationFingerprint(state.campaignAuthorizations[0]);
+  const result = projectAuthorizedAccountPool(state, { now });
+  assert.equal(result[0].selectionPolicy.status, "ORDERED");
+  assert.equal(result[0].selectionStatus, "POLICY_SELECTED");
+  assert.ok(result[0].selectedCandidateKey);
+});
+
+test("normalization requires an exact policy profile binding", () => {
+  const state = fixture();
+  const authorizationInput = {
+    ...state.campaignAuthorizations[0],
+    id: "authorization-policy-profile-check",
+    accountSelectionPolicy: { mode: "ordered", order: [{ ...state.campaignAuthorizations[0].destinations[0], profileId: "different-profile" }] }
+  };
+  assert.throws(() => normalizeCampaignAuthorization(authorizationInput, state.campaigns[0], now), /exact authorized account\/profile/);
+  const missingProfile = { ...state.campaignAuthorizations[0].destinations[0] };
+  delete missingProfile.profileId;
+  assert.throws(() => normalizeCampaignAuthorization({ ...authorizationInput, accountSelectionPolicy: { mode: "ordered", order: [missingProfile] } }, state.campaigns[0], now), /selection profileId/);
+});
+
 test("dashboard exposes deterministic pool summary while preserving state", async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "authorized-account-pool-summary-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const store = new JsonStore(path.join(directory, "state.json"));
   const service = new SeedingService(store);
   await service.init();
-  await store.mutate("fixture", "candidate_pool_summary_fixture", (next) => Object.assign(next, fixture()));
+  await store.mutate("fixture", "candidate_pool_summary_fixture", (next) => {
+    const value = fixture();
+    const current = Date.now();
+    const authorization = value.campaignAuthorizations[0];
+    authorization.validFrom = new Date(current - 60_000).toISOString();
+    authorization.validUntil = new Date(current + 3_600_000).toISOString();
+    authorization.binding = campaignAuthorizationFingerprint(authorization);
+    // Keep the persisted freshness interval within the configured five-minute
+    // TTL. A 60s-old check plus a 300s expiry would span six minutes and is
+    // correctly rejected by the production freshness guard.
+    value.targets[0].readiness.checkedAt = new Date(current - 1_000).toISOString();
+    value.targets[0].readiness.expiresAt = new Date(current + 299_000).toISOString();
+    Object.assign(next, value);
+  });
   const before = await service.snapshot();
   const dashboard = await service.dashboard();
   assert.equal(dashboard.authorizedAccountPoolSummary.length, 1);
+  assert.equal(dashboard.campaignAuthorityRuntime.length, 1);
+  assert.equal(dashboard.campaignAuthorityRuntime[0].status, "READY_FOR_BOUNDED_DELEGATION");
   assert.ok(["AVAILABLE_ADVISORY", "BLOCKED"].includes(dashboard.authorizedAccountPoolSummary[0].autonomousPath));
   assert.deepEqual(await service.snapshot(), before);
+});
+
+test("campaign authority runtime is a read-only bounded projection", () => {
+  const state = fixture();
+  const projection = projectCampaignAuthorityRuntime(state, { now });
+  assert.equal(projection.length, 1);
+  assert.equal(projection[0].status, "READY_FOR_BOUNDED_DELEGATION");
+  assert.deepEqual(projection[0].reasons, []);
+  assert.equal(projection[0].standingAuthorizationCount, 1);
+  assert.equal(projection[0].eligibleAccountCandidateCount, 1);
+  assert.equal(projection[0].authoritySideEffects, false);
+  assert.equal(projection[0].externalSideEffects, false);
 });

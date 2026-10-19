@@ -9,6 +9,23 @@ test("learning identity stable within hour bucket",()=>{const s={campaigns:[{id:
 test("observation keeps verified publication and missing metrics explicit",()=>{const s={campaigns:[{id:"c",outcomeSummary:{summaryId:"o",publication:{verified:1,accepted:1,unknown:0,unverified:1},metrics:{snapshots:1,totals:{},coverage:{impressions:{measured:0,unknown:1,unsupported:0}}},evidence:{}}}]}; const f=deriveLearningFeedback(s,"c",{now:new Date("2026-01-01T00:00:00Z")}); assert.deepEqual(f.observation.publication,{verified:1,accepted:1,unknown:0,unverified:1}); assert.deepEqual(f.observation.metrics.coverage.impressions,{measured:0,unknown:1,unsupported:0});});
 test("unsupported and unknown metric coverage remain distinct",()=>{const s={campaigns:[{id:"c",outcomeSummary:{summaryId:"o",publication:{unknown:0},metrics:{snapshots:1,totals:{},coverage:{clicks:{measured:0,unknown:2,unsupported:3}}},evidence:{}}}]}; const f=deriveLearningFeedback(s,"c",{now:new Date("2026-01-01T00:00:00Z")}); assert.equal(f.observation.metrics.coverage.clicks.unknown,2); assert.equal(f.observation.metrics.coverage.clicks.unsupported,3); assert.equal(f.action,"wait");});
 
+test("post-level UNKNOWN fails closed when aggregate publication count is stale", () => {
+  const s = { campaigns: [{ id: "c", outcomeSummary: {
+    summaryId: "o-stale",
+    publication: { unknown: 0, unknownExecutionIds: [] },
+    metrics: { snapshots: 1, totals: { clicks: 3 }, coverage: { clicks: { measured: 1 } } },
+    evidence: { metricSnapshotIds: ["m1"] },
+    postAttributions: [{
+      postId: "p-unknown", status: "UNKNOWN",
+      evidence: { executionIds: ["exec-unknown"], uncertaintyIds: ["uncertainty-1"] }
+    }]
+  } }] };
+  const feedback = deriveLearningFeedback(s, "c", { now: new Date("2026-01-01T00:00:00Z") });
+  assert.equal(feedback.action, "do_nothing");
+  assert.equal(feedback.reasons.includes("submission_unknown_quarantined"), true);
+  assert.deepEqual(feedback.evidence, ["uncertainty-1", "exec-unknown"]);
+});
+
 test("post attribution context preserves cross-post isolation and UNKNOWN dominance", () => {
   const context = normalizePostAttributionContext({ postAttributions: [
     { postId: "p1", status: "VERIFIED", target: { targetId: "t1", channel: "threads", accountId: "a1", profileId: "pr1" } },
@@ -112,4 +129,36 @@ test("post metrics advisory does not promote mixed malformed measurements to res
   ] });
   assert.equal(context.metricAdvisory.posts[0].classification, "PARTIAL_MEASUREMENTS");
   assert.equal(isNormalizedPostAttributionContext(context), true);
+});
+
+test("learning does not promote metrics from a non-verified post into response advice", () => {
+  const state = { campaigns: [{ id: "c", outcomeSummary: {
+    summaryId: "outcome-partial-metrics",
+    publication: { unknown: 0 },
+    metrics: { snapshots: 1, totals: { clicks: 9 }, coverage: { clicks: { measured: 1 } } },
+    evidence: { metricSnapshotIds: ["metric-partial"] },
+    postAttributions: [{
+      postId: "p-partial", status: "PARTIAL",
+      metrics: { snapshotId: "metric-partial", values: { clicks: 9 }, coverage: { clicks: "measured" } }
+    }]
+  } }] };
+  const feedback = deriveLearningFeedback(state, "c", { now: new Date("2026-01-01T00:00:00Z") });
+  assert.equal(feedback.action, "wait");
+  assert.deepEqual(feedback.reasons, ["metrics_unknown_or_unsupported"]);
+});
+
+test("learning uses only verified post attribution for response advice", () => {
+  const state = { campaigns: [{ id: "c", outcomeSummary: {
+    summaryId: "outcome-verified-metrics",
+    publication: { unknown: 0 },
+    metrics: { snapshots: 2, totals: { clicks: 9 }, coverage: { clicks: { measured: 2 } } },
+    evidence: { metricSnapshotIds: ["metric-partial", "metric-verified"] },
+    postAttributions: [
+      { postId: "p-partial", status: "PARTIAL", metrics: { snapshotId: "metric-partial", values: { clicks: 9 }, coverage: { clicks: "measured" } } },
+      { postId: "p-verified", status: "VERIFIED", metrics: { snapshotId: "metric-verified", values: { clicks: 2 }, coverage: { clicks: "measured" } } }
+    ]
+  } }] };
+  const feedback = deriveLearningFeedback(state, "c", { now: new Date("2026-01-01T00:00:00Z") });
+  assert.equal(feedback.action, "engage");
+  assert.deepEqual(feedback.reasons, ["measured_response_present"]);
 });

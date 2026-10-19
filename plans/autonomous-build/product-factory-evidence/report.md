@@ -8,7 +8,7 @@
   campaign authorization, target rules, media integrity and live execution
   gates remain separate.
 - Canonical service state is not changed by this branch; live LinkedIn proof
-  remains blocked by missing exact authorization and unavailable ORCA.
+  remains blocked by missing exact authorization and ORCA executable 1.4.229 is available locally, but irreversible-submit proof remains unproven.
 
 ## Outcome
 

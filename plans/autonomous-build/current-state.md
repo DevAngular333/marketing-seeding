@@ -1,4 +1,65 @@
-# Current State (verified 2026-10-18)
+# Current State (verified 2026-10-19; release reconciliation 04:04 UTC)
+
+## Current release gate (2026-10-19)
+
+- Fresh integration-branch `npm test`: **527 total, 525 passed, 0 failed, 2 skipped**.
+- Focused transport/JEV/LinkedIn/authority and local continuity gate: **151 total, 151 passed, 0 failed, 0 skipped**.
+- `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI build pass.
+- Older 522/520/0/2 and 523/521/0/2 values below are historical milestone snapshots.
+- Canonical runtime remains schema 8/revision 194 with SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`.
+- Active authorizations/windows/grants/leases remain `0/0/0/0`; published posts `0`;
+  four historical UNKNOWN executions remain immutable.
+- No LinkedIn Post click, social mutation, credential/session mutation, canonical
+  write, or UNKNOWN retry occurred.
+
+See `plans/autonomous-build/reports/release-journal-reconciliation-20261019.md`.
+
+## ORCA runtime configuration remediation overlay (2026-10-19)
+
+- The private canonical `runtime.env` previously referenced a missing older
+  ORCA AppTranslocation executable. It now points to the installed explicitly
+  verified ORCA `1.4.229` executable; the file remains mode `0600`.
+- Read-only probes report executable `1.4.229`, connected runtime `1.4.229`,
+  state `ready`, and connection `connected`. ORCA and the marketing-seeding
+  service were not restarted, and no browser command was issued.
+- Canonical state remains schema 8/revision 194 with SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`.
+- Historical continuation checkpoint: `npm test` **523 total, 521 passed, 0
+  failed, 2 skipped**; syntax, diff and UI gates passed at that earlier
+  checkpoint. The current release gate is recorded above as 527/525/0/2.
+- `ORCA-RUNTIME-CONFIG-001` is resolved. `LIVE-LINKEDIN-AUTH-001` and
+  `ORCA-TRANSPORT-LIVE-CERT-001` remain open; no irreversible LinkedIn action
+  or social mutation occurred.
+
+## Final release-owner audit overlay (2026-10-19)
+
+- Integration HEAD is `5519b80` on `integration/autonomous-build`; the worktree
+  retains the accepted implementation/journal changes intentionally.
+- Fresh full gate at the latest release reconciliation: `npm test` **527 total, 525 passed, 0 failed, 2 skipped**. The 522/520 figure in this historical overlay predates the latest test additions.
+  `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI build pass.
+- Independent master release review is **ACCEPT — bounded foundation only**.
+- No additional safe implementation lane was found after re-review. Remaining
+  work is live authority/publication proof, audited sandbox capability, live
+  provider behavior and future platform/account scope.
+- ORCA CLI reports `1.4.229`; older host process observations remain present,
+  so a future live lane must pin and verify the process version before use.
+- The configured ORCA executable and connected daemon both passed the exact
+  `1.4.229` runtime pin guard (`ready` / `connected`) through read-only probes.
+- Canonical state remains schema 8/revision 194 with SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`.
+  Active authorizations/windows/grants/leases: `0/0/0/0`; published posts: `0`;
+  protected UNKNOWN submissions: `4`.
+- No LinkedIn Post click, social mutation, credential/session mutation or
+  historical UNKNOWN retry occurred.
+
+## Latest release gate
+
+- Latest integration-branch `npm test`: **527 total, 525 passed, 0 failed, 2 skipped**. `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI production build pass.
+- This is local branch evidence only. Canonical `/health` still runs source commit `b4fa42b…`, schema 8 revision 194; the integration branch is not deployed.
+- Canonical runtime has zero active `campaignAuthorizations`, one-time execution windows, `liveExecutionGrants` or execution leases; four historical UNKNOWN executions remain immutable.
+- ORCA 1.4.229 is available and its executable/connected daemon pin matches. Accessibility and pointer transports each pass 10/10 semantic activation trials on the resettable local fixture; real LinkedIn irreversible submit remains unproven.
+- A read-only diagnostic against the existing host-managed LinkedIn ORCA profile returned `READY` (`linkedin_session_target_composer_verified`) and closed an empty composer without entering content or clicking Post. This is transient browser evidence only; the persisted canonical readiness is expired and no campaign authority was created.
 
 ## Repository
 
@@ -33,6 +94,8 @@
 - Product Factory project evidence is fail-closed: only relative `node --check` JavaScript manifest commands are eligible, and eligible probes run in temporary staging with bounded cleanup and artifact evidence. Arbitrary scripts, package managers, interpreters and build/render commands remain `NOT_EXECUTED_UNSAFE` until a separately audited sandbox exists.
 - Account runtime now has a deterministic read-only `accountRuntime`/`executionAccounts` dashboard projection with profile fingerprints, bounded readiness/blocker fields and bound-target counts; raw profile IDs, identity URLs, evidence and secret-like fields are excluded. This is an observability seam, not login, credential, selection or failover automation.
 - Account runtime projection now also exposes explicit `SESSION_REUSE` / `MANUAL_AUTH` mode labels, fail-closed `eligibleForExecution`, and deterministic `ineligibilityReasons`; these fields are read-only observability and are not consumed as authority or a selector.
+- The dashboard now exposes `authorizedAccountCandidates`, a bounded deterministic pre-dispatch projection over exact standing authorization destinations. It checks campaign/authorization validity, target URL and identity binding, enabled healthy account and fresh bound readiness; it exposes only a profile fingerprint and safe readiness summary. It does not select/fail over accounts, rebind targets, create execution authority, call a browser or mutate state. Focused candidate/account/readiness gate is 55/55; artifacts are in `plans/autonomous-build/authorized-account-candidate-projection/`.
+- The dashboard now also exposes bounded read-only `engagementContext`, `discoveryOpportunities` and `productFactoryEvidence` projections. They join persisted interactions/replies, explain eligible normalized discoveries and expose secret-safe factory run/artifact metadata without approving or sending replies, selecting accounts, creating authority, calling a browser or executing external actions.
 - Mission Control now renders those bounded account/session fields from the existing GET-only dashboard projection; it adds no approval, login, selection, failover, browser or execution control.
 - Advisory strategy now accepts only current, structurally valid learning feedback linked to the current outcome summary and records bounded learning/outcome evidence plus normalized post-attribution context; campaign-aware post/target/channel identity is checked before exposure and account/profile values are fingerprinted in the advisory projection. Action precedence and UNKNOWN quarantine remain unchanged. It does not perform outcome rerouting or execution.
 - Outcome summaries now also expose bounded explicit-link-only `postAttributions` with `UNKNOWN` > `VERIFIED` > `PARTIAL` > `UNOBSERVED` precedence, canonical publication evidence checks, deterministic latest metrics and unassigned campaign-only conversions. This is advisory evidence only and does not reroute strategy or create authority.
@@ -42,8 +105,8 @@
 - The campaign queue now exposes a bounded read-only runtime projection at `/health.campaignQueue` and `/api/dashboard.automation.campaignQueue`: enabled state, fixed interval, running state, start/completion timestamps, next run and bounded cycle counts/error reason. It reuses the existing scheduler and queue service seam and adds no authority or external side effect.
 - Queue evaluation now isolates candidate-materialization and per-campaign queue failures, continues healthy campaigns, preserves the successful `{ campaignId, decisions }` result shape, and reports bounded failure codes through the existing queue projection. Shared expiry/store failures remain fail-closed at the cycle boundary.
 - Post-level metric advisory context now derives deterministic `RESPONSE_OBSERVED`, `REACH_WITHOUT_RESPONSE`, `MEASURED_NO_RESPONSE`, `PARTIAL_MEASUREMENTS`, `UNKNOWN_OR_UNSUPPORTED`, and `UNOBSERVED` assessments from the existing explicit post attribution rows. Positive values require valid `measured` coverage; invalid or mixed malformed measured values fail closed. Advisory validation recomputes classifications/evidence and uses the same retained rows under truncation. This is explanatory only and does not change action precedence, authority, execution, or UNKNOWN quarantine.
-- Metric provider retry resilience now honors bounded numeric or HTTP-date `Retry-After` on retryable responses, rejects signed/malformed/oversized hints to bounded exponential fallback, and keeps non-retryable responses fail-fast. Focused integrations/service/server gate is 70/70; latest full suite is 444/442/0/2; independent bounded review PASS. This remains fixture-only; live provider behavior, credentials and network permissions are unverified.
-- Execution evidence read model now projects bounded read-only `executionRuntime` data from existing requests, receipts and UNKNOWN records into `SeedingService.dashboard()` and `/health`. It separates `DRY_RUN`/`LIVE`, states, phases and submit states; hashes execution/post references; caps recent rows and blockers; preserves immutable UNKNOWN quarantine; and exposes a permalink only when independent VERIFIED evidence includes account/target/content/author/time and stable post identity matches. Focused service/server gate is 72/72; latest full suite is 456/454/0/2; UI typecheck/build, syntax and diff checks pass. This does not certify live publication or add UI controls.
+- Metric provider retry resilience now honors bounded numeric or HTTP-date `Retry-After` on retryable responses, rejects signed/malformed/oversized hints to bounded exponential fallback, and keeps non-retryable responses fail-fast. Focused integrations/service/server gate is 70/70; the latest full suite is 527/525/0/2; independent bounded review PASS. This remains fixture-only; live provider behavior, credentials and network permissions are unverified.
+- Execution evidence read model now projects bounded read-only `executionRuntime` data from existing requests, receipts and UNKNOWN records into `SeedingService.dashboard()` and `/health`. It separates `DRY_RUN`/`LIVE`, states, phases and submit states; hashes execution/post references; caps recent rows, blockers and a chronological execution timeline; preserves immutable UNKNOWN quarantine; and exposes a permalink only when independent VERIFIED evidence includes account/target/content/author/time and stable post identity matches. Focused service/server gate is 77/77; latest full suite is 527/525/0/2; UI typecheck/build, syntax and diff checks pass. This does not certify live publication or add UI controls.
 - The explicit rehearsal candidate → JEV dry-run lane now has a restart/lease-recovery soak in `test/dry-run-restart-soak.test.mjs`. In an isolated temporary `JsonStore`, one expired execution lease is reclaimed by the existing atomic acquisition path, one worker execution reaches `DRY_RUN_COMPLETE`, and three new service/store ticks retain exactly one post, request and receipt. A terminal dry-run row is not redispatched, no live window/grant or publication evidence is created, and a protected UNKNOWN fixture remains byte-equivalent. The isolated soak is 1/1; the combined dry-run/readiness/JEV/service gate is 148/148; the full Node suite is 457/455/0/2. This is local/synthetic reliability evidence only and does not certify ORCA or LinkedIn publication.
 - The versioned System-Agentic handoff bridge now accepts a bounded `SYSTEM_AGENTIC_AI` envelope (`bridgeVersion: 1`, UTC timestamp, stable envelope hash, explicit `DRY_RUN`) through the existing distribution-handoff route. The bridge preserves source provenance in the sanitized downstream row, checks route/envelope/payload campaign identity, rejects LIVE/unsupported/malformed/forbidden input, and delegates all canonical identity/media validation to `SeedingService.attachDistributionHandoff()`. Replay after a new `JsonStore` instance retains one handoff and zero posts/requests/windows/grants/leases/publication attempts. Focused bridge/distribution/server gate is 14/14; latest full Node suite is 461/459/0/2; syntax and diff checks pass. Evidence is local/synthetic only: no upstream System-Agentic producer process, browser, ORCA, LinkedIn, network or social action occurred.
 
@@ -57,21 +120,21 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 
 ## Tests
 
-- Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; Product Factory project-evidence/runtime/service gate 45/45; distribution-handoff/service/server gate 33/33. Content candidate materialization/authorization focused gate: 44 passed before scheduler, then 42 service/server tests passed with inactive-campaign hardening; template candidate binding service/server gate 46/46.
+- Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped; observer-hardening focused subset 17/17; audience-fit focused review 39/39; Product Factory project-evidence/runtime/service gate 45/45; distribution-handoff/service/server gate 33/33. Content candidate materialization/authorization focused gate: 44 passed before scheduler, then 42 service/server tests passed with inactive-campaign hardening; template candidate binding service/server gate 46/46; latest changed-area projection/review gate 107/107.
 - Full suite after learning-aware strategy context: 384 total, 382 passed, 0 failed, 2 skipped; exit 0. The focused strategy/control-cycle/learning/outcome/service/server gate is 49/49.
 - Post-metrics advisory gate: learning/strategy 25 passed, integration learning/strategy/outcome/control-cycle/service/server 87 passed, full Node suite 428 total, 426 passed, 0 failed, 2 skipped; source syntax and diff checks pass; independent review PASS_BOUNDED.
 - Official metrics collection gate: service/server/integration 58 passed, 0 failed, 0 skipped; latest full Node suite 430 total, 428 passed, 0 failed, 2 skipped; source syntax and diff checks pass; independent review PASS (bounded). No live provider, browser, ORCA, credential, canonical or social action occurred.
 - Metric checkpoint observability gate: 59 service tests passed, 0 failed, 0 skipped; latest full Node suite 435 total, 433 passed, 0 failed, 2 skipped; source syntax and `git diff --check` pass; independent review ACCEPT_BOUNDED. Checkpoints are read-only `1h`/`24h`/`72h` projections over existing snapshots and collector runs; no live provider, browser, ORCA, credential, canonical or social action occurred.
-- Metrics observability hardening gate: service/outcome 39 passed, 0 failed, 0 skipped; the pre-materialization full Node suite was 397 total, 395 passed, 0 failed, 2 skipped. Latest full Node suite is 410 total, 408 passed, 0 failed, 2 skipped; latest edited-file syntax checks and `git diff --check` passed.
+- Metrics observability hardening gate: service/outcome 312 passed, 0 failed, 0 skipped; the pre-materialization full Node suite was 397 total, 395 passed, 0 failed, 2 skipped. Latest full Node suite is 410 total, 408 passed, 0 failed, 2 skipped; latest edited-file syntax checks and `git diff --check` passed.
 - Outcome attribution gate: focused outcome/control-cycle/learning/service 42 passed, 0 failed, 0 skipped; full suite 388 total, 386 passed, 0 failed, 2 skipped; independent review ACCEPT (bounded).
 - Post-attribution learning context gate: focused learning/strategy 20 passed, combined strategy/control-cycle/learning/outcome/service/server 56 passed, full suite 393 total, 391 passed, 0 failed, 2 skipped; independent review rework findings resolved with late-UNKNOWN retention and campaign-aware identity checks.
 - UI typecheck: `cd ui && npx tsc --noEmit` passed; production build: `cd ui && npm run build` passed with only existing Vite config warnings.
 - Account runtime projection focused gate: 5 passed, 0 failed, 0 skipped; combined projection/service/server gate: 34 passed, 0 failed, 0 skipped; independent verifier: PASS (bounded).
 - Mission Control account/session UI: TypeScript check and production build passed; independent read-only verifier PASS (bounded).
 - Strategy fit gate: focused 36 passed, 0 failed, 0 skipped; independent review ACCEPT (bounded).
-- Learning-aware strategy context: focused 49 passed, 0 failed, 0 skipped; independent review ACCEPT (bounded).
+- Learning-aware strategy context: focused 412 passed, 0 failed, 0 skipped; independent review ACCEPT (bounded).
 - Static checks: `node --check src/*.mjs` and `git diff --check` passed.
-- Queue observability focused gate: 46 passed, 0 failed, 0 skipped; latest full Node suite: 410 total, 408 passed, 0 failed, 2 skipped; edited-file syntax and diff checks passed.
+- Queue observability milestone gate: 46 passed, 0 failed, 0 skipped; milestone full Node suite: 410 total, 408 passed, 0 failed, 2 skipped; edited-file syntax and diff checks passed. The current integration-branch full suite is 527/525/0/2.
 - Queue failure-isolation focused gate: 47 passed, 0 failed, 0 skipped; independent review ACCEPT; no authority/browser/canonical/UNKNOWN mutation.
 
 ## Latest content-candidate authorization seam
@@ -92,7 +155,7 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
 
 ## Live proof
 
-`LIVE_PROOF_BLOCKED`: no fresh exact LIVE campaign authorization, one-time window, execution-scoped grant, lease, or explicit harmless test content/session input exists. ORCA is unavailable in this shell. No browser mutation or social mutation occurred.
+`LIVE_PROOF_BLOCKED`: no fresh exact LIVE campaign authorization, one-time window, execution-scoped grant, lease, or explicit harmless test content scope exists. A read-only provider diagnostic confirmed the existing host-managed session can reach `READY`, but that transient result is not durable authority and the persisted canonical readiness is expired. ORCA 1.4.229 is available and locally control-activation-certified on the resettable fixture, but real LinkedIn irreversible-submit activation, platform acceptance and independent publication remain unproven. No Post click or social mutation occurred.
 
 ## Official metrics collection idempotence (2026-10-18)
 
@@ -169,7 +232,7 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   0 skipped. The current full suite is recorded below as 420 total, 418 passed,
   0 failed, 2 skipped; syntax and `git diff --check` passed. Independent review:
   ACCEPT.
-- Evidence is LOCAL / SYNTHETIC only. Canonical runtime and all four historical UNKNOWN executions remain unchanged. Live LinkedIn proof remains blocked by absent exact authorization/session and unavailable ORCA.
+- Evidence is LOCAL / SYNTHETIC only. Canonical runtime and all four historical UNKNOWN executions remain unchanged. Live LinkedIn proof remains blocked by absent exact authorization/session and absent real-platform acceptance evidence; ORCA 1.4.229 is available locally, with only reversible fixture control activation certified.
 
 ## Scheduler-owned product story derivation (2026-10-18)
 
@@ -328,12 +391,40 @@ Historical UNKNOWN execution IDs: `ce9cfc41-528b-425f-9dee-ab2563b50ed3`, `0f6b5
   implementations. The reversible local fixture certifies 10/10 accessibility
   activations and 10/10 pointer activations under the existing policy (zero
   wrong-target activations and zero silent fallbacks).
-- The focused transport/LinkedIn/JEV gate is 98/98; full `npm test` is 468
-  total, 466 passed, 0 failed, 2 skipped. The pointer sequence is covered by
-  a resettable regression, but this is local fixture evidence only.
-- Direct ORCA 1.4.229 probing against a localhost fixture did not produce
-  repeatable activation evidence: one snapshot saw an empty error page and a
-  subsequent click returned `browser_stale_ref`; a later evaluation returned
-  an empty object. The probe was stopped and tabs cleaned up. No LinkedIn,
+- The focused transport/LinkedIn/JEV gate is 106/106; the historical 2026-10-18
+  milestone full-suite count was 498 total, 496 passed, 0 failed, 2 skipped.
+  The current release gate is 527 total, 525 passed, 0 failed, 2 skipped.
+  Accessibility and pointer
+  transports each pass 10/10 resettable fixture trials with zero wrong-target,
+  no-transition or silent-fallback results under the existing policy.
+- This is `CERTIFIED_FOR_CONTROL_ACTIVATION` on a local reversible browser
+  fixture only. It does not certify LinkedIn's irreversible Post control,
+  platform acceptance, permalink discovery or publication. No LinkedIn,
   Post, account, credential, canonical state or historical UNKNOWN record was
-  touched. ORCA remains `NOT_CERTIFIED_FOR_IRREVERSIBLE_SUBMIT`.
+  touched.
+
+The earlier direct ORCA probe failure remains historical evidence. The later
+controlled resettable fixture calibration is the current transport result:
+accessibility 10/10 and pointer 10/10 semantic activations on ORCA 1.4.229.
+Neither transport is certified for an irreversible LinkedIn submit until a
+fresh authorized real-platform lane proves activation, acceptance and
+independent publication verification.
+
+
+## Authorized account candidate projection (2026-10-19)
+
+- Added a bounded read-only `authorizedAccountCandidates` dashboard projection over existing campaign authorization, target, execution-account and readiness contracts. Exact scope/binding/validity/health/readiness checks fail closed with deterministic reason codes; stable hashed candidate keys, deterministic ordering and cap 128 are applied. Raw profile IDs, readiness evidence and secret/session material are excluded.
+- Focused candidate/account/readiness gate: 56 passed, 0 failed, 0 skipped; latest `npm test`: 527 total, 525 passed, 0 failed, 2 skipped; `node --check src/service.mjs` and diff checks pass. Dashboard/restart tests create no requests/windows/grants/leases. This remains local advisory pre-dispatch evidence; no account selection, browser, ORCA, LinkedIn or social action occurred.
+
+
+## Latest continuity hardening (2026-10-19)
+
+- Read-only conversation continuity now normalizes ISO/string timestamps and rejects invalid observation time input fail-closed. The focused continuity/engagement gate is 12/12; the current full Node suite is 527/525/0/2. No authority, browser, provider, canonical runtime or historical UNKNOWN mutation occurred.
+
+
+## Release reconciliation after Mission Control authority projection (2026-10-19)
+
+- Latest full gate after the read-only campaign authority runtime projection and Mission Control detail is `npm test` **527 total, 525 passed, 0 failed, 2 skipped**.
+- Focused transport/LinkedIn/JEV remains `104/104` in the combined changed-area gate; ORCA runtime pin is still `1.4.229`.
+- The new `campaignAuthorityRuntime` dashboard projection is advisory and read-only: it reports active standing authorization, derived windows/grants/leases, account candidate eligibility and deterministic blocker reasons without creating or changing execution controls.
+- Mission Control now exposes authority, pool, channel, sandbox and unsupported-claim boundaries. No external action, canonical state mutation, browser/session mutation or UNKNOWN mutation occurred.

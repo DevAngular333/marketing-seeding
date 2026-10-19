@@ -240,6 +240,14 @@ export function deriveLearningFeedback(state, campaignId, { now = new Date() } =
   const hour = Math.floor(now.getTime() / 3600000);
   const evidence = [];
   const publication = outcome?.publication || {};
+  // Re-normalize post-level attribution before selecting an advisory action.
+  // A stale aggregate summary must not hide an authoritative per-post UNKNOWN
+  // record; UNKNOWN remains the highest-risk signal and keeps the learning
+  // recommendation fail-closed. This is advisory only and creates no authority.
+  const postAttributionContext = Array.isArray(outcome?.postAttributions)
+    ? normalizePostAttributionContext(outcome)
+    : null;
+  const hasPostUnknown = Boolean(postAttributionContext?.counts?.UNKNOWN > 0);
   const metricCoverage = outcome?.metrics?.coverage || {};
   const observation = {
     publication: {
@@ -260,19 +268,45 @@ export function deriveLearningFeedback(state, campaignId, { now = new Date() } =
   let action = "wait";
   const reasons = [];
   if (!outcome) { action = "research"; reasons.push("outcome_summary_missing"); }
-  else if ((outcome.publication?.unknown || 0) > 0) { action = "do_nothing"; reasons.push("submission_unknown_quarantined"); evidence.push(...(outcome.publication.unknownExecutionIds || [])); }
+  else if ((outcome.publication?.unknown || 0) > 0 || hasPostUnknown) {
+    action = "do_nothing";
+    reasons.push("submission_unknown_quarantined");
+    evidence.push(...(outcome.publication.unknownExecutionIds || []));
+    if (hasPostUnknown) {
+      for (const attribution of postAttributionContext.postAttributions) {
+        if (attribution.status !== "UNKNOWN") continue;
+        evidence.push(...attribution.evidence.uncertaintyIds, ...attribution.evidence.executionIds);
+      }
+    }
+  }
   else if ((outcome.metrics?.snapshots || 0) === 0) { action = "research"; reasons.push("metrics_not_collected"); }
   else {
     const totals = outcome.metrics.totals || {};
     const measured = Object.entries(outcome.metrics.coverage || {}).filter(([, c]) => (c.measured || 0) > 0).map(([field]) => field);
     evidence.push(...(outcome.evidence?.metricSnapshotIds || []));
-    if ((totals.leads || 0) > 0 || (totals.clicks || 0) > 0) { action = "engage"; reasons.push("measured_response_present"); }
+    // When post-level attribution is available, only VERIFIED publications may
+    // drive the learning recommendation. Aggregate totals can contain metric
+    // snapshots from PARTIAL/UNOBSERVED posts and must not be promoted into a
+    // response signal. This remains advisory and creates no execution authority.
+    if (postAttributionContext) {
+      const verified = postAttributionContext.postAttributions.filter((item) => item.status === "VERIFIED");
+      const hasNonVerified = postAttributionContext.postAttributions.some((item) => item.status !== "VERIFIED");
+      const verifiedResponse = verified.some((item) => item.metricAssessment?.classification === "RESPONSE_OBSERVED"
+        || item.engagement?.interactions > 0
+        || item.engagement?.replies > 0
+        || item.engagement?.sentReplies > 0
+        || item.conversions?.count > 0);
+      const verifiedMeasured = verified.some((item) => ["REACH_WITHOUT_RESPONSE", "MEASURED_NO_RESPONSE"].includes(item.metricAssessment?.classification));
+      if (verifiedResponse || (!hasNonVerified && ((totals.leads || 0) > 0 || (totals.clicks || 0) > 0))) { action = "engage"; reasons.push("measured_response_present"); }
+      else if (verifiedMeasured || (!hasNonVerified && measured.length > 0)) { action = "publish"; reasons.push("measured_outcome_without_response"); }
+      else { action = "wait"; reasons.push("metrics_unknown_or_unsupported"); }
+    } else if ((totals.leads || 0) > 0 || (totals.clicks || 0) > 0) { action = "engage"; reasons.push("measured_response_present"); }
     else if (measured.length > 0) { action = "publish"; reasons.push("measured_outcome_without_response"); }
     else { action = "wait"; reasons.push("metrics_unknown_or_unsupported"); }
   }
   if (!ACTIONS.has(action)) action = "do_nothing";
   const core = { campaignId, hour, action, observation, evidence: evidence.slice(-100), outcomeSummaryId: outcome?.summaryId || null, strategyDecisionId: campaign.strategyDecisions?.at(-1)?.decisionId || null };
-  if (Array.isArray(outcome?.postAttributions)) core.postAttributionContext = normalizePostAttributionContext(outcome);
+  if (postAttributionContext) core.postAttributionContext = postAttributionContext;
   core.reasons = reasons;
   return { ...core, feedbackId: `learning-${digest(core).slice(0,24)}`, generatedAt: new Date(now).toISOString(), advisory: true, authoritySideEffects: false };
 }

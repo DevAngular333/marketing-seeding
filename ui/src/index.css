@@ -505,6 +505,18 @@ body { background: radial-gradient(circle at 74% -12%, rgb(71 57 142 / .16), tra
 .mission-execution-footer small { color: var(--muted); font-size: 11px; line-height: 1.4; }
 .mission-execution-footer a { color: #aaa1fa; font-size: 11px; overflow-wrap: anywhere; }
 .mission-blocker-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.mission-execution-timeline { margin: 0 20px 20px; padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: 10px; background: rgb(12 12 16 / .42); }
+.mission-timeline-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.mission-timeline-head > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mission-timeline-head small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.mission-timeline-list { display: flex; flex-direction: column; gap: 6px; }
+.mission-timeline-list article { display: grid; grid-template-columns: 142px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-width: 0; padding: 8px 0; border-top: 1px solid rgb(255 255 255 / .06); }
+.mission-timeline-list article:first-child { border-top: 0; }
+.mission-timeline-list time { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.mission-timeline-list article > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mission-timeline-list strong { color: #e5e1ff; font-size: 11px; overflow-wrap: anywhere; }
+.mission-timeline-list small { color: var(--muted); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+.mission-timeline-list a { color: #aaa1fa; font-size: 10px; white-space: nowrap; }
 .mission-control-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 0 20px 20px; }
 .mission-control-grid article { min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid var(--border-soft); border-radius: 10px; background: rgb(12 12 16 / .42); }
 .mission-control-grid article strong { color: #e5e1ff; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
@@ -522,14 +534,29 @@ body { background: radial-gradient(circle at 74% -12%, rgb(71 57 142 / .16), tra
 .mission-advisory-grid article { min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: 10px; background: rgb(12 12 16 / .42); }
 .mission-advisory-grid article strong { color: #e5e1ff; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
 .mission-advisory-grid article small { min-height: 30px; color: var(--muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.mission-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.mission-detail-section { min-width: 0; padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: 10px; background: rgb(12 12 16 / .28); }
+.mission-detail-list { display: grid; gap: 8px; }
+.mission-detail-list article { min-width: 0; display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid rgb(255 255 255 / .06); }
+.mission-detail-list article:first-child { border-top: 0; padding-top: 0; }
+.mission-detail-list article:last-child { padding-bottom: 0; }
+.mission-detail-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mission-detail-title strong { color: #e5e1ff; font-size: 11px; overflow-wrap: anywhere; }
+.mission-detail-list small { color: var(--muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.unsupported-claim-row { border-left: 2px solid rgb(248 180 80 / .55); padding-left: 8px; }
+.mission-lineage-row { display: grid; gap: 3px; padding: 7px 0; border-top: 1px solid rgb(255 255 255 / .05); }
+.mission-lineage-row:first-of-type { border-top: 0; }
+.mission-lineage-row strong { color: #c8c5f4; font-size: 10px; }
 .mission-eyebrow { color: var(--subtle); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
 @media (max-width: 900px) { .mission-control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .mission-execution-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mission-execution-footer { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .mission-timeline-list article { grid-template-columns: 1fr auto; } .mission-timeline-list time { grid-column: 1 / -1; } }
 @media (max-width: 520px) { .mission-control-grid { grid-template-columns: 1fr; } }
 @media (max-width: 520px) { .mission-execution-grid { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .mission-account-list { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .mission-advisory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .mission-advisory-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .mission-detail-grid { grid-template-columns: 1fr; } }
 .route-grid > * { animation: card-rise .5s cubic-bezier(.22,.8,.24,1) both; }.route-grid > :nth-child(2) { animation-delay: 70ms; }.route-grid > :nth-child(3) { animation-delay: 140ms; }.route-grid > :nth-child(4) { animation-delay: 210ms; }
 .live-dot { animation: live-pulse 2.1s ease-in-out infinite; }
 .line-chart polyline, .route-trend polyline { stroke-dasharray: 1100; stroke-dashoffset: 1100; animation: chart-draw 1.25s cubic-bezier(.22,.8,.24,1) .18s forwards; }

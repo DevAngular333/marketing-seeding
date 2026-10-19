@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
-import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, deriveProjectEvidencePlan, executeStagedFactoryProbe, evaluateFactorySandboxCapability, probeFactorySandboxCapability, redact } from '../src/product-factory.mjs';
+import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, deriveProjectEvidencePlan, executeStagedFactoryProbe, evaluateFactorySandboxCapability, probeFactorySandboxCapability, projectFactoryRunEvidence, redact } from '../src/product-factory.mjs';
 
 async function fixture(files = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'product-factory-'));
@@ -185,4 +185,17 @@ test('sandbox preflight output is deterministic and only all proven checks can e
   assert.equal(first.status, 'AVAILABLE');
   assert.equal(first.executionEligible, true);
   assert.equal(first.limits.network, 'PASS');
+});
+
+test('factory evidence projection is bounded, deterministic and secret-safe', () => {
+  const runs = [
+    { id: 'older', campaignId: 'c1', completedAt: '2026-01-01T00:00:00Z', status: 'SUCCEEDED', externalSideEffects: false, classification: { kind: 'node', confidence: 'high' }, plan: { projectEvidence: { status: 'NOT_EXECUTED_UNSAFE' } }, execution: { status: 'NOT_EXECUTED_UNSAFE', results: [], externalSideEffects: false }, artifacts: { artifacts: [{ path: 'README.md', sha256: 'bad', bytes: 4, commandRef: 'token=secret' }] } },
+    { id: 'newer', campaignId: 'c1', completedAt: '2026-01-02T00:00:00Z', status: 'SUCCEEDED', externalSideEffects: false, classification: { kind: 'static', confidence: 'medium' }, plan: { projectEvidence: { status: 'ELIGIBLE' } }, execution: { status: 'SUCCEEDED', results: [{ purpose: 'static-validation' }], externalSideEffects: false }, artifacts: { artifacts: [{ path: 'media/demo.png', sha256: 'A'.repeat(64), bytes: 8, commandRef: ['step-1'] }] }, output: 'password=do-not-project' }
+  ];
+  const projected = projectFactoryRunEvidence(runs, { limit: 1 });
+  assert.equal(projected.length, 1);
+  assert.equal(projected[0].id, 'newer');
+  assert.equal(projected[0].artifacts[0].sha256, 'a'.repeat(64));
+  assert.equal(Object.hasOwn(projected[0], 'output'), false);
+  assert.deepEqual(projected, projectFactoryRunEvidence([...runs].reverse(), { limit: 1 }));
 });

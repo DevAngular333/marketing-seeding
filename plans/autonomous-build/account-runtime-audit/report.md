@@ -1,13 +1,13 @@
 # Account / Session Runtime Audit
 
-Run: `autonomous-build-account-audit-20261017`  
-Repository: `/Users/nam/Documents/marketing-seeding-integration`  
-Branch: `integration/autonomous-build`  
+Run: `autonomous-build-account-audit-20261017`
+Repository: `/Users/nam/Documents/marketing-seeding-integration`
+Branch: `integration/autonomous-build`
 Scope: read-only source, test, and canonical-state inspection. No browser, credential, session, network, or social action was performed.
 
 ## Unverified items first
 
-- **UNVERIFIED:** no live browser/session check was run; ORCA is unavailable in this shell, so the canonical account's current LinkedIn session cannot be independently confirmed here.
+- **UNVERIFIED:** no live browser/session check was run; ORCA executable 1.4.229 is available locally, so the canonical account's current LinkedIn session cannot be independently confirmed here.
 - **UNVERIFIED:** no credential broker, OAuth refresh, login, MFA, CAPTCHA, device approval, browser-profile provisioning, or account failover was exercised.
 - **UNVERIFIED:** dashboard does not expose a dedicated execution-account inventory/health projection; account data is visible through state/service internals and execution evidence, not a first-class Mission Control account view.
 - **UNVERIFIED:** canonical service state is read-only inspected only; its running process may advance independently after this snapshot.
@@ -83,6 +83,6 @@ Scope: read-only source, test, and canonical-state inspection. No browser, crede
 
 **STATUS: AUDIT_COMPLETE — NO SOURCE CHANGE RECOMMENDED IN THIS SCOUT.** Existing account/session seams are sufficient for the currently blocked single-account M1 lane. The next account-runtime milestone should be deferred until a fresh authorized live proof exists or a concrete multi-account requirement is supplied; then implement the smallest projection/health/selection seam above while preserving host-managed session reuse and fail-closed security challenge handling.
 
-**AFFECTED ACCEPTANCE:** A1, A7, A8, A9, A10 reviewed read-only.  
-**EXTERNAL SIDE EFFECTS:** none.  
+**AFFECTED ACCEPTANCE:** A1, A7, A8, A9, A10 reviewed read-only.
+**EXTERNAL SIDE EFFECTS:** none.
 **STATUS:** `PARTIAL / LOCAL-VERIFIED; LIVE-UNVERIFIED; AUTHENTICATION-NOT-SUPPORTED`

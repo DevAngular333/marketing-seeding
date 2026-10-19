@@ -56,5 +56,5 @@ and immutable in this read model.
 This milestone is local evidence/read-model work. It does not certify ORCA,
 prove a real LinkedIn submit, activate a platform control, verify a live post,
 implement account recovery or add a dashboard control. Live LinkedIn proof
-remains blocked by unavailable ORCA and absent fresh exact live
+remains blocked by unproven irreversible-submit transport and absent fresh exact live
 authorization/window/grant/session input.

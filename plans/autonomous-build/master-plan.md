@@ -4,6 +4,10 @@
 
 Build a bounded, evidence-driven distribution runtime in `marketing-seeding` that can inspect a product, ground claims, plan distribution, use authorized account/session execution, independently verify external outcomes, persist campaign state, and recover without per-post human operation. `SYSTEM_AGENTIC_AI` Production Core remains frozen.
 
+## Current gate (2026-10-19)
+
+Latest local integration evidence: `npm test` **527 total, 525 passed, 0 failed, 2 skipped**; focused transport/JEV/LinkedIn/authority gate **151/151**; no live social mutation. Canonical runtime remains on its older deployed source and has no active exact live authority. Older counts in milestone history are retained as historical evidence.
+
 ## Current wave — locally implemented and verified
 
 1. Preserve preexisting LinkedIn/ORCA and transport work.
@@ -85,7 +89,7 @@ provider lane.
     execution artifacts. Keep LIVE authority, browser execution and external
     publication blocked until a separately authorized lane exists.
 
-Result: local implementation gates pass (latest full Node suite 468 total, 466 passed, 0 failed, 2 skipped); execution evidence projection service/server gate is 72/72, UI typecheck/build pass, explicit rehearsal handoff has 2 targeted regressions with readiness/JEV at 76/76, and the restart/lease recovery soak is 1/1 with a combined dry-run/readiness/JEV/service gate of 148/148. Discovery-fit scheduler focused gate is 90/90 and independently reviewed PASS_BOUNDED; post-metrics advisory is 25/25 focused, 87/87 integrated, and independently reviewed PASS_BOUNDED; official metrics collection is 58/58 focused and independently reviewed PASS (bounded); metric checkpoint observability is 59/59 focused and independently reviewed ACCEPT_BOUNDED. The scheduler story/content/service focused gate is 52/52, the broader story/product-intelligence/service/server gate is 74/74, the standing-template scheduler gate is 47/47, the template-binding focused service/server gate is 46/46, the queue failure-isolation gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler gate is 42/42, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, outcome attribution is 42/42, and transport/LinkedIn/JEV is 98/98. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA has no repeatable live activation evidence in the current browser lane.
+Result: local implementation gates pass (latest full Node suite 527 total, 525 passed, 0 failed, 2 skipped); execution timeline service gate is 77/77, focused transport/JEV/LinkedIn/authority/continuity gate is 151/151, UI typecheck/build pass, explicit rehearsal handoff has 2 targeted regressions with readiness/JEV at 76/76, and the restart/lease recovery soak is 1/1 with a combined dry-run/readiness/JEV/service gate of 148/148. Discovery-fit scheduler focused gate is 90/90 and independently reviewed PASS_BOUNDED; post-metrics advisory is 25/25 focused, 87/87 integrated, and independently reviewed PASS_BOUNDED; official metrics collection is 58/58 focused and independently reviewed PASS (bounded); metric checkpoint observability is 59/59 focused and independently reviewed ACCEPT_BOUNDED. The scheduler story/content/service focused gate is 52/52, the broader story/product-intelligence/service/server gate is 74/74, the standing-template scheduler gate is 47/47, the template-binding focused service/server gate is 46/46, the queue failure-isolation gate is 47/47, the queue observability gate is 46/46, the authorized candidate scheduler gate is 42/42, metrics observability is 39/39, post-attribution learning/strategy is 20/20 with combined 56/56, outcome attribution is 42/42, transport/LinkedIn/JEV is 106/106, and Mission Control authority/account pool projection is 9/9. No social action/live publish took place. The M1 live acceptance remains blocked because canonical runtime has no active exact LIVE authorization, window, grant or lease and ORCA local reversible control activation is certified, but real LinkedIn activation and publication remain unproven.
 
 ## Later waves (dependency order)
 
@@ -104,8 +108,9 @@ Result: local implementation gates pass (latest full Node suite 468 total, 466 p
 
 8. Reverify browser interaction transport locally without weakening the
    LinkedIn submit seam. The existing accessibility and pointer transports each
-   pass 10/10 resettable fixture activations, while ORCA 1.4.229 live
-   calibration remains unproven and irreversible submit remains blocked.
+   pass 10/10 resettable fixture activations on ORCA 1.4.229; real LinkedIn
+   irreversible-submit activation, acceptance and publication remain unproven
+   and blocked without a fresh authorized live lane.
 
 ## Frozen seams
 
@@ -123,7 +128,7 @@ Latest local gate after item 27: `npm test` reports 422 total, 420 passed, 0 fai
 
 Latest local gate after item 30: `node --test test/service.test.mjs test/server.test.mjs test/integrations.test.mjs` reports 58 passed, 0 failed, 0 skipped; `npm test` reports 430 total, 428 passed, 0 failed, 2 skipped; source syntax and diff checks pass. Independent review is PASS (bounded). Canonical runtime revision 194 and SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No live provider, browser, ORCA or social action took place.
 
-Latest local gate after item 31: `node --test test/service.test.mjs` reports 59 passed, 0 failed, 0 skipped; `npm test` reports 435 total, 433 passed, 0 failed, 2 skipped; source syntax and diff checks pass. Independent review is ACCEPT_BOUNDED. Canonical runtime revision 194 and SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No live provider, browser, ORCA or social action took place.
+Latest local gate after item 31: `node --test test/service.test.mjs` reports 512 passed, 0 failed, 0 skipped; `npm test` reports 435 total, 433 passed, 0 failed, 2 skipped; source syntax and diff checks pass. Independent review is ACCEPT_BOUNDED. Canonical runtime revision 194 and SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No live provider, browser, ORCA or social action took place.
 
 Latest local gate after item 32: `node --test test/integrations.test.mjs test/service.test.mjs test/server.test.mjs` reports 70 passed, 0 failed, 0 skipped; `npm test` reports 444 total, 442 passed, 0 failed, 2 skipped; edited-file syntax and diff checks pass. Independent review is PASS_BOUNDED after negative/signed `Retry-After` hardening. Canonical runtime revision 194 and SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remained unchanged. No live provider, browser, ORCA, credential or social action took place.
 

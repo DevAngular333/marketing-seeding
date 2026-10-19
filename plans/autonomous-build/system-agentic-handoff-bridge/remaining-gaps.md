@@ -9,4 +9,4 @@
 - No browser, ORCA, LinkedIn submit, platform acceptance or independent
   publication verification was attempted.
 - The existing live M1 blocker remains: no fresh exact campaign
-  authorization/window/grant/session and ORCA is unavailable in this shell.
+  authorization/window/grant/session and ORCA executable 1.4.229 is available locally.

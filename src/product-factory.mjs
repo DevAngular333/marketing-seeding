@@ -32,6 +32,49 @@ const SANDBOX_CHECKS = Object.freeze([
 ]);
 const SANDBOX_CHECK_STATUS = new Set(['PASS', 'FAIL', 'UNSUPPORTED', 'UNAVAILABLE']);
 
+/**
+ * Project bounded, secret-safe Product Factory evidence for read-only views.
+ * This never exposes command output or changes execution eligibility.
+ */
+export function projectFactoryRunEvidence(runs = [], { limit = 20 } = {}) {
+  const boundedLimit = Math.min(50, Math.max(0, Number.isSafeInteger(limit) ? limit : 20));
+  return (Array.isArray(runs) ? [...runs] : [])
+    .filter((run) => run && typeof run === 'object')
+    .sort((left, right) => {
+      const time = String(right.completedAt || '').localeCompare(String(left.completedAt || ''));
+      return time || String(right.id || '').localeCompare(String(left.id || ''));
+    })
+    .slice(0, boundedLimit)
+    .map((run) => {
+      const artifacts = Array.isArray(run.artifacts?.artifacts) ? run.artifacts.artifacts : [];
+      return {
+        id: String(run.id || ''),
+        campaignId: run.campaignId ? String(run.campaignId) : null,
+        status: String(run.status || 'UNKNOWN'),
+        externalSideEffects: run.externalSideEffects === true,
+        classification: run.classification ? {
+          kind: String(run.classification.kind || 'unknown'),
+          confidence: String(run.classification.confidence || 'low')
+        } : null,
+        planStatus: String(run.plan?.projectEvidence?.status || 'UNKNOWN'),
+        execution: run.execution ? {
+          status: String(run.execution.status || 'UNKNOWN'),
+          externalSideEffects: run.execution.externalSideEffects === true,
+          resultCount: Array.isArray(run.execution.results) ? run.execution.results.length : 0
+        } : null,
+        artifactCount: artifacts.length,
+        artifacts: artifacts.slice(0, 32).map((artifact) => ({
+          path: redact(String(artifact.path || '').replaceAll('\\', '/')).slice(0, 240),
+          sha256: /^[a-f0-9]{64}$/i.test(String(artifact.sha256 || '')) ? String(artifact.sha256).toLowerCase() : null,
+          bytes: Number.isSafeInteger(artifact.bytes) ? artifact.bytes : null,
+          commandRef: Array.isArray(artifact.commandRef)
+            ? artifact.commandRef.map((item) => redact(String(item)).slice(0, 120)).slice(0, 8)
+            : (artifact.commandRef ? redact(String(artifact.commandRef)).slice(0, 120) : null)
+        }))
+      };
+    });
+}
+
 const redact = (value) => String(value ?? '').replace(SECRET_RE, '$1=[REDACTED]');
 const within = (root, candidate) => {
   const relative = path.relative(root, candidate);

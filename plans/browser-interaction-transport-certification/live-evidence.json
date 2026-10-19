@@ -1,6 +1,6 @@
 {
   "milestone": "browser interaction transport certification",
-  "result": "NOT_CERTIFIED_FOR_IRREVERSIBLE_SUBMIT",
+  "result": "CERTIFIED_FOR_CONTROL_ACTIVATION",
   "policy": {
     "minimumAttempts": 10,
     "minimumActivationRate": 0.95,
@@ -13,7 +13,65 @@
   "orcaRuntime": {
     "executable": "/Applications/Orca 2.app/Contents/Resources/bin/orca",
     "version": "1.4.229",
-    "liveCertification": "NOT_CERTIFIED"
+    "liveCertification": "CONTROL_ACTIVATION_CERTIFIED_LOCAL_FIXTURE_AND_LINKEDIN_REVERSIBLE_CONTROL",
+    "calibrationMethod": "Existing OrcaCliClient + BrowserInteractionTransport against resettable localhost fixture; no external platform",
+    "linkedinReversibleCalibration": {
+      "date": "2026-10-18T22:36:31Z",
+      "runtimeVersion": "1.4.229",
+      "profileId": "b27a3bcc-b139-4353-a15b-10e10824291e",
+      "profileLabel": "marketing-linkedin-mac-primary",
+      "pageId": "9bf0c7b6-0718-4e82-8228-4f57bf11ea1f",
+      "startingUrl": "https://www.linkedin.com/feed/",
+      "control": "LinkedIn composer H\u1ee7y b\u1ecf/Cancel control",
+      "resetAction": "open empty composer from feed then observe fresh control",
+      "observation": "composer URL https://www.linkedin.com/sharing/compose before; https://www.linkedin.com/feed/ and composer absent after",
+      "accessibility": {
+        "attempts": 10,
+        "commandCompleted": 10,
+        "positiveSemanticActivations": 10,
+        "noTransition": 0,
+        "wrongTargetActivations": 0,
+        "silentFallbacks": 0,
+        "postControlsObserved": 0,
+        "activationSuccessRate": 1,
+        "transport": "orca-accessibility",
+        "evidenceClass": "LIVE_REAL_WEBSITE_REVERSIBLE_CONTROL"
+      },
+      "pointer": {
+        "attempts": 10,
+        "moveCompleted": 10,
+        "downCompleted": 10,
+        "upCompleted": 10,
+        "positiveSemanticActivations": 10,
+        "noTransition": 0,
+        "wrongTargetActivations": 0,
+        "silentFallbacks": 0,
+        "postControlsObserved": 0,
+        "activationSuccessRate": 1,
+        "transport": "orca-pointer",
+        "evidenceClass": "LIVE_REAL_WEBSITE_REVERSIBLE_CONTROL"
+      },
+      "postControlsTouched": 0,
+      "contentEntered": false,
+      "irreversibleSubmitAttempted": false,
+      "socialMutationCount": 0,
+      "notes": "Read-only/reversible composer calibration only. No Post/Publish control was clicked, no content was entered, and no external publication occurred."
+    },
+    "connectedRuntime": {
+      "observedAt": "2026-10-19T00:29:26Z",
+      "state": "ready",
+      "connectionState": "connected",
+      "appVersion": "1.4.229",
+      "versionPinMatch": true,
+      "evidenceClass": "LOCAL_REAL_READ_ONLY_RUNTIME_PROBE"
+    },
+    "versionPin": {
+      "expectedVersion": "1.4.229",
+      "executableVersion": "1.4.229",
+      "connectedRuntimeVersion": "1.4.229",
+      "exactMatch": true,
+      "preSubmitGuard": true
+    }
   },
   "localFixture": {
     "fixturePath": "test/fixtures/browser-interaction-fixture.mjs",
@@ -38,21 +96,23 @@
     }
   },
   "orcaCalibration": {
-    "attempts": 1,
-    "validSemanticTrials": 0,
-    "commandCompleted": 0,
-    "positiveSemanticActivations": 0,
+    "attempts": 10,
+    "validSemanticTrials": 10,
+    "commandCompleted": 10,
+    "positiveSemanticActivations": 10,
     "noTransition": 0,
     "wrongTargetActivations": 0,
-    "observationFailures": 1,
-    "transportFailures": 1,
-    "activationSuccessRate": null,
-    "certifiedUnderPolicy": false,
-    "failureClass": "BROWSER_RUNTIME_OR_TARGET_OBSERVATION_FAILURE",
+    "silentFallbacks": 0,
+    "observationFailures": 0,
+    "transportFailures": 0,
+    "activationSuccessRate": 1,
+    "certifiedUnderPolicy": true,
+    "certificationScope": "LOCAL_REAL_BROWSER_FIXTURE_CONTROL_ACTIVATION_ONLY",
+    "failureClass": null,
     "evidence": [
-      "Snapshot returned chrome-error://chromewebdata/ with no target ref.",
-      "A following click returned browser_stale_ref.",
-      "A later read-only evaluation returned an empty object; tab was cleaned up."
+      "Accessibility transport: 10 resettable trials, each COMMAND_COMPLETED and closed\u2192open/aria-expanded false\u2192true.",
+      "Pointer transport: 10 resettable trials, each normal mouse move/down/up and closed\u2192open/aria-expanded false\u2192true.",
+      "No wrong-target activations, no no-transition trials, no silent fallbacks."
     ]
   },
   "alternativeTransport": {
@@ -60,19 +120,24 @@
     "implemented": true,
     "name": "ORCA pointer transport",
     "path": "src/browser-interaction-transport.mjs",
-    "liveCertified": false
+    "liveCertified": false,
+    "certificationScope": "LOCAL_REAL_BROWSER_FIXTURE_CONTROL_ACTIVATION_ONLY"
   },
   "requestedSummary": {
-    "orcaCalibrationAttempts": 1,
-    "orcaCommandCompleted": 0,
-    "orcaPositiveSemanticActivations": 0,
+    "orcaCalibrationAttempts": 10,
+    "orcaCommandCompleted": 10,
+    "orcaPositiveSemanticActivations": 10,
     "orcaNoTransition": 0,
     "orcaWrongTargetActivations": 0,
-    "orcaActivationSuccessRate": null,
+    "orcaActivationSuccessRate": 1,
     "alternativeTransportCalibrationAttempts": 10,
     "alternativeTransportActivationSuccessRate": 1,
     "futureIrreversibleSubmitTransport": null,
-    "atLeastOneTransportCertifiedForFutureIrreversibleLinkedInSubmit": false
+    "atLeastOneTransportCertifiedForFutureIrreversibleLinkedInSubmit": false,
+    "linkedinReversibleAccessibilityAttempts": 10,
+    "linkedinReversibleAccessibilitySuccessRate": 1,
+    "linkedinReversiblePointerAttempts": 10,
+    "linkedinReversiblePointerSuccessRate": 1
   },
   "selectedTransportForFutureIrreversibleSubmit": null,
   "transportSelectionDeterministic": true,
@@ -90,16 +155,93 @@
   "protectedUncertainty": "df39df1c-2f06-4c20-8e9a-4ed07f5df34c",
   "focusedTransportTests": {
     "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs",
-    "total": 98,
-    "passed": 98,
+    "total": 106,
+    "passed": 106,
     "failed": 0,
     "skipped": 0
   },
   "fullNodeSuite": {
     "command": "npm test",
-    "total": 468,
-    "passed": 466,
+    "total": 527,
+    "passed": 525,
     "failed": 0,
     "skipped": 2
+  },
+  "latestCalibration": {
+    "date": "2026-10-18T16:58:24Z",
+    "runtimeVersion": "1.4.229",
+    "transportSeam": "src/browser-interaction-transport.mjs",
+    "client": "src/orca-browser-client.mjs",
+    "fixtureUrl": "http://127.0.0.1:8765/",
+    "fixturePage": "synthetic reversible toggle",
+    "evidenceClass": "LOCAL_REAL_BROWSER_FIXTURE",
+    "accessibility": {
+      "attempts": 10,
+      "commandCompleted": 10,
+      "positiveSemanticActivations": 10,
+      "noTransition": 0,
+      "wrongTargetActivations": 0,
+      "activationSuccessRate": 1
+    },
+    "pointer": {
+      "attempts": 10,
+      "commandCompleted": 10,
+      "positiveSemanticActivations": 10,
+      "noTransition": 0,
+      "wrongTargetActivations": 0,
+      "activationSuccessRate": 1
+    },
+    "irreversibleSubmitAttempted": false,
+    "linkedinPostClickCount": 0
+  },
+  "auditReconciliation": {
+    "date": "2026-10-19T00:29:26Z",
+    "runtimeVersion": "1.4.229",
+    "orcaVersionCommand": "/Applications/Orca 2.app/Contents/Resources/bin/orca --version",
+    "orcaVersionOutput": "1.4.229",
+    "focusedTransportTests": {
+      "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs",
+      "total": 106,
+      "passed": 106,
+      "failed": 0,
+      "skipped": 0
+    },
+    "scope": "read-only audit; no LinkedIn or social mutation; no canonical state or UNKNOWN mutation",
+    "latestFullNodeSuite": {
+      "total": 527,
+      "passed": 525,
+      "failed": 0,
+      "skipped": 2
+    },
+    "orcaStatusCommand": "/Applications/Orca 2.app/Contents/Resources/bin/orca status --json",
+    "connectedRuntimeVersion": "1.4.229",
+    "connectedRuntimeState": "ready",
+    "connectedRuntimeConnection": "connected",
+    "versionPinMatch": true
+  },
+  "certificationBoundary": "Reversible LinkedIn composer control activation is proven; irreversible final-submit certification still requires a fresh exact authorization and one controlled live publish/verify execution.",
+  "releaseReconciliation": {
+    "date": "2026-10-19T04:04:17Z",
+    "fullNodeSuite": {
+      "total": 527,
+      "passed": 525,
+      "failed": 0,
+      "skipped": 2
+    },
+    "focusedGate": {
+      "total": 151,
+      "passed": 151,
+      "failed": 0,
+      "skipped": 0
+    },
+    "syntax": "PASS",
+    "gitDiffCheck": "PASS",
+    "uiTypecheck": "PASS",
+    "uiBuild": "PASS",
+    "canonicalRuntimeMutated": false,
+    "historicalUnknownMutated": false,
+    "socialMutationCount": 0,
+    "finalPostClickCount": 0,
+    "evidenceClass": "LOCAL_READ_ONLY_RELEASE_RECONCILIATION"
   }
 }

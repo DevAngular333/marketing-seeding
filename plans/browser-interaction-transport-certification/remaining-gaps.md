@@ -1,12 +1,13 @@
 # Remaining gaps
 
-1. ORCA 1.4.229 has no repeatable live semantic activation calibration in the
-   current browser lane.
-2. A fresh exact LIVE campaign authorization, one-time window,
-   execution-scoped grant and lease are absent from canonical runtime.
-3. No transport is certified for an irreversible LinkedIn submit, so no live
-   post or publication verifier proof can be attempted.
-4. The ORCA pointer path is implemented and locally certified only; it is not a
-   different provider and does not bypass the live certification policy.
-5. The next live proof, if separately authorized, must use one fresh execution
-   and independently verify author, content, time and stable permalink/post ID.
+- Control activation is certified only on a local reversible browser fixture;
+  the successful ORCA runtime probe does not certify LinkedIn's irreversible
+  Post control.
+- No live LinkedIn final submit, platform acceptance or independent publication
+  verification has occurred.
+- A fresh exact live campaign authorization, one-time window,
+  execution-scoped grant, lease, harmless content and already-authorized
+  LinkedIn session are still absent.
+- ORCA pointer is an audited alternative implementation, but neither transport
+  is certified for irreversible LinkedIn submission until the real platform
+  lane is separately proven.

@@ -168,6 +168,46 @@ test("durable submit intent consumes the exact grant in one state write and cann
   await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
 });
 
+test("certified durable submit intent rejects malformed or non-actionable control evidence at the service boundary", async () => {
+  const f = await fixture();
+  await f.createGrant();
+  const row = await f.service.prepareExecutionRequest(f.posts[0].id, "operator");
+  const acquired = await f.service.acquireExecutionLease(row.executionId, "fixture-control-evidence-worker");
+  const base = {
+    capturedAt: new Date().toISOString(),
+    controlIdentity: "a".repeat(64),
+    connected: true, visible: true, enabled: true,
+    hitTargetMatched: true, actionable: true, composerMatched: true,
+    composerState: "OPEN", boundingBox: { x: 10, y: 20, width: 80, height: 32 },
+    ownershipProof: {
+      composerCount: 1, editorCount: 1, ownedControlCount: 1,
+      controlBelongsToComposer: true, payloadMatched: true, visibilityMatched: true,
+      editorPayloadHash: "b".repeat(64), expectedPayloadHash: "b".repeat(64),
+      structuralEvidenceVersion: 1
+    }
+  };
+  for (const [label, override] of [
+    ["bad identity", { controlIdentity: "not-a-sha256" }],
+    ["disconnected", { connected: false }],
+    ["hidden", { visible: false }],
+    ["disabled", { enabled: false }],
+    ["covered", { hitTargetMatched: false }],
+    ["non-actionable", { actionable: false }],
+    ["wrong composer", { composerMatched: false }]
+  ]) {
+    await assert.rejects(f.service.beginExecutionSubmitIntent(row.executionId, acquired.lease, {
+      liveEnabled: true, liveExecutionId: row.executionId, requireTransportCertification: true,
+      transportIdentity: { transport: "fixture", provider: "fixture", providerVersion: "1" },
+      preSubmitControlEvidence: { ...base, ...override }, verifiedGates: gates
+    }), (error) => error.code === "SUBMIT_CONTROL_EVIDENCE_INVALID", label);
+    const state = await f.service.snapshot();
+    assert.equal(state.executionRequests[0].state, "REQUEST_READY", label);
+    assert.equal(state.liveExecutionGrants[0].status, "ACTIVE", label);
+    assert.equal(state.publicationAttempts.length, 0, label);
+  }
+  await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
+});
+
 test("SUBMIT_SENT durably records click emission separately from acceptance", async () => {
   const f = await fixture();
   await f.createGrant();

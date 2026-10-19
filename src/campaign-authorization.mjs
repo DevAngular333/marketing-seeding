@@ -98,6 +98,22 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
   if (new Set(destinations.map((item) => `${item.platform}\0${item.accountId}\0${item.targetId}`)).size !== destinations.length) {
     throw new Error("Campaign authorization destinations must be unique");
   }
+  const accountSelectionPolicy = input.accountSelectionPolicy == null ? null : input.accountSelectionPolicy;
+  if (accountSelectionPolicy !== null) {
+    if (accountSelectionPolicy.mode !== "ordered" || !Array.isArray(accountSelectionPolicy.order) || accountSelectionPolicy.order.length === 0) {
+      throw new Error("accountSelectionPolicy requires ordered mode and a non-empty order");
+    }
+    const orderKeys = accountSelectionPolicy.order.map((item) => {
+      const platform = required(item.platform, "selection platform");
+      const accountId = required(item.accountId, "selection accountId");
+      const targetId = required(item.targetId, "selection targetId");
+      const profileId = required(item.profileId, "selection profileId");
+      const destination = destinations.find((candidate) => candidate.platform === platform && candidate.accountId === accountId && candidate.targetId === targetId);
+      if (!destination || destination.profileId !== profileId) throw new Error("accountSelectionPolicy order must contain exact authorized account/profile destinations");
+      return `${platform}\0${accountId}\0${targetId}\0${profileId}`;
+    });
+    if (new Set(orderKeys).size !== orderKeys.length) throw new Error("accountSelectionPolicy order must contain unique authorized destinations");
+  }
 
   const approvedAssets = Array.isArray(input.approvedAssets) ? input.approvedAssets.map((item) => ({
     artifactId: required(item.artifactId, "approved asset artifactId"),
@@ -207,6 +223,7 @@ export function normalizeCampaignAuthorization(input, campaign, now = new Date()
     status: "active",
     platforms: [...new Set(destinations.map((item) => item.platform))],
     destinations,
+    accountSelectionPolicy: accountSelectionPolicy ? { mode: "ordered", order: accountSelectionPolicy.order.map((item) => ({ platform: String(item.platform), accountId: String(item.accountId), targetId: String(item.targetId), profileId: required(item.profileId, "selection profileId") })) } : null,
     approvedAssets,
     contentBoundary: contentBoundaryNormalized,
     audienceRules: { allowedAudiences },

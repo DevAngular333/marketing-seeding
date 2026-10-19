@@ -9,7 +9,7 @@ import { attachLinkedInMedia, cleanupLinkedInComposer } from "./linkedin-media.m
 import { isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateSubmitAcceptanceEvidence } from "./execution-contracts.mjs";
 import { publicationVisibilityMatchesLabels, normalizePublicationVisibility } from "./publication-visibility.mjs";
 import { assertClickPreflight, clickCommandEvidence, controlActivationEvidence as buildControlActivationEvidence } from "./click-transport.mjs";
-import { OrcaAccessibilityTransport, assertTransportCannotChangeAfterIntent, assertValidatedTransport } from "./browser-interaction-transport.mjs";
+import { OrcaAccessibilityTransport, OrcaPointerTransport, assertTransportCannotChangeAfterIntent, assertValidatedTransport, selectCertifiedTransport } from "./browser-interaction-transport.mjs";
 
 
 function refOf(line) {
@@ -437,13 +437,39 @@ export class LinkedInAdapter {
     supportsReconciliation: true
   });
 
-  constructor(browser, { verifier = new LinkedInPublicationVerifier(browser), mediaTimeoutMs = 60_000, postClickEvidenceTimeoutMs = 5_000, transport = null } = {}) {
+  constructor(browser, {
+    verifier = new LinkedInPublicationVerifier(browser), mediaTimeoutMs = 60_000,
+    postClickEvidenceTimeoutMs = 5_000, transport = null, transportCandidates = null,
+    transportCertifications = [], transportRuntime = null, requireCertifiedTransport = false
+  } = {}) {
     this.browser = browser;
     this.verifier = verifier;
     this.mediaTimeoutMs = mediaTimeoutMs;
     this.postClickEvidenceTimeoutMs = postClickEvidenceTimeoutMs;
     this.transport = transport || new OrcaAccessibilityTransport(browser);
+    this.transportCandidates = Array.isArray(transportCandidates) && transportCandidates.length
+      ? transportCandidates.slice() : [this.transport];
+    this.transportCertifications = Array.isArray(transportCertifications) ? transportCertifications.slice() : [];
+    this.transportRuntime = transportRuntime || browser?.runtimeIdentity?.() || { providerVersion: browser?.runtimeVersion || null };
+    this.requireCertifiedTransport = requireCertifiedTransport === true;
+    this.requiresCertifiedTransport = this.requireCertifiedTransport;
     this.selectedTransport = this.transport.runtimeIdentity?.().transport || "browser-interaction";
+    this.selectedTransportIdentity = this.transport.runtimeIdentity?.() || { transport: this.selectedTransport };
+  }
+
+  #selectSubmitTransport() {
+    if (!this.requireCertifiedTransport) return this.transport;
+    const selected = selectCertifiedTransport({
+      transports: this.transportCandidates,
+      certifications: this.transportCertifications,
+      platform: this.platform,
+      runtime: this.transportRuntime,
+      requireIrreversibleSubmit: true
+    });
+    this.transport = selected;
+    this.selectedTransportIdentity = selected.runtimeIdentity?.() || { transport: this.selectedTransport };
+    this.selectedTransport = this.selectedTransportIdentity.transport || "browser-interaction";
+    return selected;
   }
 
   async #getPage(request) {
@@ -707,19 +733,39 @@ export class LinkedInAdapter {
     // browser input and does not become a post-submit UNKNOWN.
     const clickPreflight = assertClickPreflight(currentControl.preClickControlEvidence);
     context.submitRef = currentControl.submitRef;
-    context.selectedTransport = this.selectedTransport;
     context.preClickControlEvidence = currentControl.preClickControlEvidence;
     context.urlBeforeSubmit = context.urlBeforeSubmit || currentControl.preClickControlEvidence.url;
     try {
+      this.#selectSubmitTransport();
       assertValidatedTransport(this.transport);
     } catch (error) {
       throw Object.assign(error, { preSubmitFailure: { reasonCode: "TRANSPORT_NOT_CERTIFIED", stage: "submit_boundary", gate: "browserTransport", gateStatus: false } });
     }
+    context.selectedTransport = this.selectedTransport;
     if (!this.transport || typeof this.transport.click !== "function") {
       throw Object.assign(new Error("LinkedIn browser interaction transport is unavailable"), { code: "TRANSPORT_UNAVAILABLE", preSubmitFailure: { reasonCode: "TRANSPORT_UNAVAILABLE", stage: "submit_boundary", gate: "browserTransport", gateStatus: false } });
     }
-    await beforeSubmitIntent(context.gates);
+    try {
+      await this.transport.assertReadyForFinalSubmit?.();
+    } catch (error) {
+      throw Object.assign(error, { preSubmitFailure: {
+        reasonCode: String(error.code || "TRANSPORT_RUNTIME_UNREADY"),
+        stage: "submit_boundary",
+        gate: "browserTransportRuntime",
+        gateStatus: false
+      } });
+    }
+    const persistedIntent = await beforeSubmitIntent(context.gates, {
+      transportIdentity: { ...this.selectedTransportIdentity },
+      preSubmitControlEvidence: { ...context.preClickControlEvidence }
+    });
     context.intentPersisted = true;
+    const persistedTransport = persistedIntent?.submitTransport || persistedIntent?.request?.submitTransport || null;
+    assertTransportCannotChangeAfterIntent({
+      selectedTransport: this.selectedTransportIdentity,
+      requestedTransport: persistedTransport || this.selectedTransportIdentity,
+      intentPersisted: true
+    });
     context.submitAcceptanceEvidence = {
       clickStatus: "UNKNOWN", platformAcceptance: "UNKNOWN", acceptanceSource: "NONE",
       composerState: "UNKNOWN", postButtonState: "UNKNOWN", confirmationState: "UNKNOWN",
@@ -729,7 +775,7 @@ export class LinkedInAdapter {
     let commandResult;
     const preflight = clickPreflight;
     try {
-      assertTransportCannotChangeAfterIntent({ selectedTransport: context.selectedTransport, requestedTransport: this.selectedTransport, intentPersisted: false });
+      assertTransportCannotChangeAfterIntent({ selectedTransport: this.selectedTransportIdentity, requestedTransport: this.selectedTransportIdentity, intentPersisted: context.intentPersisted === true });
       commandResult = await this.transport.click({ pageId: context.pageId, targetRef: context.submitRef, targetIdentity: context.preClickControlEvidence.controlIdentity, boundingBox: context.preClickControlEvidence.boundingBox }, {
         validate: async () => {
           const latest = await this.#captureSubmitControl(context);

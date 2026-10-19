@@ -68,6 +68,47 @@ test("fails closed for stale readiness and unsupported channels", () => {
   assert.equal(result.candidates.length, 0);
 });
 
+test("fails closed when ready readiness has missing or invalid expiry", () => {
+  const fixture = state({
+    targets: [
+      { id: "t1", channel: "linkedin", readiness: { state: "ready" } },
+      { id: "t2", channel: "linkedin", readiness: { state: "ready", expiresAt: "not-a-date" } }
+    ],
+    posts: [
+      { id: "p1", campaignId: "c1", targetId: "t1", status: "published" },
+      { id: "p2", campaignId: "c1", targetId: "t2", status: "published" }
+    ],
+    interactions: [
+      { id: "i1", postId: "p1", externalId: "missing-expiry", text: "x", capturedAt: "2026-01-01T00:00:00.000Z" },
+      { id: "i2", postId: "p2", externalId: "invalid-expiry", text: "y", capturedAt: "2026-01-01T00:00:00.000Z" }
+    ]
+  });
+  const result = projectEngagementContext(fixture, { now: new Date("2026-01-04T00:00:00.000Z") });
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.conversations.every((row) => row.reasonCodes.includes(R.STALE_OR_MISSING_READINESS)), true);
+});
+
+test("does not label approval-gated draft replies as actionable candidates", () => {
+  const fixture = state({
+    replies: [{
+      id: "r-draft",
+      interactionId: "i1",
+      status: "draft",
+      text: "Answer",
+      groundingSources: [{ relativePath: "README.md" }],
+      groundingSummary: "Grounded",
+      createdAt: "2026-01-01T01:00:00.000Z"
+    }]
+  });
+  const result = projectEngagementContext(fixture, { now: new Date("2026-01-04T00:00:00.000Z") });
+  const conversation = result.conversations.find((row) => row.text === "How?");
+  assert.ok(conversation.reasonCodes.includes(R.REPLY_PENDING_APPROVAL));
+  assert.equal(conversation.status, "OBSERVED");
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.authoritySideEffects, false);
+  assert.equal(result.externalSideEffects, false);
+});
+
 test("restart-equivalent input yields stable bounded projection", () => {
   const a = projectEngagementContext(state(), { now: new Date("2026-01-04T00:00:00.000Z") });
   const b = projectEngagementContext(structuredClone(state()), { now: new Date("2026-01-04T00:00:00.000Z") });

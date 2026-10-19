@@ -2,7 +2,7 @@
 
 - No fresh exact LIVE campaign authorization, one-time window,
   execution-scoped grant, lease or harmless live content/session input exists.
-- ORCA is unavailable in this shell; real final-submit activation remains
+- ORCA executable 1.4.229 is available locally; real final-submit activation remains
   uncertified.
 - Independent real publication discovery and permalink/post-ID verification
   remain unproven.

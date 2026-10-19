@@ -2,7 +2,7 @@
 
 1. **Live LinkedIn proof is still blocked.** A fresh exact campaign
    authorization, harmless content, authorized account/profile/session and
-   policy permission for one live execution are absent. ORCA is unavailable in
+   policy permission for one live execution are absent. ORCA executable 1.4.229 is available locally;
    this shell.
 2. **Transport certification remains local.** The existing ORCA accessibility
    and pointer transport contracts have synthetic activation coverage, but no

@@ -37,4 +37,4 @@ Run an existing safe Product Factory evidence run, select an exact candidate, th
 
 ## Status
 
-`COMPLETE_LOCAL_VERIFIED`; live LinkedIn publish and publication verification remain blocked by absent fresh exact authorization and unavailable ORCA runtime.
+`COMPLETE_LOCAL_VERIFIED`; live LinkedIn publish and publication verification remain blocked by absent fresh exact authorization and ORCA executable 1.4.229 is available locally, but irreversible-submit proof remains unproven.

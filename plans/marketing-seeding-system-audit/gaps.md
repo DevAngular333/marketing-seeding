@@ -1,6 +1,6 @@
 # Current gaps and technical debt
 
-Evidence date: 2026-10-18 at integration HEAD `745ce65`. Severity reflects the effect on the requested humanless distribution objective.
+Evidence date: 2026-10-19 at integration HEAD `139f09c` plus reviewed working tree. Severity reflects the effect on the requested humanless distribution objective.
 
 ## P0
 
@@ -14,8 +14,8 @@ Evidence date: 2026-10-18 at integration HEAD `745ce65`. Severity reflects the e
 ### P0-2 — ORCA irreversible-submit transport is not certified by real activation evidence
 
 - The provider-neutral transport boundary and local fixture harness exist.
-- Ten local reversible fixture trials passed at 100% activation under the documented policy.
-- Historical safe ORCA calibration observed command completion but did not provide repeatable positive activation for every safe control.
+- Ten local reversible fixture trials passed at 100% activation for both accessibility and pointer transports under the documented policy.
+- ORCA 1.4.229 is available locally; real LinkedIn activation, acceptance and publication remain unproven.
 - ORCA is therefore not certified for an irreversible final submit on real LinkedIn.
 
 ## P1
@@ -36,7 +36,7 @@ Evidence date: 2026-10-18 at integration HEAD `745ce65`. Severity reflects the e
 - The integration branch product intelligence, discovery and product factory routes are not deployed to the inspected canonical server.
 - Dashboard exposes state and evidence projections but not a complete strategy/NBA/learning timeline.
 - Most domain operations remain HTTP/service methods; the CLI has only `init`, `bootstrap-r19`, `status` and `export`.
-- Observability has audit events, execution IDs and receipts but lacks broad traces, a durable cross-phase timeline and live publication evidence in the canonical runtime.
+- Observability has audit events, execution IDs, receipts and a bounded read-only cross-phase timeline on the integration branch, but lacks broad traces and live publication evidence in the canonical runtime.
 - The transport certification record is not persisted as a runtime certification registry; selection is deterministic when records are supplied.
 
 ## P3

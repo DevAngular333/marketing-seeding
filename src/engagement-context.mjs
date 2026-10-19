@@ -36,7 +36,7 @@ function readinessReason(target, now) {
   const readiness = target?.readiness;
   if (!readiness || String(readiness.state || "").toLowerCase() !== "ready") return REASONS.STALE_OR_MISSING_READINESS;
   const expiresAt = Date.parse(String(readiness.expiresAt || ""));
-  if (Number.isFinite(expiresAt) && expiresAt <= now.getTime()) return REASONS.STALE_OR_MISSING_READINESS;
+  if (!Number.isFinite(expiresAt) || expiresAt <= now.getTime()) return REASONS.STALE_OR_MISSING_READINESS;
   return null;
 }
 
@@ -92,8 +92,12 @@ export function projectEngagementContext(state = {}, { campaignId = null, now = 
     else reasons.push(REASONS.NO_REPLY_DRAFT);
     const blocked = reasons.some((reason) => [REASONS.UNSUPPORTED_CHANNEL, REASONS.STALE_OR_MISSING_READINESS, REASONS.MISSING_EXTERNAL_ID, REASONS.UNKNOWN_POST_QUARANTINED, REASONS.ALREADY_REPLIED].includes(reason));
     const selectedReply = grounded[0] || interactionReplies[0] || null;
-    if (selectedReply?.status === "draft" && policy?.replyRequiresApproval !== false) reasons.push(REASONS.REPLY_PENDING_APPROVAL);
-    const eligible = Boolean(grounded.length && !blocked && selectedReply && ["draft", "approved"].includes(selectedReply.status));
+    const approvalRequired = selectedReply?.status === "draft" && policy?.replyRequiresApproval !== false;
+    if (approvalRequired) reasons.push(REASONS.REPLY_PENDING_APPROVAL);
+    // A grounded draft remains advisory context while approval is required.
+    // It must never be reported as an actionable candidate because that would
+    // make the read model appear to authorize an external reply.
+    const eligible = Boolean(grounded.length && !blocked && !approvalRequired && selectedReply && ["draft", "approved"].includes(selectedReply.status));
     if (eligible) {
       const candidate = {
         candidateRef: fingerprint(`${interaction.id}:${selectedReply.id}`),

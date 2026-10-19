@@ -231,7 +231,7 @@ export class JevExecutionWorker {
           if (dryRun) return null;
           return this.service.assertExecutionSendable(executionId, lease);
         },
-        beforeSubmitIntent: async (verifiedGates) => {
+        beforeSubmitIntent: async (verifiedGates, submitBoundaryEvidence = {}) => {
           submitBoundaryAttemptedAt = this.now().toISOString();
           if (leaseLost) throw Object.assign(new Error("Execution lease was lost before submit"), { code: "LEASE_LOST" });
           let current;
@@ -287,7 +287,10 @@ export class JevExecutionWorker {
               liveExecutionId: this.env.SEEDING_JEV_LIVE_EXECUTION_ID,
               autonomousLiveEnabled: this.env.SEEDING_JEV_AUTONOMOUS_LIVE_ENABLED === "true",
               exactLiveDispatchEnabled: exactOperatorDispatch && this.env.SEEDING_JEV_EXACT_LIVE_ENABLED === "true",
-              verifiedGates
+              verifiedGates,
+              requireTransportCertification: adapter.requiresCertifiedTransport === true,
+              transportIdentity: submitBoundaryEvidence.transportIdentity,
+              preSubmitControlEvidence: submitBoundaryEvidence.preSubmitControlEvidence
             });
           } catch (error) {
             const reasonCode = String(error?.code || "other_platform_pre_submit_error");

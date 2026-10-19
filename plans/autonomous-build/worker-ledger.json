@@ -507,7 +507,77 @@
       "role": "master/integrator/release owner",
       "status": "COMPLETE_LOCAL_FAIL_CLOSED",
       "scope": "browser interaction transport certification follow-up",
-      "evidence": "Added a 10-trial local ORCA pointer transport fixture certification; focused transport/LinkedIn/JEV gate 98/98 and full npm test 468/466/0/2 pass. Direct ORCA 1.4.229 fixture probing was not repeatable (one command completed with no usable activation and one stale-ref probe); no irreversible submit or social mutation occurred."
+      "evidence": "Local ORCA 1.4.229 fixture calibration now records accessibility 10/10 and pointer 10/10 semantic activation; earlier direct probe failure retained as history; real irreversible submit remains unproven."
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_VERIFIED_LIVE_UNPROVEN",
+      "scope": "standing autonomous delegation proof",
+      "evidence": "test/standing-autonomous-delegation-proof.test.mjs 1/1; exact authority/request/window/grant/lease/control-plan binding, idempotent queue and lease release, zero publication artifacts; no canonical/UNKNOWN/browser/social mutation; artifacts in plans/autonomous-build/standing-autonomous-delegation-proof/"
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_CONTROL_ACTIVATION_CERTIFICATION",
+      "scope": "ORCA browser fixture calibration",
+      "evidence": "ORCA 1.4.229 via OrcaCliClient: accessibility 10/10 and pointer 10/10 semantic activation, zero wrong-target/no-transition/silent fallback on resettable localhost fixture. Irreversible LinkedIn submit remains unproven."
+    },
+    {
+      "worker_id": "/root/journal_reviewer",
+      "role": "independent verifier",
+      "status": "PASS_BOUNDED",
+      "scope": "authorized account candidate projection",
+      "evidence": "Focused candidate/account/readiness gate 55/55; milestone full npm 488/486/0/2 (historical); current full npm 527/525/0/2; node --check service PASS; exact binding, deterministic ordering, secret-safe allowlist, read-only/no-artifact behavior reviewed; canonical/UNKNOWN/external state untouched. Report: plans/autonomous-build/reports/verify-20261019-authorized-account-candidate-projection.md"
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_GATES",
+      "scope": "conversation continuity projection",
+      "evidence": "Pure read-only continuity projection and 12 focused tests; UNKNOWN quarantine and deterministic bounded output preserved; no external/canonical/browser/social mutation."
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_GATES",
+      "scope": "discovery opportunity projection",
+      "evidence": "Pure advisory opportunity projection and 3 focused tests; explicit fit/policy gates and deterministic evidence; no authority/provider/browser/social mutation."
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_GATES",
+      "scope": "authorized account pool projection",
+      "evidence": "Read-only unique/ambiguous pool projection and 6 focused tests; no account selection, rebinding, authority or browser action."
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_GATES",
+      "scope": "next foundation review and journal reconciliation",
+      "evidence": "Historical reconciliation checkpoint 515/513/0/2; current release gate is 527/525/0/2. Syntax, diff, UI and JSON checks pass; blockers and live evidence boundaries reconciled; no external/canonical/UNKNOWN mutation."
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_VERIFIED_LIVE_UNPROVEN",
+      "scope": "ORCA runtime version pinning and final release gate",
+      "evidence": "Read-only executable --version and connected status --json both report 1.4.229 ready/connected; focused transport/LinkedIn/JEV gate 106/106; full npm test 527/525/0/2; syntax, diff, UI typecheck/build pass; no canonical, browser, credential, social or UNKNOWN mutation. Report: plans/autonomous-build/orca-runtime-version-pinning/report.md"
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "scope": "Mission Control authority and unsupported-claim observability",
+      "evidence": "Added read-only campaignAuthorityRuntime dashboard projection, authority/pool/channel/sandbox blocker summaries and unsupported claim lineage. Focused authority/account test 9/9, changed-area gate 104/104, full npm 527/525/0/2, UI typecheck/build and syntax/diff pass; no external/canonical/browser/social/UNKNOWN mutation."
+    },
+    {
+      "worker_id": "/root",
+      "role": "master/integrator/release owner",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "scope": "release journal reconciliation and final independent gate",
+      "evidence": "Fresh npm test 527/525/0/2; focused gate 151/151; syntax/diff/UI pass; canonical hash/revision and four UNKNOWN records unchanged; no external or social side effect. Report: plans/autonomous-build/reports/release-journal-reconciliation-20261019.md"
     }
   ]
 }

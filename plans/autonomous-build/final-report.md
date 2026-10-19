@@ -1,15 +1,50 @@
 # Autonomous Build — Current Release Report
 
-**As of:** 2026-10-18
-**Worktree:** `/Users/nam/Documents/marketing-seeding-integration`  
-**Branch:** `integration/autonomous-build`  
+## Release reconciliation overlay (2026-10-19)
+
+- Fresh current-tree full gate: `npm test` **527 total, 525 passed, 0 failed, 2 skipped**.
+- Focused transport/JEV/LinkedIn/authority/continuity gate: **151/151**.
+- `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI build pass.
+- The earlier 522/520/0/2 and 523/521/0/2 entries are historical milestone snapshots;
+  current release fields below are reconciled to 527/525/0/2.
+- Canonical schema 8 revision 194 and SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6` remain unchanged.
+- Active authorization/window/grant/lease counts remain `0/0/0/0`; published posts `0`;
+  protected UNKNOWN executions remain immutable; social mutation and final Post click counts are `0`.
+- Detailed evidence: `plans/autonomous-build/reports/release-journal-reconciliation-20261019.md`.
+
+## Latest continuation overlay (2026-10-19)
+
+- Repaired the stale private ORCA executable reference in canonical
+  `runtime.env` to the installed verified ORCA `1.4.229` executable; mode
+  `0600` was preserved. No ORCA/service restart, browser command, state write,
+  credential change or social action occurred.
+- Read-only probes report executable and connected runtime `1.4.229`, state
+  `ready`, connection `connected`.
+- Fresh full integration gate: `npm test` **527 total, 525 passed, 0 failed,
+  2 skipped**; `node --check src/*.mjs`, `git diff --check`, UI typecheck and
+  UI production build pass.
+- Canonical state remains schema 8/revision 194 with SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`;
+  active authorization/window/grant/lease counts remain `0/0/0/0`.
+- `ORCA-RUNTIME-CONFIG-001` is resolved. Live authority and irreversible
+  LinkedIn publication proof remain blocked and unproven.
+
+**As of:** 2026-10-19
+**Worktree:** `/Users/nam/Documents/marketing-seeding-integration`
+**Branch:** `integration/autonomous-build`
 **Core:** `SYSTEM_AGENTIC_AI` Production Core remains frozen and unchanged.
+
+## Latest release gate
+
+The latest integration-branch `npm test` run is **527 total, 525 passed, 0 failed, 2 skipped**. Syntax, diff, UI typecheck and UI build checks pass. This branch is not deployed to the canonical service.
 
 ## Unverified first
 
-- **No live real website publish was attempted.** Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant or lease. ORCA is unavailable in this shell. This is an external authorization/input blocker.
+- **No live real website publish was attempted.** Canonical runtime has no active exact LIVE campaign authorization, one-time window, execution-scoped grant or lease. ORCA executable/version 1.4.229 is available locally and local reversible control activation is certified, but no controlled real LinkedIn irreversible-submit acceptance lane has been proven; ORCA is not certified for irreversible submit. This remains an external authorization/session and live-platform proof blocker.
+- A read-only readiness diagnostic against the existing host-managed LinkedIn profile returned `READY` and closed an empty composer. It did not persist readiness, create authority, enter content or click Post; canonical persisted readiness remains expired.
 - No fresh execution ID, durable submit intent, autonomous final click, semantic activation, platform acceptance, permalink, post ID or real `PUBLISHED` receipt exists.
-- Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10; this does not certify LinkedIn.
+- Real ORCA irreversible-submit activation remains uncertified. The local deterministic fixture passed 10/10 and the executable/connected daemon both match the pinned `1.4.229`; this does not certify LinkedIn.
 - The campaign queue runtime projection is locally verified only; it reports scheduler health and bounded counts but does not prove a live queue cycle or external publication.
 - Per-campaign queue failures are isolated locally so an unhealthy campaign does not starve healthy campaigns; this remains synthetic resilience evidence.
 - Product intelligence, deterministic story drafts, downstream DRY_RUN distribution handoff, discovery persistence/projection, bounded audience/channel fit, repository inspection, persistent product-factory candidate evidence and content-candidate authorization binding added on this integration branch are not running in the inspected canonical service. Canonical `/health` reports an older source commit and schema 8; read-only state inspection observed revision 194. The integration branch has not been merged or deployed; the canonical service has not been redeployed.
@@ -36,6 +71,7 @@ The integration branch now contains local, tested foundations for bounded standi
 - A provider-neutral distribution handoff can be validated and attached idempotently as DRY_RUN metadata with exact content/media/target references; it does not wire SYSTEM_AGENTIC_AI live or create execution authority.
 - Mission Control/API now projects registered account health, bound-target count, readiness state, bounded blocker reason, `SESSION_REUSE` / `MANUAL_AUTH` mode and fail-closed eligibility reasons with a profile fingerprint; raw profile IDs, identity URLs and evidence remain excluded. The UI renders this through the existing GET-only dashboard and adds no action controls. This is observability only and does not select, authenticate or fail over accounts.
 - Mission Control overview now also projects control-cycle status, advisory strategy and learning actions/reasons, verified/UNKNOWN publication counts and measured metric coverage. It is explicitly read-only and advisory; it does not grant authority or execute actions.
+- Mission Control now also projects bounded engagement context, discovery opportunities, Product Factory evidence and authorized account candidates as read-only, secret-safe advisory data. These projections do not select accounts, approve replies, create authority, call a browser or execute external actions.
 - Browser transport preserves command/activation/acceptance/publication distinctions and deterministic selection; JEV/LinkedIn tests preserve one final input and UNKNOWN quarantine.
 - Campaign queue runtime health is visible through existing read-only `/health` and dashboard surfaces, with no new authority or action controls.
 - Queue failure summaries contain bounded reason codes and failed-campaign counts; raw exception details are excluded.
@@ -47,7 +83,7 @@ The integration branch now contains local, tested foundations for bounded standi
 ```text
 Focused discovery/service/server gate: 50 passed, 0 failed, 0 skipped
 Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
- Full Node suite: latest 420 total, 418 passed, 0 failed, 2 skipped; exit 0
+ Full Node suite: latest 527 total, 525 passed, 0 failed, 2 skipped; exit 0
  Story/content/service focused gate: 67 passed, 0 failed, 0 skipped
  Queue observability focused gate: 46 passed, 0 failed, 0 skipped
  Queue failure-isolation focused gate: 47 passed, 0 failed, 0 skipped
@@ -55,6 +91,7 @@ Observer-hardening focused subset: 17 passed, 0 failed, 0 skipped
  UI typecheck: `cd ui && npx tsc --noEmit` → PASS
  UI production build: `cd ui && npm run build` → PASS (existing Vite config warnings only)
  Account runtime readiness projection: 5 passed, 0 failed, 0 skipped; combined projection/service/server 34 passed; independent release review PASS (bounded)
+ Changed-area projection/review gate: 107 passed, 0 failed, 0 skipped; independent diff review ACCEPT (bounded)
  Mission Control read model: independent release review PASS (bounded)
 Syntax check: all src/*.mjs passed
 Diff check: git diff --check passed
@@ -81,7 +118,7 @@ This is `FOUNDATION_ONLY`, not a completed autonomous distribution OS. Repositor
 
 Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 
-## Latest verification overlay (2026-10-18)
+## Latest verification overlay (2026-10-19)
 
 - Queue-owned story derivation is locally verified behind an explicit bounded
   authorization `storyPolicy`. Focused scheduler/story gate: 52 passed, 0
@@ -105,8 +142,8 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
 
 - Queue-only standing template derivation is now locally verified. An active campaign with exactly one active `standing_autonomous` `approved_template_set` authorization can derive candidates from persisted stories without an operator candidate call.
 - Candidate identity is immutable during autonomous derivation; state is reread before materialization; source, claim, render, template fingerprint, target, account/profile, URL, audience, visibility and authorization binding remain fail-closed.
-- Focused service/server gate at the standing-template milestone: 47 passed, 0 failed, 0 skipped. The current full Node suite is 420 total, 418 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
-- No browser, ORCA, LinkedIn, social, canonical runtime or historical UNKNOWN mutation occurred. Live irreversible-submit proof remains blocked by absent exact authorization/session and unavailable ORCA in this shell.
+- Focused service/server gate at the standing-template milestone: 47 passed, 0 failed, 0 skipped. The historical product-intelligence milestone suite was 420 total, 418 passed, 0 failed, 2 skipped. Syntax and diff checks pass.
+- No browser, ORCA, LinkedIn, social, canonical runtime or historical UNKNOWN mutation occurred. Live irreversible-submit proof remains blocked by absent exact authorization/session and absent real-platform acceptance evidence; ORCA 1.4.229 is available locally but only reversible fixture control activation is certified.
 
 ## Latest verification overlay (2026-10-18, product intelligence story draft)
 
@@ -120,3 +157,141 @@ Detailed audit: `plans/marketing-seeding-system-audit/report.md`.
   story policy and current authorization/campaign fingerprints. It remains
   draft-only and cannot broaden authority; evidence remains LOCAL / SYNTHETIC
   only, with no social, canonical or historical UNKNOWN mutation.
+
+
+## Latest bounded verification overlay (2026-10-19)
+
+- Authorized account/session candidate projection is locally verified: exact standing authorization, destination, target, account/profile and fresh bound readiness checks; deterministic stable key/order and secret-safe bounded output; dashboard/restart read-only proof; focused candidate/account/authority gate 56/56 and full `npm test` 527/525/0/2; independent review PASS (bounded). It does not select/fail over accounts or create authority/execution artifacts.
+- ORCA 1.4.229 is available locally. Controlled resettable fixture calibration passed 10/10 accessibility and 10/10 pointer semantic activations; this remains local reversible control evidence only. Real LinkedIn irreversible submit, acceptance and independent publication remain unproven.
+
+## Latest continuity hardening (2026-10-19)
+
+The read-only conversation continuity projection now accepts valid ISO/string observation timestamps and rejects invalid `now` input fail-closed. Focused continuity and engagement tests are 12/12; the current full Node suite is 527/525/0/2. No external, canonical or historical UNKNOWN mutation occurred.
+
+## Final audited release disposition (2026-10-19)
+
+This is the release-owner conclusion after the independent master release review,
+the follow-up dependency-independent gap review, the host capability probe and a
+fresh full gate. The integration branch is a truthful **FOUNDATION_ONLY** release
+of a bounded distribution runtime. It is not a live-proven unattended
+Autonomous Distribution OS.
+
+### Unverified first
+
+- No fresh exact live campaign authority exists in the canonical runtime. There
+  are zero active authorizations, one-time windows, live grants or leases.
+- No new LinkedIn execution ID, durable submit intent, autonomous final Post
+  click, platform acceptance, permalink/post ID, author/content/time match or
+  real `PUBLISHED`/`CONFIRMED` receipt exists.
+- ORCA CLI reports `1.4.229`; stale host process observations include older
+  ORCA process versions. No process or browser session was changed. The
+  transport is certified only for the documented local/reversible activation
+  scope, not for irreversible LinkedIn submit.
+- Product Factory arbitrary build/render remains fail-closed because the host
+  has no independently audited sandbox profile and resource policy.
+- Live provider permissions, response authenticity and exact metric cadence are
+  unverified. The canonical runtime has zero metric snapshots.
+
+### Release-owner fields
+
+```text
+AUTONOMOUS_BUILD_RESULT = FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS
+CURRENT_PRODUCT = Bounded local marketing distribution runtime with persistent campaign governance, standing autonomous delegation, evidence-grounded product/discovery foundations, guarded LinkedIn/JEV/ORCA execution contracts, independent-verification contracts, and read-only Mission Control projections.
+CURRENT_AUTONOMY_LEVEL = L3 for locally bounded authorized execution contracts; L1-L2 for product intelligence, discovery, strategy and content; L0 for live publication proof.
+PRODUCTION_READINESS = BLOCKED for irreversible live distribution; PARTIAL for local foundation capabilities.
+
+WHAT_NOW_WORKS = Exact campaign/account/profile/target/content/visibility binding; standing authorization derives request/window/grant/lease without routine per-post approval; durable submit intent and UNKNOWN quarantine; separate transport/activation/acceptance/publication evidence; local product intelligence/evidence graph; bounded factory/discovery/strategy/content/learning projections; restart-safe local dry-run; read-only Mission Control.
+WHAT_IS_LIVE_PROVEN = Existing host-managed LinkedIn session readiness was observed read-only; LinkedIn composer Cancel calibration used normal browser interaction; no irreversible action or publication was performed.
+WHAT_IS_LOCAL_REAL = ORCA 1.4.229 resettable fixture activation: 10/10 accessibility and 10/10 pointer; standing delegation isolated-store proof; local persistence, queue, verifier, dry-run restart and dashboard gates.
+WHAT_IS_SYNTHETIC_ONLY = Full publication acceptance, permalink discovery, live metrics, arbitrary repository build/render, autonomous audience/community search, contextual reply execution, multi-account recovery and adaptive learning outcomes.
+WHAT_REMAINS_UNVERIFIED = Real LinkedIn final-submit activation, platform acceptance, independent publication discovery, stable post ID/permalink, author/content/time/media match, live provider behavior, audited sandbox execution, upstream SYSTEM_AGENTIC_AI live producer and production multi-account/session recovery.
+
+PRODUCT_FACTORY = PARTIAL_LOCAL_FAIL_CLOSED
+PRODUCT_INTELLIGENCE = WORKING_LOCAL_EVIDENCE_BOUNDED
+EVIDENCE_GROUNDING = WORKING_LOCAL
+SYSTEM_AGENTIC_HANDOFF = PARTIAL_DRY_RUN_ONLY
+DISCOVERY = PARTIAL_LOCAL_BOUNDED_HTTP_OBSERVER
+AUDIENCE_INTELLIGENCE = PARTIAL_CALLER_EVIDENCE_ONLY
+CHANNEL_INTELLIGENCE = PARTIAL_REGISTRY_AND_FIT_PROJECTION
+STRATEGY_ENGINE = PARTIAL_ADVISORY_DETERMINISTIC
+CONTENT_ENGINE = PARTIAL_APPROVED_COPY_AND_TEMPLATE_FOUNDATION
+CONTEXTUAL_ENGAGEMENT = DESIGN_ONLY_ADVISORY_PROJECTION
+MULTI_ACCOUNT_RUNTIME = NOT_IMPLEMENTED_LIVE
+SESSION_RUNTIME = MANUAL_AUTH_SESSION_REUSE_ONLY
+PLATFORM_SUPPORT = LINKEDIN_CONTRACT_ONLY_LIVE_BLOCKED
+PUBLISH_VERIFICATION = IMPLEMENTED_CONTRACT_LOCAL_TESTED_LIVE_UNPROVEN
+METRICS = PARTIAL_LOCAL_COLLECTORS_LIVE_UNPROVEN
+LEARNING_LOOP = PARTIAL_ADVISORY
+DASHBOARD = PARTIAL_READ_ONLY_MISSION_CONTROL
+RESTART_RECOVERY = PARTIAL_LOCAL_DRY_RUN_PROVEN
+24_7_READINESS = NOT_PROVEN
+
+Git:
+MAIN_HEAD = untouched by this wave; integration HEAD = 5519b80
+MAIN_STATUS = unchanged; no merge or deployment performed
+INTEGRATION_BRANCHES = integration/autonomous-build
+WORKER_BRANCHES = accepted worker evidence and review artifacts; no worker branch was merged into main
+PUSH_STATUS = no new push/deployment performed in this continuation
+MERGED_WORK = accepted local implementation and journal work is present on the integration branch; remaining working-tree changes are preserved intentionally
+
+Tests:
+
+FULL_TEST_RESULT = PASS_LOCAL
+TOTAL = 527
+PASS = 525
+FAIL = 0
+SKIP = 2 existing ACL/evidence-environment skips
+
+Live evidence:
+
+- ORCA 1.4.229 local resettable fixture: accessibility 10/10 and pointer 10/10 semantic activation.
+- LinkedIn reversible composer Cancel control: accessibility 10/10 and pointer 10/10; no content entered and no Post control touched.
+- No live irreversible publication evidence exists.
+
+Certified platforms:
+
+- None for irreversible publication. LinkedIn is contract/local-calibration ready only.
+
+Important artifacts:
+
+- `plans/marketing-seeding-system-audit/report.md`
+- `plans/marketing-seeding-system-audit/architecture.md`
+- `plans/marketing-seeding-system-audit/component-inventory.json`
+- `plans/marketing-seeding-system-audit/capability-matrix.json`
+- `plans/marketing-seeding-system-audit/readiness.json`
+- `plans/autonomous-build/product-readiness.md`
+- `plans/autonomous-build/blocker-ledger.json`
+- `plans/browser-interaction-transport-certification/live-evidence.json`
+- `plans/autonomous-build/reports/independent-master-release-review-20261019.md`
+- `plans/autonomous-build/reports/next-foundation-review-2/report.md`
+
+Important commits:
+
+- `5519b80` — re-evaluate remaining dependency-independent gaps
+- `168c912` — validate Product Intelligence document hash
+- `fd45736` — fail closed on stale standing authorization
+- `6c5102c` — include bounded engagement context
+- `139f09c` — expose distribution intelligence in Mission Control
+
+Blockers:
+
+P0 = Fresh exact live campaign/account/profile/session authority is absent; real irreversible LinkedIn activation and publication verification are therefore blocked.
+P1 = Audited Product Factory sandbox, live metric/provider authenticity, upstream live handoff, autonomous audience/community search, contextual engagement execution, multi-account recovery and adaptive outcome-driven execution remain incomplete.
+P2 = Canonical service is not redeployed from the integration branch; broad tracing and production operator UX remain incomplete.
+P3 = Documentation still contains historical manual-submit language; ORCA process-version skew requires runtime pinning before any future live lane.
+
+EXTERNAL_HARD_BLOCKERS = LIVE-LINKEDIN-AUTH-001; PRODUCT-FACTORY-SANDBOX-001; METRICS-CHECKPOINT-LIVE-001. ORCA-TRANSPORT-LIVE-CERT-001 remains open until the authorized live lane proves irreversible activation/acceptance/publication.
+UNVERIFIED = No real post, permalink, post ID, platform acceptance, live metric snapshot, audited arbitrary build/render, upstream live producer, multi-account failover or 24/7 production soak.
+
+FINAL_VERDICT = ACCEPT_BOUNDED_FOUNDATION_ONLY
+```
+
+### Safety and immutability conclusion
+
+The full suite, static checks, UI checks, independent release review and
+read-only canonical inspection agree. Social mutation count is zero, final Post
+click count is zero, historical UNKNOWN executions are unchanged, the canonical
+runtime hash remains `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`,
+and `SYSTEM_AGENTIC_AI` Core remains untouched. No further implementation can
+truthfully close the remaining live lanes without fresh external authority or
+an audited host capability.

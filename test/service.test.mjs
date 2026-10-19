@@ -2029,6 +2029,41 @@ test("metric collection plan selects only due checkpoints when opted in", () => 
   assert.equal(plan.find((item) => item.postId === "invalid").reason, "published_at_invalid");
 });
 
+test("metric collection plan retries unknown or failed checkpoint evidence in due-only mode", () => {
+  const now = new Date("2026-10-06T01:30:00.000Z");
+  const state = {
+    posts: [
+      { id: "retry-failed", status: "published", publishedAt: "2026-10-06T00:00:00.000Z" },
+      { id: "retry-unknown", status: "published", publishedAt: "2026-10-06T00:00:00.000Z" }
+    ],
+    collectorRuns: [
+      { id: "failed-1h", postId: "retry-failed", status: "failed", at: "2026-10-06T01:05:00.000Z", reason: "provider_timeout" },
+      { id: "unknown-1h", postId: "retry-unknown", status: "unknown", at: "2026-10-06T01:05:00.000Z", reason: "not_authenticated" }
+    ]
+  };
+  const plans = buildMetricCollectionPlan(state, { now, dueOnly: true });
+  for (const [index, runId] of [[0, "failed-1h"], [1, "unknown-1h"]]) {
+    const plan = plans[index];
+    assert.equal(plan.shouldCollect, true);
+    assert.deepEqual(plan.dueCheckpoints, ["1h"]);
+    assert.equal(plan.checkpoints[0].status, "unknown");
+    assert.equal(plan.checkpoints[0].collectorRunId, runId);
+  }
+});
+
+test("metric collection plan does not retry unsupported manual-only checkpoints", () => {
+  const now = new Date("2026-10-06T01:30:00.000Z");
+  const state = {
+    posts: [{ id: "manual", status: "published", publishedAt: "2026-10-06T00:00:00.000Z" }],
+    collectorRuns: [{ id: "manual-1h", postId: "manual", status: "not_applicable", at: "2026-10-06T01:05:00.000Z", reason: "manual_only" }]
+  };
+  const plan = buildMetricCollectionPlan(state, { now, dueOnly: true })[0];
+  assert.equal(plan.shouldCollect, false);
+  assert.equal(plan.reason, "checkpoint_not_due");
+  assert.deepEqual(plan.dueCheckpoints, []);
+  assert.equal(plan.checkpoints[0].status, "unsupported");
+});
+
 test("metric collection plan remains backward compatible when dueOnly is disabled", () => {
   const state = { posts: [{ id: "pending", status: "published", publishedAt: "2026-10-06T01:30:00.000Z" }] };
   const plan = buildMetricCollectionPlan(state, { now: new Date("2026-10-06T02:00:00.000Z") });

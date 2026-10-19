@@ -32,13 +32,103 @@ export class OrcaCliClient {
     this.timeoutMs = timeoutMs;
     this.worktree = worktree;
     this.runtimeVersion = providerVersion ? String(providerVersion) : null;
+    this.observedRuntimeVersion = null;
+    this.runtimeVersionProbeCount = 0;
     this.browserCommands = 0;
   }
 
   browserCommandCount() { return this.browserCommands; }
 
   runtimeIdentity() {
-    return { provider: "orca", providerVersion: this.runtimeVersion, executable: this.executable, worktree: this.worktree };
+    return {
+      provider: "orca",
+      providerVersion: this.runtimeVersion,
+      observedProviderVersion: this.observedRuntimeVersion,
+      executable: this.executable,
+      worktree: this.worktree
+    };
+  }
+
+  /**
+   * Read the executable's version without touching a browser tab. The
+   * configured version remains the certification pin; an observed version is
+   * never promoted into that pin automatically.
+   */
+  async probeRuntimeVersion() {
+    this.runtimeVersionProbeCount += 1;
+    try {
+      const { stdout, stderr } = await execFileAsync(this.executable, ["--version"], {
+        windowsHide: true,
+        timeout: this.timeoutMs,
+        maxBuffer: 64_000
+      });
+      const output = `${String(stdout || "")}\n${String(stderr || "")}`;
+      const match = output.match(/\b\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/);
+      if (!match) throw Object.assign(new Error("ORCA executable version is unavailable"), { code: "ORCA_RUNTIME_VERSION_UNKNOWN" });
+      this.observedRuntimeVersion = match[0];
+      return this.observedRuntimeVersion;
+    } catch (error) {
+      if (error.code === "ENOENT") throw Object.assign(new Error("ORCA CLI is unavailable"), { code: "ORCA_RUNTIME_UNAVAILABLE" });
+      if (error.killed || error.code === "ETIMEDOUT") throw Object.assign(new Error("ORCA runtime version probe timed out"), { code: "PROVIDER_TIMEOUT" });
+      if (error.code === "ORCA_RUNTIME_VERSION_UNKNOWN") throw error;
+      throw Object.assign(new Error("ORCA runtime version probe failed"), { code: "ORCA_RUNTIME_VERSION_UNKNOWN" });
+    }
+  }
+
+  /**
+   * Read the connected Orca daemon/runtime identity without touching a tab.
+   * The executable version alone is insufficient when an older daemon is
+   * still resident on the host; status is the read-only observation of the
+   * runtime that will receive browser commands.
+   */
+  async probeConnectedRuntimeVersion() {
+    this.runtimeVersionProbeCount += 1;
+    try {
+      const { stdout, stderr } = await execFileAsync(this.executable, ["status", "--json"], {
+        windowsHide: true,
+        timeout: this.timeoutMs,
+        maxBuffer: 256_000
+      });
+      const payload = parsePayload(String(stdout || "").trim() || String(stderr || "").trim());
+      const result = payload.result ?? payload;
+      const observed = result?.runtime?.appVersion || result?.appVersion || result?.app?.version || null;
+      if (!observed || typeof observed !== "string") {
+        throw Object.assign(new Error("Connected ORCA runtime version is unavailable"), { code: "ORCA_RUNTIME_VERSION_UNKNOWN" });
+      }
+      return String(observed).trim();
+    } catch (error) {
+      if (error.code === "ENOENT") throw Object.assign(new Error("ORCA CLI is unavailable"), { code: "ORCA_RUNTIME_UNAVAILABLE" });
+      if (error.killed || error.code === "ETIMEDOUT") throw Object.assign(new Error("Connected ORCA runtime status probe timed out"), { code: "PROVIDER_TIMEOUT" });
+      if (["ORCA_RUNTIME_VERSION_UNKNOWN", "ORCA_RUNTIME_UNAVAILABLE", "PROVIDER_TIMEOUT"].includes(error.code)) throw error;
+      throw Object.assign(new Error("Connected ORCA runtime status probe failed"), { code: "ORCA_RUNTIME_VERSION_UNKNOWN" });
+    }
+  }
+
+  /**
+   * Final-submit guard. A live transport must be explicitly pinned to the
+   * certified executable version and the read-only probe must match it.
+   */
+  async assertRuntimeVersion({ expectedVersion = this.runtimeVersion } = {}) {
+    const expected = String(expectedVersion || "").trim();
+    if (!expected) throw Object.assign(new Error("ORCA runtime version is not pinned for final submit"), { code: "ORCA_RUNTIME_VERSION_UNPINNED" });
+    const observed = await this.probeRuntimeVersion();
+    if (observed !== expected) {
+      throw Object.assign(new Error("ORCA runtime version does not match the certification pin"), {
+        code: "ORCA_RUNTIME_VERSION_MISMATCH",
+        expectedVersion: expected,
+        observedVersion: observed
+      });
+    }
+    const connected = await this.probeConnectedRuntimeVersion();
+    if (connected !== expected) {
+      throw Object.assign(new Error("Connected ORCA runtime version does not match the certification pin"), {
+        code: "ORCA_CONNECTED_RUNTIME_VERSION_MISMATCH",
+        expectedVersion: expected,
+        observedVersion: connected
+      });
+    }
+    this.observedRuntimeVersion = connected;
+    return { expectedVersion: expected, observedVersion: observed, connectedRuntimeVersion: connected, executable: this.executable };
   }
 
   async #run(args) {

@@ -54,7 +54,7 @@
     {
       "id": "browser-transport-certification",
       "status": "LOCAL_CERTIFIED_ORCA_UNPROVEN_LIVE",
-      "evidence": "10-trial local accessibility fixture and 10-trial local pointer fixture each achieved 100% semantic activation with zero wrong-target activations; focused transport/LinkedIn/JEV gate 98/98; direct ORCA 1.4.229 calibration was not repeatably positive; no real final submit"
+      "evidence": "10-trial local accessibility fixture and 10-trial local pointer fixture each achieved 100% semantic activation with zero wrong-target activations; focused transport/LinkedIn/JEV gate 98/98; an earlier direct ORCA probe failed, while the later controlled resettable fixture calibration passed 10/10 for both transports; no real final submit"
     },
     {
       "id": "live-linkedin-proof",
@@ -250,6 +250,61 @@
       "id": "product-factory-safety-observability",
       "status": "COMPLETE_LOCAL_VERIFIED",
       "evidence": "Read-only cached Product Factory sandbox capability projection added to dashboard and /health with sanitized checks, limits, eligibility and NOT_EXECUTED_UNSAFE disposition; sanitizer preserves valid all-PASS AVAILABLE state; Mission Control renders the blocker without controls; focused service/server/Product Factory gate 92/92, full npm test 468/466/0/2, UI typecheck/build, syntax and diff checks pass; no project command, browser, ORCA, network, social, canonical or UNKNOWN mutation; artifacts in plans/autonomous-build/product-factory-safety-observability/"
+    },
+    {
+      "id": "standing-autonomous-delegation-proof",
+      "status": "COMPLETE_LOCAL_VERIFIED_LIVE_UNPROVEN",
+      "evidence": "Existing standing_autonomous path proven in isolated JsonStore: one exact authorization automatically derived one REQUEST_READY request, one RESERVED one-time window, one ACTIVE execution-scoped grant and one unique lease; provider-neutral control plan allowed; repeated scheduler tick idempotent; lease released; zero publication attempts; focused 1/1. No canonical/browser/social/UNKNOWN mutation. Artifacts in plans/autonomous-build/standing-autonomous-delegation-proof/ Milestone full npm suite 488/486/0/2 (historical); current release gate 527/525/0/2; canonical state unchanged."
+    },
+    {
+      "id": "orca-browser-fixture-control-activation",
+      "status": "COMPLETE_LOCAL_VERIFIED_IRREVERSIBLE_LIVE_UNPROVEN",
+      "evidence": "ORCA 1.4.229 through OrcaCliClient and existing BrowserInteractionTransport seam achieved 10/10 accessibility and 10/10 pointer semantic activations on resettable localhost fixture; zero wrong-target/no-transition/silent fallback. This certifies reversible control activation only; no LinkedIn submit or publication. Latest local fixture evidence remains 10/10 accessibility and 10/10 pointer; real LinkedIn irreversible submit is unproven."
+    },
+    {
+      "id": "authorized-account-candidate-projection",
+      "status": "COMPLETE_LOCAL_VERIFIED_BOUNDED",
+      "evidence": "Working-tree projection over exact campaign authorization/destination/target/account/profile/readiness contracts; deterministic stable key/order with cap 128, secret-safe bounded dashboard output, restart/no-artifact proof; focused 55/55, milestone full npm 488/486/0/2 (historical); current full npm 527/525/0/2, independent review PASS (bounded). No authority, execution artifact, browser, ORCA, LinkedIn, canonical or UNKNOWN mutation."
+    },
+    {
+      "id": "execution-timeline-mission-control",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Bounded read-only chronological Mission Control timeline with explicit dry-run terminal events, fingerprinted refs, VERIFIED-only permalink exposure and UNKNOWN immutability; focused service 77/77; independent review PASS (bounded); latest full npm test 527/525/0/2; UI/typecheck/static checks pass; no authority/browser/social/canonical mutation."
+    },
+    {
+      "id": "conversation-continuity-projection",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Pure bounded continuity projection over existing interactions/replies; post/campaign scoping, UNKNOWN quarantine, redaction, deterministic ordering and restart-equivalent behavior; focused 12/12; no authority/provider/browser/state mutation."
+    },
+    {
+      "id": "opportunity-projection",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Pure bounded advisory projection over normalized discovery observations; explicit fit/policy eligibility, deterministic score ordering and reason evidence; focused 3/3; no authority/provider/browser/state mutation."
+    },
+    {
+      "id": "authorized-account-pool-projection",
+      "status": "COMPLETE_LOCAL_VERIFIED_BOUNDED",
+      "evidence": "Read-only exact destination pool projection reports a unique eligible candidate only when unambiguous; duplicate keys collapse and multiple eligible authorities fail closed; focused 6/6; no selection, rebinding, authority, browser or external side effect."
+    },
+    {
+      "id": "next-foundation-review",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Read-only review and journal reconciliation completed; current release gate 527/525/0/2, syntax/diff/UI/JSON checks pass, blockers remain explicit; no external or canonical mutation."
+    },
+    {
+      "id": "orca-runtime-version-pinning",
+      "status": "COMPLETE_LOCAL_VERIFIED_LIVE_UNPROVEN",
+      "evidence": "Existing ORCA accessibility/pointer transports call the exact version guard before durable submit intent; executable and connected daemon both report 1.4.229, ready/connected; focused transport/LinkedIn/JEV gate 106/106 and full npm suite 527/525/0/2. Real LinkedIn irreversible submit and publication remain unproven. Artifacts in plans/autonomous-build/orca-runtime-version-pinning/."
+    },
+    {
+      "id": "mission-control-authority-runtime",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Read-only campaign authority/window/grant/lease and Mission Control boundary projection; focused authority/account test 9/9 plus full npm 527/525/0/2; UI typecheck/build, syntax, JSON and diff checks pass; no authority, canonical, browser, social or UNKNOWN mutation."
+    },
+    {
+      "id": "release-journal-reconciliation",
+      "status": "COMPLETE_LOCAL_VERIFIED",
+      "evidence": "Fresh npm test 527 total (525 passed, 0 failed, 2 skipped), focused safety/transport/authority/continuity gate 151/151, syntax/diff/UI gates pass; canonical schema 8 revision 194 SHA-256 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6 unchanged; no social, canonical or UNKNOWN mutation. Report: plans/autonomous-build/reports/release-journal-reconciliation-20261019.md"
     }
   ]
 }

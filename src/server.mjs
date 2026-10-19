@@ -11,6 +11,7 @@ import { OrcaCliClient } from "./orca-browser-client.mjs";
 import { LinkedInReadinessProvider } from "./linkedin-readiness.mjs";
 import { configuredReadinessTtlMs } from "./readiness.mjs";
 import { LinkedInAdapter } from "./linkedin-adapter.mjs";
+import { OrcaAccessibilityTransport, OrcaPointerTransport } from "./browser-interaction-transport.mjs";
 import { JevExecutionWorker } from "./jev-execution-worker.mjs";
 import { PlatformAdapterRegistry, ReadinessProviderRegistry } from "./platform-registries.mjs";
 import { isAuthorizedLocalShutdown, runtimeMetadata } from "./service-lifecycle.mjs";
@@ -29,7 +30,21 @@ async function loadLocalEnv() {
   }
 }
 
+async function loadTransportCertifications() {
+  const file = String(process.env.SEEDING_TRANSPORT_CERTIFICATIONS_FILE || "").trim();
+  if (!file) return [];
+  try {
+    const parsed = JSON.parse((await readFile(file, "utf8")).replace(/^\uFEFF/, ""));
+    if (!Array.isArray(parsed)) throw new Error("Transport certification file must contain an array");
+    return parsed.filter((item) => item && typeof item === "object");
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
 await loadLocalEnv();
+const configuredTransportCertifications = await loadTransportCertifications();
 
 // Keep loopback as the safe local default; VPS deployments can set SEEDING_HOST
 // explicitly (usually 127.0.0.1 behind nginx, or 0.0.0.0 with a firewall).
@@ -71,7 +86,18 @@ const service = new SeedingService(store, {
   readinessProviderRegistry
 });
 const platformAdapterRegistry = new PlatformAdapterRegistry();
-platformAdapterRegistry.register("linkedin", new LinkedInAdapter(orcaBrowser));
+// The production lane is fail-closed until an explicit, platform/runtime
+// scoped irreversible-submit certification record is supplied. Reversible
+// fixture/Cancel calibration never authorizes LinkedIn Post.
+const linkedinAccessibilityTransport = new OrcaAccessibilityTransport(orcaBrowser);
+const linkedinPointerTransport = new OrcaPointerTransport(orcaBrowser);
+platformAdapterRegistry.register("linkedin", new LinkedInAdapter(orcaBrowser, {
+  transport: linkedinAccessibilityTransport,
+  transportCandidates: [linkedinAccessibilityTransport, linkedinPointerTransport],
+  transportCertifications: configuredTransportCertifications,
+  transportRuntime: { provider: "orca", providerVersion: orcaBrowser.runtimeVersion },
+  requireCertifiedTransport: true
+}));
 const jevWorker = new JevExecutionWorker({ service, adapterRegistry: platformAdapterRegistry, workerId: `jev-server-${process.pid}` });
 let initializedState;
 try {

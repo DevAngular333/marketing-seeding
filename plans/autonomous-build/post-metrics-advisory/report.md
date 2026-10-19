@@ -47,4 +47,4 @@ Existing UNKNOWN quarantine, action precedence, campaign/target identity validat
 - No live metric provider execution is proven in the canonical runtime.
 - LinkedIn metrics remain manual-only in the integration metadata.
 - Learning remains explanatory/advisory; it does not adapt strategy into autonomous authority or next-best-action dispatch.
-- Live LinkedIn publish/verify remains blocked by absent fresh exact authorization and unavailable ORCA runtime.
+- Live LinkedIn publish/verify remains blocked by absent fresh exact authorization and ORCA executable 1.4.229 is available locally, but irreversible-submit proof remains unproven.

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "working-tree:product-factory-safety-observability+browser-transport-certification",
+  "checkpointCommit": "working-tree:release-journal-reconciliation+527-test-release-gate",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -40,7 +40,8 @@
     "working-tree seam: versioned SYSTEM_AGENTIC_AI DRY_RUN handoff bridge with wrapped/raw route compatibility and restart-safe zero-side-effect proof",
     "working-tree seam: Product Factory sandbox capability/profile preflight with fail-closed eligibility",
     "working-tree seam: cached read-only Product Factory sandbox safety projection in dashboard/health and Mission Control",
-    "working-tree seam: preserve Product Factory AVAILABLE sanitizer state, add pointer transport fixture certification and certification artifacts"
+    "working-tree seam: preserve Product Factory AVAILABLE sanitizer state, add pointer transport fixture certification and certification artifacts",
+    "working-tree proof: standing autonomous authorization derives exact request/window/grant/lease without per-post approval"
   ],
   "rejectedCommits": [],
   "gates": [
@@ -1254,7 +1255,10 @@
     {
       "name": "product_factory_safety_observability_ui",
       "result": "PASS",
-      "commands": ["cd ui && npx tsc --noEmit", "npm --prefix ui run build"],
+      "commands": [
+        "cd ui && npx tsc --noEmit",
+        "npm --prefix ui run build"
+      ],
       "report": "plans/autonomous-build/product-factory-safety-observability/test-results.md"
     },
     {
@@ -1296,25 +1300,27 @@
     },
     {
       "name": "orca_direct_calibration_latest",
-      "result": "NOT_CERTIFIED",
+      "result": "PASS_LOCAL_BROWSER_FIXTURE_CONTROL_ACTIVATION",
       "runtimeVersion": "1.4.229",
-      "attempts": 1,
-      "validSemanticTrials": 0,
-      "observationFailures": 1,
-      "transportFailures": 1,
+      "attempts": 10,
+      "validSemanticTrials": 10,
+      "observationFailures": 0,
+      "transportFailures": 0,
       "irreversibleSubmit": false,
-      "report": "plans/browser-interaction-transport-certification/live-evidence.json"
+      "report": "plans/browser-interaction-transport-certification/live-evidence.json",
+      "commandCompleted": 10,
+      "positiveSemanticActivations": 10
     },
     {
-      "name": "browser_transport_full_node_suite_latest",
+      "name": "browser_transport_full_node_suite_historical_515_513",
       "result": "PASS",
-      "tests": 468,
-      "passed": 466,
+      "tests": 515,
+      "passed": 513,
       "failed": 0,
       "skipped": 2,
       "exitCode": 0,
       "command": "npm test",
-      "report": "plans/browser-interaction-transport-certification/regression-results.md"
+      "report": "plans/autonomous-build/reports/latest-gate-reconciliation-20261019.md"
     },
     {
       "name": "browser_transport_static_latest",
@@ -1330,6 +1336,204 @@
       "historicalUnknownMutated": false,
       "canonicalRuntimeMutated": false,
       "report": "plans/browser-interaction-transport-certification/live-evidence.json"
+    },
+    {
+      "name": "standing_autonomous_delegation_proof_latest",
+      "result": "PASS_LOCAL_REAL_ISOLATED_STORE",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/standing-autonomous-delegation-proof.test.mjs",
+      "report": "plans/autonomous-build/standing-autonomous-delegation-proof/test-results.md"
+    },
+    {
+      "name": "orca_browser_fixture_control_activation_latest",
+      "result": "PASS_LOCAL_REAL_BROWSER_FIXTURE",
+      "runtime": "ORCA 1.4.229",
+      "accessibilityAttempts": 10,
+      "accessibilityCommandCompleted": 10,
+      "accessibilityPositiveActivations": 10,
+      "pointerAttempts": 10,
+      "pointerCommandCompleted": 10,
+      "pointerPositiveActivations": 10,
+      "noTransition": 0,
+      "wrongTargetActivations": 0,
+      "activationSuccessRate": 1,
+      "irreversibleSubmit": false,
+      "socialMutationCount": 0,
+      "report": "plans/autonomous-build/orca-runtime-version-pinning/report.md",
+      "focusedTransportTests": 106,
+      "fullNodeSuite": "527/525/0/2",
+      "runtimePin": "1.4.229 executable + connected daemon exact match"
+    },
+    {
+      "name": "full_node_suite_historical_515_513",
+      "result": "PASS",
+      "tests": 515,
+      "passed": 513,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test",
+      "report": "plans/autonomous-build/reports/latest-gate-reconciliation-20261019.md"
+    },
+    {
+      "name": "standing_delegation_safety_latest",
+      "result": "PASS",
+      "publicationAttempts": 0,
+      "publishedPosts": 0,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false,
+      "report": "plans/autonomous-build/standing-autonomous-delegation-proof/report.md"
+    },
+    {
+      "name": "authorized_account_candidate_projection_latest",
+      "result": "PASS_LOCAL_BOUNDED",
+      "tests": 55,
+      "passed": 55,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/authorized-account-candidate-projection.test.mjs test/account-runtime-projection.test.mjs test/readiness-execution.test.mjs",
+      "report": "plans/autonomous-build/reports/verify-20261019-authorized-account-candidate-projection.md",
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false
+    },
+    {
+      "name": "execution_timeline_mission_control_latest",
+      "result": "PASS_LOCAL_VERIFIED",
+      "tests": 77,
+      "passed": 77,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/service.test.mjs",
+      "report": "plans/autonomous-build/execution-timeline-mission-control/test-results.md",
+      "independentReview": "PASS (bounded)",
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false
+    },
+    {
+      "name": "conversation_continuity_projection_latest",
+      "result": "PASS_LOCAL_READ_ONLY",
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/conversation-continuity.test.mjs test/engagement-context.test.mjs",
+      "report": "plans/autonomous-build/conversation-continuity-projection/test-results.md",
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false
+    },
+    {
+      "name": "opportunity_projection_latest",
+      "result": "PASS_LOCAL_READ_ONLY",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/opportunity-projection.test.mjs",
+      "report": "plans/autonomous-build/opportunity-projection/report.md",
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false
+    },
+    {
+      "name": "authorized_account_pool_projection_latest",
+      "result": "PASS_LOCAL_READ_ONLY",
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/authorized-account-candidate-projection.test.mjs",
+      "report": "plans/autonomous-build/account-pool-selection-projection/report.md",
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false
+    },
+    {
+      "name": "full_node_suite_historical_522_520",
+      "result": "PASS",
+      "tests": 522,
+      "passed": 520,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0,
+      "command": "npm test",
+      "report": "plans/autonomous-build/orca-runtime-version-pinning/test-results.md",
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false
+    },
+    {
+      "name": "orca_runtime_version_pinning_latest",
+      "result": "PASS_BOUNDED",
+      "runtime": "ORCA 1.4.229",
+      "executableVersion": "1.4.229",
+      "connectedRuntimeVersion": "1.4.229",
+      "connectedRuntimeState": "ready",
+      "connectedRuntimeConnection": "connected",
+      "focusedTests": 106,
+      "passed": 106,
+      "failed": 0,
+      "skipped": 0,
+      "fullNodeSuite": {
+        "tests": 527,
+        "passed": 525,
+        "failed": 0,
+        "skipped": 2
+      },
+      "irreversibleSubmit": false,
+      "socialMutationCount": 0,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false,
+      "report": "plans/autonomous-build/orca-runtime-version-pinning/report.md"
+    },
+    {
+      "name": "mission_control_authority_runtime_latest",
+      "result": "PASS_LOCAL_VERIFIED",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test test/authorized-account-candidate-projection.test.mjs",
+      "fullNodeSuite": {
+        "tests": 527,
+        "passed": 525,
+        "failed": 0,
+        "skipped": 2
+      },
+      "readOnly": true,
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false,
+      "report": "plans/autonomous-build/mission-control-detail/report.md"
+    },
+    {
+      "name": "release_journal_reconciliation_latest",
+      "result": "PASS",
+      "tests": 527,
+      "passed": 525,
+      "failed": 0,
+      "skipped": 2,
+      "command": "npm test",
+      "exitCode": 0,
+      "focusedGate": {
+        "tests": 151,
+        "passed": 151,
+        "failed": 0,
+        "skipped": 0,
+        "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs test/live-execution-grant.test.mjs test/standing-autonomous-delegation-proof.test.mjs test/authorized-account-candidate-projection.test.mjs test/channel-capability-projection.test.mjs test/conversation-continuity.test.mjs test/engagement-context.test.mjs test/opportunity-projection.test.mjs"
+      },
+      "syntax": "passed",
+      "gitDiffCheck": "passed",
+      "uiTypecheck": "passed",
+      "uiBuild": "passed",
+      "report": "plans/autonomous-build/reports/release-journal-reconciliation-20261019.md",
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false
     }
   ]
 }

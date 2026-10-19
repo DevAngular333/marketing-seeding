@@ -1,6 +1,6 @@
 # Marketing Seeding System — Implemented Architecture
 
-Verified from source, tests, configuration, read-only runtime inspection, and Git history on 2026-10-18 at integration HEAD `745ce65`. This document describes the current implementation and labels future work separately.
+Verified from source, tests, configuration, read-only runtime inspection, and Git history on 2026-10-19 at integration HEAD `139f09c` plus the reviewed working tree. This document describes the current implementation and labels future work separately.
 
 ## Runtime topology
 

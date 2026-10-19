@@ -1,0 +1,15 @@
+ M plans/autonomous-build/integration-ledger.json
+ M plans/autonomous-build/milestone-ledger.json
+ M plans/autonomous-build/worker-ledger.json
+ M plans/browser-interaction-transport-certification/live-evidence.json
+ M plans/browser-interaction-transport-certification/remaining-gaps.md
+ M plans/browser-interaction-transport-certification/report.md
+?? plans/.DS_Store
+?? plans/autonomous-build/next-foundation-review/pin/git-head.txt
+?? plans/autonomous-build/next-foundation-review/pin/git-status.txt
+?? plans/autonomous-build/standing-autonomous-delegation-proof/acceptance.md
+?? plans/autonomous-build/standing-autonomous-delegation-proof/changes.md
+?? plans/autonomous-build/standing-autonomous-delegation-proof/remaining-gaps.md
+?? plans/autonomous-build/standing-autonomous-delegation-proof/report.md
+?? plans/autonomous-build/standing-autonomous-delegation-proof/test-results.md
+?? test/standing-autonomous-delegation-proof.test.mjs

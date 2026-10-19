@@ -1,7 +1,8 @@
 # Test results
 
-- Focused transport/LinkedIn/JEV gate: 98 passed, 0 failed, 0 skipped.
-- Full Node suite: 468 total, 466 passed, 0 failed, 2 skipped.
+- Focused transport/LinkedIn/JEV gate: 106 passed, 0 failed, 0 skipped.
+- Historical milestone count: 468 total, 466 passed, 0 failed, 2 skipped.
+- Current integration-branch full Node suite: 527 total, 525 passed, 0 failed, 2 skipped.
 - `node --check src/*.mjs`: passed.
 - `git diff --check`: passed.
 - Local accessibility fixture: 10/10 semantic activations.

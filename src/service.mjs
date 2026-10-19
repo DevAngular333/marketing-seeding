@@ -29,6 +29,7 @@ import { legacyHandoffIdentity, validateDistributionHandoff } from "./distributi
 import { projectEngagementContext } from "./engagement-context.mjs";
 import { projectConversationContinuity } from "./conversation-continuity.mjs";
 import { projectDiscoveryOpportunities } from "./opportunity-projection.mjs";
+import { projectChannelCapabilities } from "./channel-capability-projection.mjs";
 import { appRoot } from "./paths.mjs";
 
 export async function pollConfiguredDiscoveries(service, { actor = "scheduled-discovery-observer", shuttingDown = false } = {}) {
@@ -78,6 +79,83 @@ const METRIC_CHECKPOINTS = Object.freeze([
   { key: "24h", offsetMs: 24 * 60 * 60 * 1000 },
   { key: "72h", offsetMs: 72 * 60 * 60 * 1000 }
 ]);
+
+function normalizeSubmitTransportIdentity(value) {
+  if (!value || typeof value !== "object") return null;
+  const transport = String(value.transport || "").trim().slice(0, 80);
+  const provider = String(value.provider || "").trim().slice(0, 80);
+  const providerVersion = String(value.providerVersion || "").trim().slice(0, 80);
+  if (!transport || !provider || !providerVersion) return null;
+  return { transport, provider, providerVersion };
+}
+
+function normalizeSubmitIntentEvidence(value) {
+  if (!value || typeof value !== "object") return null;
+  const boundingBox = value.boundingBox && typeof value.boundingBox === "object" ? {
+    x: Number.isFinite(Number(value.boundingBox.x)) ? Number(value.boundingBox.x) : null,
+    y: Number.isFinite(Number(value.boundingBox.y)) ? Number(value.boundingBox.y) : null,
+    width: Number.isFinite(Number(value.boundingBox.width)) ? Number(value.boundingBox.width) : null,
+    height: Number.isFinite(Number(value.boundingBox.height)) ? Number(value.boundingBox.height) : null
+  } : null;
+  const ownership = value.ownershipProof && typeof value.ownershipProof === "object" ? {
+    composerId: value.ownershipProof.composerId ? String(value.ownershipProof.composerId).slice(0, 160) : null,
+    composerCount: Number(value.ownershipProof.composerCount) || 0,
+    editorCount: Number(value.ownershipProof.editorCount) || 0,
+    editorPayloadHash: value.ownershipProof.editorPayloadHash ? String(value.ownershipProof.editorPayloadHash).toLowerCase().slice(0, 64) : null,
+    expectedPayloadHash: value.ownershipProof.expectedPayloadHash ? String(value.ownershipProof.expectedPayloadHash).toLowerCase().slice(0, 64) : null,
+    payloadMatched: value.ownershipProof.payloadMatched === true,
+    visibility: value.ownershipProof.visibility ? String(value.ownershipProof.visibility).slice(0, 40) : null,
+    visibilityMatched: value.ownershipProof.visibilityMatched === true,
+    ownedControlCount: Number(value.ownershipProof.ownedControlCount) || 0,
+    globalControlCount: Number(value.ownershipProof.globalControlCount) || 0,
+    controlBelongsToComposer: value.ownershipProof.controlBelongsToComposer === true,
+    structuralEvidenceVersion: Number(value.ownershipProof.structuralEvidenceVersion) || 0
+  } : null;
+  return {
+    capturedAt: Number.isFinite(Date.parse(String(value.capturedAt || ""))) ? String(value.capturedAt) : nowIso(),
+    url: value.url ? String(value.url).slice(0, 500) : null,
+    controlRef: value.controlRef ? String(value.controlRef).slice(0, 100) : null,
+    controlIdentity: value.controlIdentity ? String(value.controlIdentity).toLowerCase().slice(0, 128) : null,
+    role: value.role ? String(value.role).slice(0, 40) : null,
+    accessibleName: value.accessibleName ? String(value.accessibleName).slice(0, 120) : null,
+    visible: value.visible === true,
+    connected: value.connected === true,
+    enabled: value.enabled === true,
+    busy: value.busy === true,
+    actionable: value.actionable === true,
+    hitTargetMatched: value.hitTargetMatched === true,
+    composerState: value.composerState ? String(value.composerState).slice(0, 40) : null,
+    composerMatched: value.composerMatched === true,
+    boundingBox,
+    ownershipProof: ownership
+  };
+}
+
+function isSha256(value) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
+}
+
+function isPositiveBoundingBox(value) {
+  return Boolean(value &&
+    Number.isFinite(value.x) && Number.isFinite(value.y) &&
+    Number.isFinite(value.width) && Number.isFinite(value.height) &&
+    value.width > 0 && value.height > 0);
+}
+
+function hasSubmitControlEvidence(value) {
+  const ownership = value?.ownershipProof;
+  return Boolean(value &&
+    isSha256(value.controlIdentity) &&
+    value.connected === true && value.visible === true && value.enabled === true &&
+    value.busy !== true && value.hitTargetMatched === true && value.actionable === true &&
+    value.composerState === "OPEN" && value.composerMatched === true &&
+    isPositiveBoundingBox(value.boundingBox) && ownership &&
+    ownership.composerCount === 1 && ownership.editorCount === 1 &&
+    ownership.ownedControlCount === 1 && ownership.controlBelongsToComposer === true &&
+    ownership.payloadMatched === true && ownership.visibilityMatched === true &&
+    isSha256(ownership.editorPayloadHash) && isSha256(ownership.expectedPayloadHash) &&
+    ownership.structuralEvidenceVersion >= 1);
+}
 
 const EXECUTION_RUNTIME_MAX_RECENT = 12;
 const EXECUTION_RUNTIME_MAX_BLOCKERS = 8;
@@ -831,12 +909,19 @@ export function buildMetricCollectionPlan(state = {}, { now = new Date(), dueOnl
       const checkpoints = buildMetricCheckpoints(post, snapshots, collectorRuns, at);
       const invalidPublication = checkpoints.every((checkpoint) => checkpoint.status === "unknown" && checkpoint.reason === "published_at_invalid");
       const due = checkpoints.filter((checkpoint) => checkpoint.status === "due" || checkpoint.status === "missing");
-      const shouldCollect = !invalidPublication && (!dueOnly || due.length > 0);
+      // A due checkpoint with unknown evidence may represent a transient
+      // provider/configuration failure. Keep the visible checkpoint status
+      // unknown, but let the due-only scheduler try it again on a later tick.
+      // Invalid publication timestamps remain fail-closed above, and
+      // unsupported/manual-only evidence is intentionally terminal.
+      const retryableUnknown = checkpoints.filter((checkpoint) => checkpoint.status === "unknown" && checkpoint.reason !== "published_at_invalid");
+      const selected = dueOnly ? [...due, ...retryableUnknown] : due;
+      const shouldCollect = !invalidPublication && (!dueOnly || selected.length > 0);
       return {
         postId: post.id,
         shouldCollect,
         reason: invalidPublication ? "published_at_invalid" : shouldCollect ? null : "checkpoint_not_due",
-        dueCheckpoints: due.map((checkpoint) => checkpoint.key),
+        dueCheckpoints: selected.map((checkpoint) => checkpoint.key),
         checkpoints
       };
     });
@@ -1230,6 +1315,7 @@ export function projectAuthorizedAccountCandidates(state = {}, { campaignId = nu
         targetUrl: target?.url || destination?.targetUrl || null,
         sessionMode: account ? "SESSION_REUSE" : null,
         authMode: account ? "MANUAL_AUTH" : null,
+        accountSelectionPolicy: authorization.accountSelectionPolicy || null,
         readiness: target?.readiness ? {
           state: safeAccountRuntimeState(target.readiness.state),
           checkedAt: target.readiness.checkedAt || null,
@@ -1273,14 +1359,27 @@ export function projectAuthorizedAccountPool(state = {}, options = {}) {
     .map((rows) => {
       const eligible = rows.filter((candidate) => candidate.eligibleForAutonomousExecution)
         .sort((left, right) => String(left.candidateKey).localeCompare(String(right.candidateKey)));
-      const selected = eligible.length === 1 ? eligible[0] : null;
+      const eligibleAuthorizationIds = [...new Set(eligible.map((candidate) => candidate.authorizationId))].sort();
+      const ambiguousAuthorization = eligibleAuthorizationIds.length > 1;
+      const policy = !ambiguousAuthorization ? eligible.map((candidate) => candidate.accountSelectionPolicy).find(Boolean) || null : null;
+      const ordered = policy?.mode === "ordered" ? policy.order : [];
+      const selected = ambiguousAuthorization ? null : ordered.length ? ordered.map((entry) => eligible.find((candidate) => candidate.platform === entry.platform && candidate.accountId === entry.accountId && candidate.targetId === entry.targetId && candidate.profileFingerprint === accountProfileFingerprint(entry.profileId))).find(Boolean) || null : eligible.length === 1 ? eligible[0] : null;
+      const selectionStatus = ambiguousAuthorization
+        ? "AMBIGUOUS_AUTHORIZATION"
+        : selected && ordered.length ? "POLICY_SELECTED"
+          : selected ? "UNIQUE_ELIGIBLE"
+            : eligible.length > 1 ? "AMBIGUOUS_POOL" : "NO_ELIGIBLE_CANDIDATE";
       return {
         campaignId: rows[0].campaignId,
         targetId: rows[0].targetId,
         candidateCount: rows.length,
         eligibleCandidateCount: eligible.length,
-        selectionStatus: selected ? "UNIQUE_ELIGIBLE" : eligible.length > 1 ? "AMBIGUOUS_POOL" : "NO_ELIGIBLE_CANDIDATE",
-        selectionReason: selected ? null : eligible.length > 1 ? "multiple_eligible_accounts" : "no_eligible_account",
+        selectionStatus,
+        selectionReason: ambiguousAuthorization ? "multiple_active_authorizations" : selected ? null : eligible.length > 1 ? "multiple_eligible_accounts" : "no_eligible_account",
+        selectionPolicy: ambiguousAuthorization
+          ? { status: "AMBIGUOUS_AUTHORIZATION", reason: "multiple_active_authorizations" }
+          : ordered.length ? { status: selected ? "ORDERED" : "ORDERED_NO_ELIGIBLE", reason: selected ? null : "ordered_destinations_not_eligible" }
+            : { status: "UNSPECIFIED", reason: "no_explicit_account_preference_policy" },
         selectedCandidateKey: selected?.candidateKey || null,
         candidateKeys: rows.map((candidate) => candidate.candidateKey).sort(),
         eligibleAccounts: eligible.map((candidate) => ({
@@ -1334,6 +1433,56 @@ export function projectAuthorizedAccountPoolSummary(candidates = []) {
       autonomousPath: summary.eligibleCount > 0 ? "AVAILABLE_ADVISORY" : "BLOCKED"
     }))
     .sort((left, right) => `${left.campaignId}\u0000${left.platform}\u0000${left.targetId}\u0000${left.authorizationId}`.localeCompare(`${right.campaignId}\u0000${right.platform}\u0000${right.targetId}\u0000${right.authorizationId}`));
+}
+
+/**
+ * Read-only campaign authority/runtime summary for Mission Control. This
+ * projection reports the currently persisted standing authority and any
+ * derived execution artifacts; it never creates, renews, selects, or mutates
+ * authorization, window, grant, or lease records.
+ */
+export function projectCampaignAuthorityRuntime(state = {}, { now = new Date(), readinessTtlMs = configuredReadinessTtlMs() } = {}) {
+  const nowMs = now instanceof Date ? now.getTime() : Date.parse(now);
+  const observedAt = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const campaigns = Array.isArray(state.campaigns) ? state.campaigns : [];
+  const authorizations = Array.isArray(state.campaignAuthorizations) ? state.campaignAuthorizations : [];
+  const windows = Array.isArray(state.oneTimeExecutionWindows) ? state.oneTimeExecutionWindows : [];
+  const grants = Array.isArray(state.liveExecutionGrants) ? state.liveExecutionGrants : [];
+  const posts = Array.isArray(state.posts) ? state.posts : [];
+  const leases = Array.isArray(state.executionLeases) ? state.executionLeases : [];
+  const candidates = projectAuthorizedAccountCandidates(state, { now: new Date(observedAt), readinessTtlMs });
+  return campaigns.map((campaign) => {
+    const campaignAuthorizations = authorizations.filter((item) => item?.campaignId === campaign.id);
+    const activeAuthorizations = campaignAuthorizations.filter((item) => item?.status === "active" && Date.parse(item.validFrom || "") <= observedAt && Date.parse(item.validUntil || "") >= observedAt);
+    const standingAuthorizations = activeAuthorizations.filter((item) => item.executionMode === "standing_autonomous" && item.allowLiveExecution === true);
+    const activeWindows = windows.filter((item) => item?.campaignId === campaign.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date(observedAt))) && oneTimeExecutionWindowInBounds(item, new Date(observedAt)));
+    const activeGrants = grants.filter((item) => item?.campaignId === campaign.id && liveGrantEffectiveStatus(item, new Date(observedAt)) === "ACTIVE");
+    const campaignPostIds = new Set(posts.filter((post) => post?.campaignId === campaign.id).map((post) => post.id));
+    const activeLeases = leases.filter((item) => campaignPostIds.has(item?.jobId) && Date.parse(item?.expiresAt || "") > observedAt);
+    const campaignCandidates = candidates.filter((item) => item?.campaignId === campaign.id);
+    const eligibleCandidates = campaignCandidates.filter((item) => item?.eligibleForAutonomousExecution === true);
+    const reasons = [];
+    if (campaign.status !== "active") reasons.push("campaign_inactive");
+    if (!standingAuthorizations.length) reasons.push("no_active_standing_authorization");
+    if (standingAuthorizations.length && !eligibleCandidates.length) reasons.push("no_fresh_eligible_account_candidate");
+    return {
+      campaignId: String(campaign.id || ""),
+      campaignStatus: String(campaign.status || "UNKNOWN"),
+      activeAuthorizationCount: activeAuthorizations.length,
+      standingAuthorizationCount: standingAuthorizations.length,
+      activeWindowCount: activeWindows.length,
+      activeGrantCount: activeGrants.length,
+      activeLeaseCount: activeLeases.length,
+      accountCandidateCount: campaignCandidates.length,
+      eligibleAccountCandidateCount: eligibleCandidates.length,
+      status: reasons.length ? "BLOCKED" : "READY_FOR_BOUNDED_DELEGATION",
+      reasons,
+      advisory: true,
+      authoritySideEffects: false,
+      externalSideEffects: false,
+      observedAt: new Date(observedAt).toISOString()
+    };
+  }).sort((left, right) => left.campaignId.localeCompare(right.campaignId));
 }
 
 function metricTotals(metric = {}) {
@@ -1942,21 +2091,10 @@ export class SeedingService {
     }
     const pending = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
     if (pending.length > 1) throw new Error("Multiple live executions are pending for standing delegation");
-    const existing = (snapshot.liveExecutionGrants || []).find((item) => item.jobId === post.id && liveGrantEffectiveStatus(item) === "ACTIVE");
     if (!account || account.status !== "enabled" || account.profileId !== target.profileId) throw new Error("Standing execution grant requires an exact enabled account/profile binding");
     const now = new Date();
     if (account.health !== "healthy") throw new Error("Standing execution grant requires a healthy account");
     if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, now, this.readinessTtlMs)) throw new Error("Standing execution grant requires fresh readiness");
-    if (existing) {
-      if (!pending.length) throw new Error("Standing execution grant requires a pending live execution request");
-      if (existing.boundExecutionId !== pending[0].executionId || existing.campaignId !== post.campaignId ||
-          existing.campaignAuthorizationId !== authorization.id || existing.campaignAuthorizationBinding !== authorization.binding ||
-          existing.targetId !== target.id || existing.accountId !== target.accountId || existing.profileId !== target.profileId) {
-        throw new Error("Standing execution grant binding is stale");
-      }
-      assertLiveGrantMatchesExecution(existing, pending[0].request, authorization, now, { checkWindow: false });
-      return existing;
-    }
     const validFrom = new Date(Math.max(now.getTime() - 5_000, Date.parse(window.validFrom))).toISOString();
     const validUntil = new Date(Math.min(Date.parse(window.validUntil), Date.parse(authorization.validUntil))).toISOString();
     const grant = createLiveExecutionGrantV1({
@@ -2026,7 +2164,11 @@ export class SeedingService {
       }
       const currentExisting = (state.liveExecutionGrants || []).find((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE");
       if (currentExisting) {
-        assertLiveGrantMatchesExecution(currentExisting, currentRequest.request, currentAuthorization, new Date(), { checkWindow: false });
+        try {
+          assertLiveGrantMatchesExecution(currentExisting, currentRequest.request, currentAuthorization, new Date(), { checkWindow: false });
+        } catch {
+          throw new Error("Standing execution grant binding is stale");
+        }
         return currentExisting;
       }
       grant.boundExecutionId = currentRequest.executionId;
@@ -4125,7 +4267,7 @@ export class SeedingService {
     return result.result;
   }
 
-  async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, exactLiveDispatchEnabled = false, verifiedGates = {} } = {}) {
+  async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, exactLiveDispatchEnabled = false, verifiedGates = {}, requireTransportCertification = false, transportIdentity = null, preSubmitControlEvidence = null } = {}) {
     const reject = (reasonCode, gate, message) => {
       const error = Object.assign(new Error(message), { code: reasonCode });
       error.preSubmitFailure = { reasonCode, stage: "submit_boundary", gate, gateStatus: false };
@@ -4133,6 +4275,12 @@ export class SeedingService {
     };
     const snapshot = await this.executionContext(executionId);
     const { request, post, target, account, authorization, artifact, liveGrant } = snapshot;
+    const normalizedTransportIdentity = normalizeSubmitTransportIdentity(transportIdentity);
+    const normalizedPreSubmitControlEvidence = normalizeSubmitIntentEvidence(preSubmitControlEvidence);
+    if (requireTransportCertification === true && !normalizedTransportIdentity) reject("TRANSPORT_NOT_CERTIFIED", "browserTransport", "A certified browser transport identity is required before live submit intent");
+    if (requireTransportCertification === true && !hasSubmitControlEvidence(normalizedPreSubmitControlEvidence)) {
+      reject("SUBMIT_CONTROL_EVIDENCE_INVALID", "finalSubmitControl", "Durable submit intent requires actionable owned submit-control evidence");
+    }
     const preIntentKillReasons = killSwitchReasons(post, snapshot.state);
     if (preIntentKillReasons.length) reject("KILL_SWITCH_BLOCKED", preIntentKillReasons[0], `Live submit blocked by global control: ${preIntentKillReasons.join(", ")}`);
     if (authorization?.executionMode === "standing_autonomous") {
@@ -4252,6 +4400,8 @@ export class SeedingService {
       requestRow.executionPhase = "SUBMIT_SENT_INTENT";
       requestRow.submitIntentAt = at;
       requestRow.idempotencyKey = request.idempotencyKey;
+      if (normalizedTransportIdentity) requestRow.submitTransport = normalizedTransportIdentity;
+      if (normalizedPreSubmitControlEvidence) requestRow.submitIntentEvidence = normalizedPreSubmitControlEvidence;
       currentGrant.status = "CONSUMED";
       currentGrant.consumedAt = at;
       currentGrant.consumedExecutionId = executionId;
@@ -5456,6 +5606,7 @@ export class SeedingService {
     const authorizedAccountCandidates = projectAuthorizedAccountCandidates(state, { readinessTtlMs: this.readinessTtlMs });
     const authorizedAccountPool = projectAuthorizedAccountPool(state, { readinessTtlMs: this.readinessTtlMs });
     const authorizedAccountPoolSummary = projectAuthorizedAccountPoolSummary(authorizedAccountCandidates);
+    const campaignAuthorityRuntime = projectCampaignAuthorityRuntime(state, { readinessTtlMs: this.readinessTtlMs });
     const engagementContext = projectEngagementContext(state, { now: new Date() });
     const conversationContinuity = projectConversationContinuity(state, { now: new Date() });
     const executionRuntime = projectExecutionRuntime(state);
@@ -5484,6 +5635,7 @@ export class SeedingService {
       targets: state.targets.filter((target) => target.channel === id).length,
       posts: state.posts.filter((post) => state.targets.find((target) => target.id === post.targetId)?.channel === id).length
     }));
+    const channelCapabilities = projectChannelCapabilities({ channels: CHANNELS, targets: state.targets, posts: state.posts });
     const trafficPulse = state.posts
       .filter((post) => post.status === "published")
       .map((post) => buildTrafficPulse(post, state.metricSnapshots, state.interactions, new Date(), state.collectorRuns));
@@ -5538,6 +5690,7 @@ export class SeedingService {
       authorizedAccountCandidates,
       authorizedAccountPool,
       authorizedAccountPoolSummary,
+      campaignAuthorityRuntime,
       engagementContext,
       conversationContinuity,
       executionRuntime,
@@ -5549,6 +5702,7 @@ export class SeedingService {
       openInteractions: state.interactions.filter((item) => item.status === "open").length,
       pendingReplies: state.replies.filter((item) => item.status !== "sent").length,
       channels,
+      channelCapabilities,
       campaigns: state.campaigns,
       outcomes: state.campaigns.filter((campaign) => campaign.outcomeSummary).map((campaign) => ({ campaignId: campaign.id, latest: campaign.outcomeSummary, recent: (campaign.outcomeSummaries || []).slice(-24), updatedAt: campaign.outcomeUpdatedAt || null })),
       learning: state.campaigns.filter((campaign) => campaign.latestLearningFeedback).map((campaign) => ({ campaignId: campaign.id, latest: campaign.latestLearningFeedback, recent: (campaign.learningFeedback || []).slice(-24), updatedAt: campaign.learningUpdatedAt || null })),

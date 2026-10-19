@@ -21,5 +21,5 @@ The binding is fail-closed. A manual authorization, expired authorization, misma
 ## Boundaries
 
 - This does not create authorization, authenticate accounts, operate a browser, click a platform submit control or verify a real publication.
-- ORCA remains unavailable in this shell and irreversible LinkedIn transport activation remains uncertified live.
+- ORCA executable 1.4.229 is available locally and irreversible LinkedIn transport activation remains uncertified live.
 - The canonical runtime remains read-only and has no active exact live authority.

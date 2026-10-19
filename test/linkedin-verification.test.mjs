@@ -486,6 +486,84 @@ test("LinkedIn final submit rejects a transport that cannot prove pre-provider v
   assert.equal(clicks, 0);
 });
 
+test("LinkedIn final submit rejects an unpinned ORCA runtime before durable intent", async () => {
+  let intentCalls = 0;
+  const browser = {
+    async snapshot() { return '- button "Post" [ref=post]'; },
+    async evaluate(_page, expression) {
+      if (expression === linkedinAdapterExpressions.submitControl) return submitControlObservation();
+      return {};
+    },
+    async assertRuntimeVersion() { throw Object.assign(new Error("ORCA runtime version is not pinned"), { code: "ORCA_RUNTIME_VERSION_UNPINNED" }); }
+  };
+  const adapter = new LinkedInAdapter(browser, { verifier: {} });
+  adapter.prepareExecution = async (requestValue) => ({ request: requestValue, pageId: "page-1", expectedIdentityUrl });
+  adapter.navigate = async (context) => context;
+  adapter.verifyTarget = async (context) => ({ ...context, targetVerified: true });
+  adapter.openComposer = async (context) => context;
+  adapter.fillContent = async (context) => context;
+  adapter.attachMedia = async (context) => ({ ...context, media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
+  adapter.verifyPreSubmit = async (context) => ({ ...context, gates: { passed: true } });
+  const result = await adapter.execute(request({ withMedia: false }), {
+    dryRun: false, liveEnabled: true,
+    async beforeSubmitIntent() { intentCalls += 1; },
+    async onSubmitSent() { throw new Error("must not send"); }
+  });
+  assert.equal(result.submitState, "FAILED");
+  assert.equal(result.reasonCode, "orca_runtime_version_unpinned");
+  assert.equal(result.preSubmitFailure?.gate, "browserTransportRuntime");
+  assert.equal(intentCalls, 0);
+});
+
+test("LinkedIn irreversible submit fails closed without an explicit certified transport record", async () => {
+  let intentCalls = 0;
+  let clicks = 0;
+  const browser = {
+    async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+    async evaluate(_page, expression) { return expression === linkedinAdapterExpressions.submitControl ? submitControlObservation() : {}; },
+    async showTab() { return { url: "https://www.linkedin.com/feed/" }; },
+    runtimeVersion: "1.4.229",
+    async click() { clicks += 1; }
+  };
+  const adapter = new LinkedInAdapter(browser, { verifier: {}, requireCertifiedTransport: true, transportCertifications: [], transportRuntime: { provider: "orca", providerVersion: "1.4.229" } });
+  const context = await adapter.verifyPreSubmit({ request: request(), pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
+  await assert.rejects(() => adapter.submit(context, {
+    async beforeSubmitIntent() { intentCalls += 1; }, async onSubmitSent() {}
+  }), (error) => error.code === "TRANSPORT_NOT_CERTIFIED" && error.preSubmitFailure?.gate === "browserTransport");
+  assert.equal(intentCalls, 0);
+  assert.equal(clicks, 0);
+});
+
+test("transport identity mutation after durable intent is quarantined without a second click", async () => {
+  let clicks = 0;
+  const browser = {
+    async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+    async evaluate(_page, expression) { return expression === linkedinAdapterExpressions.submitControl ? submitControlObservation() : {}; },
+    async showTab() { return { url: "https://www.linkedin.com/feed/" }; },
+    runtimeVersion: "1"
+  };
+  const transport = {
+    transportContractVersion: 1, requiresPreClickValidation: true,
+    runtimeIdentity: () => ({ transport: "fixture-certified", provider: "fixture", providerVersion: "1" }),
+    assertPreClickValidation() { return true; },
+    async assertReadyForFinalSubmit() { return true; },
+    async click() { clicks += 1; return { status: "COMMAND_COMPLETED" }; }
+  };
+  const adapter = new LinkedInAdapter(browser, {
+    verifier: {}, transport, transportCandidates: [transport], requireCertifiedTransport: true,
+    transportRuntime: { provider: "fixture", providerVersion: "1" },
+    transportCertifications: [{ transport: "fixture-certified", provider: "fixture", providerVersion: "1", certified: true, irreversibleSubmit: true, certificationScope: "IRREVERSIBLE_LINKEDIN_SUBMIT" }]
+  });
+  const context = await adapter.verifyPreSubmit({ request: request(), pageId: "page-1", targetVerified: true,
+    media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
+  await assert.rejects(() => adapter.submit(context, {
+    async beforeSubmitIntent() { return { submitTransport: { transport: "fixture-certified", provider: "fixture", providerVersion: "2" } }; },
+    async onSubmitSent() { throw new Error("must not send"); }
+  }), (error) => error.code === "TRANSPORT_SWITCH_AFTER_INTENT");
+  assert.equal(clicks, 0);
+});
+
 test("immediate click preflight rejects a moved or covered control before durable intent", async (t) => {
   for (const [name, override] of [["moved", { controlId: "moved-control" }], ["covered", { hitTargetMatched: false }], ["detached", { connected: false }]]) {
     await t.test(name, async () => {

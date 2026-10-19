@@ -8,6 +8,7 @@ import { SeedingService } from "../src/service.mjs";
 import { campaignAuthorizationFingerprint, campaignContentHash } from "../src/campaign-authorization.mjs";
 import { readinessBinding, executionAccountKey } from "../src/readiness.mjs";
 import { deriveStandingExecutionControlPlan } from "../src/standing-campaign-delegation.mjs";
+import { oneTimeExecutionWindowFingerprint } from "../src/one-time-execution-window.mjs";
 
 test("standing autonomous delegation derives exact live controls and lease without per-post approval", async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "standing-autonomous-proof-"));
@@ -145,4 +146,122 @@ test("standing autonomous delegation derives exact live controls and lease witho
   const afterDriftAttempt = await service.snapshot();
   assert.equal(afterDriftAttempt.oneTimeExecutionWindows.length, beforeDriftAttempt.oneTimeExecutionWindows.length);
   assert.equal(afterDriftAttempt.liveExecutionGrants.length, beforeDriftAttempt.liveExecutionGrants.length);
+});
+
+async function standingFixture(t) {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "standing-autonomous-race-"));
+  t.after(async () => { await rm(directory, { recursive: true, force: true }); });
+  const productRepo = path.join(directory, "product-repo");
+  await mkdir(productRepo);
+  await writeFile(path.join(productRepo, "README.md"), "Bounded race evidence.\n", "utf8");
+  const service = new SeedingService(new JsonStore(path.join(directory, "state.json")));
+  await service.init();
+  const campaign = await service.createCampaign({ name: "Standing race proof", objective: "Prove atomic binding checks", productRepo }, "operator");
+  await service.updateCampaign(campaign.id, { status: "active" }, "operator");
+  const now = new Date();
+  const accountId = "linkedin_standing_race";
+  const profileId = "22222222-3333-4444-8555-666666666666";
+  await service.registerExecutionAccount({ platform: "linkedin", accountId, profileId, expectedIdentityUrl: "https://www.linkedin.com/in/standing-race" }, "operator");
+  const target = await service.createTarget({
+    channel: "linkedin", name: "Standing race target", url: "https://www.linkedin.com/company/standing-race",
+    accountId, profileId, status: "active",
+    readiness: { state: "ready", checkedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 5 * 60_000).toISOString(), checks: { sessionValid: true, composerCapable: true, platformAvailable: true } }
+  }, "operator");
+  await service.updateTarget(target.id, { readiness: { state: "ready", checkedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 5 * 60_000).toISOString(), checks: { sessionValid: true, composerCapable: true, platformAvailable: true } } }, "readiness-proof");
+  const content = "Harmless standing race proof copy.";
+  const authorization = await service.authorizeCampaign(campaign.id, {
+    id: "standing-race-authorization", validFrom: new Date(now.getTime() - 60_000).toISOString(), validUntil: new Date(now.getTime() + 15 * 60_000).toISOString(),
+    destinations: [{ platform: "linkedin", accountId, profileId, targetId: target.id }], approvedAssets: [],
+    contentBoundary: { mode: "approved_copy_set", contentHashes: [campaignContentHash(content)] }, audienceRules: { allowedAudiences: ["public"] },
+    publicationVisibilityRules: { allowedVisibilities: ["PUBLIC"] }, schedule: { timezone: "UTC", weekdays: [now.getUTCDay()], startLocal: "00:00", endLocal: "23:59" },
+    rateLimits: { maxJobsPerAccountPerDay: 1, maxJobsPerCampaignPerDay: 1, maxConcurrency: 1, minIntervalMinutes: 0 },
+    allowLiveExecution: true, executionMode: "standing_autonomous", standingAuthorizationReference: "standing-race-reference"
+  }, "operator");
+  const post = await service.createPost({ campaignId: campaign.id, targetId: target.id, content, audience: "public" }, "producer");
+  return { service, campaign, authorization, target, post };
+}
+
+test("standing window and grant mutations reject interleaved campaign and post drift", async (t) => {
+  const { service, campaign, authorization, target, post } = await standingFixture(t);
+  await service.revokeOneTimeExecutionWindow((await service.snapshot()).oneTimeExecutionWindows.find((item) => item.jobId === post.id).windowId, "operator");
+  const beforeWindow = await service.snapshot();
+  const originalMutate = service.store.mutate.bind(service.store);
+  let injected = false;
+  service.store.mutate = async (actor, event, mutation) => {
+    if (event === "standing_execution_window_derived" && !injected) {
+      injected = true;
+      await originalMutate("fixture", "interleave_campaign_pause", (state) => {
+        state.campaigns.find((item) => item.id === campaign.id).status = "paused";
+      });
+    }
+    return originalMutate(actor, event, mutation);
+  };
+  await assert.rejects(service.ensureStandingExecutionWindow(post.id, "scheduler"), /exact current campaign authorization binding/);
+  service.store.mutate = originalMutate;
+  const afterWindow = await service.snapshot();
+  assert.equal(afterWindow.oneTimeExecutionWindows.filter((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(item.status)).length, 0);
+  await service.store.mutate("fixture", "restore_campaign_for_grant_race", (state) => {
+    state.campaigns.find((item) => item.id === campaign.id).status = "active";
+  });
+  await service.ensureStandingExecutionWindow(post.id, "scheduler");
+  const activeGrant = (await service.snapshot()).liveExecutionGrants.find((item) => item.jobId === post.id && item.status === "ACTIVE");
+  await service.revokeLiveExecutionGrant(activeGrant.grantId, "operator");
+  injected = false;
+  service.store.mutate = async (actor, event, mutation) => {
+    if (event === "standing_execution_grant_derived" && !injected) {
+      injected = true;
+      await originalMutate("fixture", "interleave_post_binding_drift", (state) => {
+        state.posts.find((item) => item.id === post.id).campaignAuthorizationBinding = "stale-binding";
+      });
+    }
+    return originalMutate(actor, event, mutation);
+  };
+  await assert.rejects(service.ensureStandingExecutionGrant(post.id, "scheduler"), /exact current campaign authorization binding/);
+  service.store.mutate = originalMutate;
+  const afterGrant = await service.snapshot();
+  assert.equal(afterGrant.liveExecutionGrants.filter((item) => item.jobId === post.id && item.status === "ACTIVE").length, 0);
+  assert.equal(afterGrant.oneTimeExecutionWindows.filter((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(item.status)).length, 1);
+  assert.equal(beforeWindow.liveExecutionGrants.filter((item) => item.jobId === post.id && item.status === "ACTIVE").length, 1);
+  assert.equal(authorization.id, post.campaignAuthorizationId);
+  assert.equal(target.id, post.targetId);
+});
+
+test("standing derivation rejects stale existing window and grant bindings before reuse", async (t) => {
+  const { service, post } = await standingFixture(t);
+  await service.store.mutate("fixture", "tamper_existing_window", (state) => {
+    const window = state.oneTimeExecutionWindows.find((item) => item.jobId === post.id);
+    window.authorizationFingerprint = "stale-authorization";
+  });
+  const beforeWindow = await service.snapshot();
+  await assert.rejects(service.ensureStandingExecutionWindow(post.id, "scheduler"), /window binding is stale/);
+  const afterWindow = await service.snapshot();
+  assert.deepEqual(afterWindow.oneTimeExecutionWindows, beforeWindow.oneTimeExecutionWindows);
+
+  await service.store.mutate("fixture", "restore_existing_window", (state) => {
+    const window = state.oneTimeExecutionWindows.find((item) => item.jobId === post.id);
+    const authorization = state.campaignAuthorizations.find((item) => item.id === window.campaignAuthorizationId);
+    window.authorizationFingerprint = authorization.binding;
+    window.binding = oneTimeExecutionWindowFingerprint(window);
+  });
+  await service.store.mutate("fixture", "tamper_existing_grant", (state) => {
+    const grant = state.liveExecutionGrants.find((item) => item.jobId === post.id);
+    grant.targetId = "wrong-target";
+  });
+  const beforeGrant = await service.snapshot();
+  await assert.rejects(service.ensureStandingExecutionGrant(post.id, "scheduler"), /grant binding is stale|exact current/);
+  const afterGrant = await service.snapshot();
+  assert.deepEqual(afterGrant.liveExecutionGrants, beforeGrant.liveExecutionGrants);
+});
+
+test("standing grant reuse revalidates current post and request binding atomically", async (t) => {
+  const { service, post } = await standingFixture(t);
+  await service.store.mutate("fixture", "tamper_existing_post_content_identity", (state) => {
+    const current = state.posts.find((item) => item.id === post.id);
+    current.contentId = "drifted-content-identity";
+  });
+  const before = await service.snapshot();
+  await assert.rejects(service.ensureStandingExecutionGrant(post.id, "scheduler"), /request binding is stale/);
+  const after = await service.snapshot();
+  assert.deepEqual(after.liveExecutionGrants, before.liveExecutionGrants);
+  assert.deepEqual(after.executionRequests, before.executionRequests);
 });

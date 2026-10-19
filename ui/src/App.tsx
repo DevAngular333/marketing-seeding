@@ -1125,16 +1125,48 @@ function MissionControlPanel({ data }: { data: R }) {
   const engagementCandidates = Array.isArray(data?.engagementContext?.candidates)
     ? data.engagementContext.candidates
     : []
+  const conversationContinuity = data?.conversationContinuity && typeof data.conversationContinuity === "object"
+    ? data.conversationContinuity
+    : null
   const productIntelligence = Array.isArray(data?.productIntelligence)
     ? data.productIntelligence
     : []
   const readyProductIntelligence = productIntelligence.filter(
     (item: R) => item?.handoff?.readinessStatus === "READY",
   ).length
+  const authorityRows = Array.isArray(data?.campaignAuthorityRuntime)
+    ? data.campaignAuthorityRuntime
+    : []
+  const authorityBlockers = authorityRows.filter((item: R) => item?.status !== "READY_FOR_BOUNDED_DELEGATION")
+  const accountPoolRows = Array.isArray(data?.authorizedAccountPoolSummary)
+    ? data.authorizedAccountPoolSummary
+    : []
+  const blockedAccountPools = accountPoolRows.filter((item: R) => item?.autonomousPath !== "AVAILABLE_ADVISORY")
+  const channelCapabilities = Array.isArray(data?.channelCapabilities)
+    ? data.channelCapabilities
+    : []
+  const blockedChannels = channelCapabilities.filter((item: R) => item?.status !== "READY")
+  const factorySandbox = data?.productFactorySandbox && typeof data.productFactorySandbox === "object"
+    ? data.productFactorySandbox
+    : null
+  const unsupportedClaimCount = productIntelligence.reduce((total: number, item: R) => {
+    const document = item?.document && typeof item.document === "object" ? item.document : {}
+    return total + (Array.isArray(document.CLAIMS_WE_CANNOT_MAKE) ? document.CLAIMS_WE_CANNOT_MAKE.length : 0)
+  }, 0)
   const executionBlockers = Array.isArray(data?.executionRuntime?.blockers)
     ? data.executionRuntime.blockers
     : []
   const accountBlockers = accountRows.filter((account) => !account.eligible).length
+  const currentBlockerCount = executionBlockers.length + accountBlockers + authorityBlockers.length + blockedAccountPools.length + blockedChannels.length + (factorySandbox?.executionEligible === true ? 0 : factorySandbox ? 1 : 0)
+  const opportunityRows = discoveryOpportunities.slice(0, 5)
+  const intelligenceRows = productIntelligence.slice(0, 4)
+  const compactText = (value: unknown, fallback = "UNKNOWN", max = 180) => {
+    const text = String(value ?? "").replace(/\s+/g, " ").trim()
+    return text ? (text.length > max ? `${text.slice(0, max - 1)}…` : text) : fallback
+  }
+  const fitLabel = (fit: R | null | undefined) => fit
+    ? [fit.audience?.status, fit.channel?.status, fit.locale?.status].map((value) => String(value || "UNKNOWN")).join(" · ")
+    : "No fit projection"
   return (
     <section className="panel mission-control-panel full-span">
       <div className="panel-head">
@@ -1228,15 +1260,109 @@ function MissionControlPanel({ data }: { data: R }) {
             <small>{engagementCandidates.length ? "Reply có grounding đang chờ policy/runtime" : "Chưa có hội thoại actionable"}</small>
           </article>
           <article>
+            <span className="mission-eyebrow">Conversation continuity</span>
+            <strong>{conversationContinuity ? Number(conversationContinuity.total || 0) : "UNKNOWN"}</strong>
+            <small>{conversationContinuity ? "Luồng hội thoại đã group theo post; UNKNOWN vẫn quarantine" : "Chưa có continuity projection"}</small>
+          </article>
+          <article>
             <span className="mission-eyebrow">Product intelligence</span>
             <strong>{readyProductIntelligence}/{productIntelligence.length || 0} READY</strong>
             <small>{productIntelligence.length ? "Readiness lấy từ handoff đã lưu" : "Chưa có product intelligence record"}</small>
           </article>
           <article>
             <span className="mission-eyebrow">Current blockers</span>
-            <strong>{executionBlockers.length + accountBlockers}</strong>
-            <small>{executionBlockers.length ? "Execution blocker được fail-closed" : accountBlockers ? "Account chưa đủ điều kiện" : "Chưa có blocker projection"}</small>
+            <strong>{currentBlockerCount}</strong>
+            <small>{currentBlockerCount ? `${executionBlockers.length} execution · ${authorityBlockers.length} authority · ${blockedChannels.length} channel` : "Chưa có blocker projection"}</small>
           </article>
+          <article>
+            <span className="mission-eyebrow">Standing authority</span>
+            <strong>{authorityRows.filter((item: R) => item?.status === "READY_FOR_BOUNDED_DELEGATION").length}/{authorityRows.length || 0} READY</strong>
+            <small>{authorityRows.reduce((total: number, item: R) => total + Number(item?.activeWindowCount || 0), 0)} window · {authorityRows.reduce((total: number, item: R) => total + Number(item?.activeGrantCount || 0), 0)} grant · {authorityRows.reduce((total: number, item: R) => total + Number(item?.activeLeaseCount || 0), 0)} lease</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Account pool</span>
+            <strong>{accountPoolRows.filter((item: R) => item?.autonomousPath === "AVAILABLE_ADVISORY").length}/{accountPoolRows.length || 0} AVAILABLE</strong>
+            <small>{blockedAccountPools.length ? `${blockedAccountPools.length} destination pool bị chặn` : "Projection advisory, không tự chọn account"}</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Channel readiness</span>
+            <strong>{channelCapabilities.filter((item: R) => item?.status === "READY").length}/{channelCapabilities.length || 0} READY</strong>
+            <small>{blockedChannels.length ? `${blockedChannels.length} channel cần target/rules/auth` : "Các channel đã có readiness projection"}</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Factory sandbox</span>
+            <strong>{factorySandbox?.executionEligible === true ? "ELIGIBLE" : String(factorySandbox?.status || "UNKNOWN")}</strong>
+            <small>{factorySandbox?.executionEligible === true ? "Preflight đủ điều kiện" : "Build/render unsafe vẫn fail-closed"}</small>
+          </article>
+        </div>
+        <div className="mission-detail-grid">
+          <section className="mission-detail-section" aria-label="Discovery opportunity detail">
+            <div className="mission-account-head">
+              <div>
+                <span className="mission-eyebrow">Opportunity detail</span>
+                <small>Top 5 advisory rows · score, fit và lý do được đọc từ projection hiện có</small>
+              </div>
+              <span className="status">{opportunityRows.length}/{discoveryOpportunities.length}</span>
+            </div>
+            {opportunityRows.length ? (
+              <div className="mission-detail-list">
+                {opportunityRows.map((item: R) => (
+                  <article key={`${String(item.campaignId || "-")}:${String(item.discoveryId)}`}>
+                    <div className="mission-detail-title">
+                      <strong>{compactText(item.channel, "UNKNOWN", 80)}</strong>
+                      <span className="status completed">{Number(item.score || 0)}/100</span>
+                    </div>
+                    <small>{compactText(item.recommendedAction, "research")} · {compactText(item.discoveryId, "UNKNOWN", 90)}</small>
+                    <small>Fit: {fitLabel(item.fit)}</small>
+                    <small>Reasons: {Array.isArray(item.reasons) && item.reasons.length ? item.reasons.map((reason: unknown) => compactText(reason, "UNKNOWN", 90)).join(" · ") : "UNKNOWN"}</small>
+                    <small>Evidence: {Array.isArray(item.evidence) && item.evidence.length ? item.evidence.join(" · ") : "UNKNOWN"}</small>
+                  </article>
+                ))}
+              </div>
+            ) : <div className="empty-state">Chưa có opportunity đủ điều kiện.</div>}
+          </section>
+          <section className="mission-detail-section" aria-label="Product intelligence lineage">
+            <div className="mission-account-head">
+              <div>
+                <span className="mission-eyebrow">Product intelligence lineage</span>
+                <small>Top 4 handoff · claim → evidence hash/locator, chỉ đọc</small>
+              </div>
+              <span className="status">{intelligenceRows.length}/{productIntelligence.length}</span>
+            </div>
+            {intelligenceRows.length ? (
+              <div className="mission-detail-list">
+                {intelligenceRows.map((item: R, index: number) => {
+                  const document = item?.document && typeof item.document === "object" ? item.document : {}
+                  const evidenceByHash = new Map((Array.isArray(document.evidence) ? document.evidence : []).map((evidence: R) => [String(evidence?.hash || ""), evidence]))
+                  const claims = Array.isArray(document.CLAIMS_WE_CAN_PROVE) ? document.CLAIMS_WE_CAN_PROVE.slice(0, 4) : []
+                  const unsupportedClaims = Array.isArray(document.CLAIMS_WE_CANNOT_MAKE) ? document.CLAIMS_WE_CANNOT_MAKE.slice(0, 4) : []
+                  const inspection = item?.repositoryInspection && typeof item.repositoryInspection === "object" ? item.repositoryInspection : null
+                  return (
+                    <article key={String(item.campaignId || item.attachedAt || `intelligence-${index}`)}>
+                      <div className="mission-detail-title">
+                        <strong>{compactText(item.campaignId, "UNKNOWN", 90)}</strong>
+                        <span className={item?.handoff?.readinessStatus === "READY" ? "status completed" : "status draft"}>{compactText(item?.handoff?.readinessStatus, "UNKNOWN", 40)}</span>
+                      </div>
+                      {claims.length ? claims.map((claim: R) => {
+                        const refs = Array.isArray(claim?.evidenceRefs) ? claim.evidenceRefs : []
+                        const linked = refs.slice(0, 3).map((ref: unknown) => evidenceByHash.get(String(ref)) || { hash: ref })
+                        return <div className="mission-lineage-row" key={String(claim.id || claim.field || claim.text)}>
+                          <strong>{compactText(claim.field || claim.id, "CLAIM", 70)}</strong>
+                          <small>{compactText(claim.text, "UNKNOWN", 170)}</small>
+                          <small>Evidence: {linked.length ? linked.map((evidence: R) => `${compactText(evidence.hash, "UNKNOWN", 14)} · ${compactText(evidence.locator, "locator unknown", 90)}`).join(" | ") : "UNKNOWN"}</small>
+                        </div>
+                      }) : <small>Chưa có CLAIMS_WE_CAN_PROVE lineage.</small>}
+                      <div className="mission-lineage-row unsupported-claim-row">
+                        <strong>CLAIMS_WE_CANNOT_MAKE ({unsupportedClaims.length})</strong>
+                        <small>{unsupportedClaims.length ? unsupportedClaims.map((claim: R) => compactText(typeof claim === "string" ? claim : claim?.text || claim?.field, "UNKNOWN", 150)).join(" · ") : "Không có unsupported claim được ghi nhận"}</small>
+                      </div>
+                      <small>Repository inspection: {inspection ? compactText(inspection.status || inspection.result || "RECORDED", "RECORDED", 70) : "UNKNOWN"}</small>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : <div className="empty-state">Chưa có product intelligence handoff.</div>}
+          </section>
         </div>
       </div>
     </section>
@@ -1253,6 +1379,16 @@ function executionRuntimeLabel(value: unknown) {
     publication_verified: "PUBLICATION_VERIFIED",
     execution_state: "EXECUTION_STATE",
     dry_run_completed: "DRY_RUN_COMPLETED",
+    execution_request_created: "REQUEST_CREATED",
+    execution_started: "EXECUTION_STARTED",
+    durable_submit_intent: "DURABLE_SUBMIT_INTENT",
+    submit_sent: "SUBMIT_SENT",
+    transport_receipt_recorded: "TRANSPORT_RECEIPT",
+    submission_receipt_recorded: "SUBMISSION_RECEIPT",
+    submit_result_unknown: "SUBMIT_RESULT_UNKNOWN",
+    pre_submit_failure_recorded: "PRE_SUBMIT_FAILURE",
+    execution_receipt_recorded: "EXECUTION_RECEIPT",
+    execution_state_observed: "EXECUTION_STATE",
   }
   const normalized = String(value || "UNKNOWN").trim()
   return labels[normalized] || normalized || "UNKNOWN"
@@ -1287,6 +1423,7 @@ function ExecutionEvidencePanel({ data }: { data: R }) {
   const quarantineCount = Number.isFinite(Number(runtime?.quarantine?.count))
     ? Number(runtime.quarantine.count)
     : 0
+  const timeline = Array.isArray(runtime?.timeline) ? runtime.timeline.slice(0, 12) : []
 
   return (
     <section className="panel mission-execution-panel full-span" aria-label="Bằng chứng thực thi">
@@ -1351,6 +1488,39 @@ function ExecutionEvidencePanel({ data }: { data: R }) {
               )}
             </div>
           </div>
+          <div className="mission-execution-timeline" aria-label="Execution timeline">
+            <div className="mission-timeline-head">
+              <div>
+                <span className="mission-eyebrow">Execution timeline</span>
+                <small>Chuỗi evidence được dựng từ request/receipt hiện có; mã thực thi đã fingerprint.</small>
+              </div>
+              <span className="status">{Number(runtime?.timelineCount || timeline.length)} events{runtime?.timelineTruncated ? " · bounded" : ""}</span>
+            </div>
+            {timeline.length ? (
+              <div className="mission-timeline-list">
+                {timeline.map((event: R, index: number) => {
+                  const eventPermalink = event?.publicationStatus === "VERIFIED"
+                    ? safeExecutionPermalink(event?.permalink)
+                    : null
+                  return (
+                    <article key={`${String(event?.executionRef || "unknown")}-${String(event?.at || "")}-${String(event?.event || index)}`}>
+                      <time>{formatDate(event?.at)}</time>
+                      <div>
+                        <strong>{executionRuntimeLabel(event?.event)}</strong>
+                        <small>{executionRuntimeLabel(event?.phase)} · {executionRuntimeLabel(event?.submitState)} · {executionRuntimeLabel(event?.mode)} · ref {String(event?.executionRef || "UNKNOWN")}</small>
+                      </div>
+                      <span className={`status ${event?.publicationStatus === "VERIFIED" ? "completed" : event?.publicationStatus === "UNKNOWN" ? "failed" : "draft"}`}>
+                        {executionRuntimeLabel(event?.publicationStatus)}
+                      </span>
+                      {eventPermalink ? <a href={eventPermalink} target="_blank" rel="noreferrer">permalink ↗</a> : null}
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <small>Chưa có timeline event được ghi nhận.</small>
+            )}
+          </div>
         </>
       )}
     </section>
@@ -1408,6 +1578,61 @@ function ProductFactorySafetyPanel({ data }: { data: R }) {
   )
 }
 
+function ProductEvidencePanel({ data }: { data: R }) {
+  const runs = Array.isArray(data?.productFactoryEvidence)
+    ? data.productFactoryEvidence.slice(0, 6)
+    : []
+  const intelligence = Array.isArray(data?.productIntelligence)
+    ? data.productIntelligence.slice(0, 6)
+    : []
+  const unsupportedClaimCount = intelligence.reduce((total: number, item: R) => {
+    const document = item?.document && typeof item.document === "object" ? item.document : {}
+    return total + (Array.isArray(document.CLAIMS_WE_CANNOT_MAKE) ? document.CLAIMS_WE_CANNOT_MAKE.length : 0)
+  }, 0)
+  return (
+    <section className="panel mission-execution-panel full-span" aria-label="Product evidence">
+      <div className="panel-head">
+        <div>
+          <h2>Product evidence</h2>
+          <p>Read-only lineage của Product Factory và product intelligence; không chạy lệnh hoặc cấp quyền.</p>
+        </div>
+        <span className="status">Chỉ đọc</span>
+      </div>
+      {!runs.length && !intelligence.length ? (
+        <div className="empty-state">Chưa có Product Factory hoặc product intelligence evidence.</div>
+      ) : (
+        <div className="mission-execution-grid">
+          <article>
+            <span className="mission-eyebrow">Factory runs</span>
+            <strong>{runs.length}</strong>
+            <small>{runs.filter((run: R) => run?.status === "SUCCEEDED").length} SUCCEEDED · {runs.filter((run: R) => run?.planStatus === "NOT_EXECUTED_UNSAFE").length} fail-closed</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Artifacts evidenced</span>
+            <strong>{runs.reduce((total: number, run: R) => total + Number(run?.artifactCount || 0), 0)}</strong>
+            <small>Hash/path metadata only; promotion remains a separate guarded action.</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Product intelligence</span>
+            <strong>{intelligence.filter((item: R) => item?.handoff?.readinessStatus === "READY").length}/{intelligence.length} READY</strong>
+            <small>Handoff và evidence claim hash đã lưu trong campaign state.</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Unsupported claims</span>
+            <strong>{unsupportedClaimCount}</strong>
+            <small>Claims không đủ bằng chứng vẫn bị giữ ngoài publish scope.</small>
+          </article>
+          <article>
+            <span className="mission-eyebrow">Latest evidence</span>
+            <strong>{runs[0]?.classification?.kind || "UNKNOWN"}</strong>
+            <small>{runs[0]?.execution?.status || runs[0]?.status || "UNKNOWN"} · không suy luận build/render thành công từ projection.</small>
+          </article>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function Overview({
   data,
   select,
@@ -1431,6 +1656,7 @@ function Overview({
         <MissionControlPanel data={data} />
         <ExecutionEvidencePanel data={data} />
         <ProductFactorySafetyPanel data={data} />
+        <ProductEvidencePanel data={data} />
         <TrafficChart data={data} />
         <TrafficSourcesPanel data={data} />
         <ReadinessPanel data={data} />

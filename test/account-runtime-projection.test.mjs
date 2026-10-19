@@ -40,6 +40,8 @@ test("dashboard account projection is allowlisted, fingerprinted, and counts bou
   const account = dashboard.accountRuntime[0];
   assert.equal(account.profileFingerprint, createHash("sha256").update(profileId).digest("hex"));
   assert.equal(account.boundTargetCount, 2);
+  assert.equal(account.eligibleTargetCount, 0);
+  assert.deepEqual(account.eligibleTargetRefs, []);
   assert.equal(account.readiness.state, "BLOCKED");
   assert.equal(account.readiness.reasonCode, "session_expired");
   assert.equal(account.currentBlocker, "readiness:expired");
@@ -102,6 +104,8 @@ test("ready account projection is explicitly eligible without authority side eff
   const before = await service.snapshot();
   const account = (await service.dashboard()).accountRuntime[0];
   assert.equal(account.eligibleForExecution, true);
+  assert.equal(account.eligibleTargetCount, 1);
+  assert.equal(account.eligibleTargetRefs.length, 1);
   assert.deepEqual(account.ineligibilityReasons, []);
   assert.deepEqual(await service.snapshot(), before);
 });
@@ -124,4 +128,16 @@ test("human-required and unknown readiness remain explicitly ineligible", async 
   account = (await service.dashboard()).accountRuntime[0];
   assert.equal(account.eligibleForExecution, false);
   assert.deepEqual(account.ineligibilityReasons, ["health:unknown", "readiness:provider_error"]);
+});
+
+test("missing or invalid readiness expiry remains explicitly ineligible", async () => {
+  const { service } = await fixture();
+  await service.store.mutate("fixture", "remove_projection_readiness_expiry", (state) => {
+    const target = state.targets.find((item) => item.id === "target-2");
+    target.readiness = { ...target.readiness, state: "ready", reasonCode: "ready", expiresAt: "not-a-date" };
+  });
+  const account = (await service.dashboard()).accountRuntime[0];
+  assert.equal(account.eligibleForExecution, false);
+  assert.equal(account.currentBlocker, "readiness:expiry_invalid");
+  assert.deepEqual(account.ineligibilityReasons, ["readiness:expiry_invalid"]);
 });

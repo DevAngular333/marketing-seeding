@@ -37,6 +37,10 @@ export class BrowserInteractionTransport {
     return { state: "UNKNOWN", transport: this.id, provider: this.provider, providerVersion: this.providerVersion };
   }
 
+  async assertReadyForFinalSubmit() {
+    return this.runtimeIdentity();
+  }
+
   async resolveTarget() {
     throw new Error(`${this.id} does not implement resolveTarget`);
   }
@@ -96,6 +100,11 @@ export class OrcaAccessibilityTransport extends BrowserInteractionTransport {
     };
   }
 
+  async assertReadyForFinalSubmit() {
+    if (typeof this.browser.assertRuntimeVersion !== "function") return this.runtimeIdentity();
+    return this.browser.assertRuntimeVersion({ expectedVersion: this.providerVersion });
+  }
+
   async click({ pageId, targetRef, targetIdentity = targetRef }, { validate, diagnostics } = {}) {
     if (!pageId || !targetRef) throw Object.assign(new Error("Browser transport target is incomplete"), { code: "TRANSPORT_TARGET_INVALID" });
     if (typeof this.browser.click !== "function") throw Object.assign(new Error("ORCA accessibility click transport is unavailable"), { code: "TRANSPORT_UNAVAILABLE" });
@@ -131,6 +140,11 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
     this.browser = browser;
   }
 
+  async assertReadyForFinalSubmit() {
+    if (typeof this.browser.assertRuntimeVersion !== "function") return this.runtimeIdentity();
+    return this.browser.assertRuntimeVersion({ expectedVersion: this.providerVersion });
+  }
+
   async click({ pageId, targetRef, targetIdentity = targetRef, boundingBox }, { validate, diagnostics } = {}) {
     if (!pageId || !targetRef || !boundingBox) throw Object.assign(new Error("ORCA pointer target is incomplete"), { code: "TRANSPORT_TARGET_INVALID" });
     if (typeof this.browser.mouseMove !== "function" || typeof this.browser.mouseDown !== "function" || typeof this.browser.mouseUp !== "function") {
@@ -153,21 +167,53 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
   }
 }
 
-export function selectCertifiedTransport({ transports = [], certifications = [], platform = "linkedin", runtime = {} } = {}) {
+export function selectCertifiedTransport({ transports = [], certifications = [], platform = "linkedin", runtime = {}, requireIrreversibleSubmit = false } = {}) {
   const certified = new Map(certifications.filter((item) => item?.certified === true).map((item) => [item.transport, item]));
   const candidates = transports.filter((transport) => {
     const identity = transport?.runtimeIdentity?.() || {};
     const record = certified.get(identity.transport);
     if (!record) return false;
     if (record.platform && record.platform !== platform) return false;
-    return !runtime.providerVersion || !record.providerVersion || String(runtime.providerVersion) === String(record.providerVersion);
+    // Local fixture/reversible calibration records must never authorize an
+    // irreversible final submit. Production callers opt into this stricter
+    // scope and require an explicit live LinkedIn certification record.
+    if (requireIrreversibleSubmit &&
+        (platform !== "linkedin" || record.irreversibleSubmit !== true || record.certificationScope !== "IRREVERSIBLE_LINKEDIN_SUBMIT")) return false;
+    const runtimeProvider = String(runtime.provider || "").trim();
+    const recordProvider = String(record.provider || "").trim();
+    const transportProvider = String(identity.provider || "").trim();
+    const runtimeVersion = String(runtime.providerVersion || "").trim();
+    const recordVersion = String(record.providerVersion || "").trim();
+    const transportVersion = String(identity.providerVersion || "").trim();
+    // Certification is bound to the exact executable/provider identity. A
+    // matching version from a different provider is not interchangeable.
+    if (!runtimeProvider || !recordProvider || !transportProvider ||
+        !runtimeVersion || !recordVersion || !transportVersion) return false;
+    return runtimeProvider === recordProvider && runtimeProvider === transportProvider &&
+      runtimeVersion === recordVersion && runtimeVersion === transportVersion;
   }).sort((a, b) => String(a.runtimeIdentity?.().transport || "").localeCompare(String(b.runtimeIdentity?.().transport || "")));
   if (candidates.length === 0) throw Object.assign(new Error("No certified browser interaction transport is available"), { code: "TRANSPORT_NOT_CERTIFIED" });
   return candidates[0];
 }
 
+function transportIdentity(value) {
+  if (value && typeof value === "object") {
+    return {
+      transport: String(value.transport || "").trim(),
+      provider: String(value.provider || "").trim(),
+      providerVersion: String(value.providerVersion || "").trim()
+    };
+  }
+  return { transport: String(value || "").trim(), provider: "", providerVersion: "" };
+}
+
 export function assertTransportCannotChangeAfterIntent({ selectedTransport, requestedTransport, intentPersisted = false } = {}) {
-  if (intentPersisted && requestedTransport && requestedTransport !== selectedTransport) {
+  const selected = transportIdentity(selectedTransport);
+  const requested = transportIdentity(requestedTransport);
+  const changed = selected.transport !== requested.transport ||
+    selected.provider !== requested.provider ||
+    selected.providerVersion !== requested.providerVersion;
+  if (intentPersisted && requestedTransport && changed) {
     throw Object.assign(new Error("Browser interaction transport cannot change after durable submit intent"), { code: "TRANSPORT_SWITCH_AFTER_INTENT" });
   }
   return selectedTransport;

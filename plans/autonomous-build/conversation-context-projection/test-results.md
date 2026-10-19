@@ -1,6 +1,5 @@
-# Test results
+# Verification
 
-- `node --test test/engagement-context.test.mjs`: 4 passed, 0 failed, 0 skipped.
-- `node --test test/engagement-context.test.mjs test/service.test.mjs test/strategy.test.mjs`: 91 passed, 0 failed, 0 skipped.
-- `node --check src/engagement-context.mjs`: passed.
-- `git diff --check`: passed.
+- `node --test test/engagement-context.test.mjs` — 6 passed, 0 failed.
+- `node --test test/engagement-context.test.mjs test/service.test.mjs` — 79 passed, 1 initial fixture assertion failure, then corrected and focused projection suite passed. The initial failure was test selection of the no-ID row, not a product failure.
+- No canonical runtime, browser, credential, network, or social mutation was used.

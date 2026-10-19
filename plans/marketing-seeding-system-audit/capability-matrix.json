@@ -1,27 +1,111 @@
 {
   "schemaVersion": 1,
-  "verifiedAt": "2026-10-18",
+  "verifiedAt": "2026-10-19",
   "capabilities": [
-    {"stage":"Repository/product input","status":"PARTIAL","evidence":"Campaign requires an existing productRepo; no upstream ProductRun handoff."},
-    {"stage":"Build/run/render product","status":"PARTIAL","evidence":"Fail-closed relative node --check manifest probe in temporary staging; unsafe scripts remain unexecuted; no project-specific render/media pipeline."},
-    {"stage":"Product understanding","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"Evidence-grounded WHAT/PROBLEM/BETTER/AUDIENCE document and hash-linked claims."},
-    {"stage":"Evidence/claim verification","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"Stable evidence hashes and unsupported claim quarantine."},
-    {"stage":"Audience discovery","status":"NOT_IMPLEMENTED","evidence":"No autonomous audience search or matching engine."},
-    {"stage":"Channel discovery","status":"PARTIAL_LOCAL","evidence":"Bounded public HTTP observer and opt-in 15-minute polling feed normalized, policy-classified and scored observations; sources remain caller-configured."},
-    {"stage":"Community rules/eligibility","status":"PARTIAL","evidence":"Configured target rules/membership and host policies; no crawler."},
-    {"stage":"Campaign planning","status":"PARTIAL_LOCAL_VERIFIED","evidence":"Campaign, schedules, targets and authorization plus deterministic advisory strategy decisions with bounded persistence; no outcome-driven planner."},
-    {"stage":"Channel-specific content","status":"PARTIAL_LOCAL_VERIFIED","evidence":"Seeded variants, grounded stories and deterministic evidence-grounded draft candidates with claim/evidence refs and bounded identity; no production model/provider."},
-    {"stage":"Asset preparation","status":"PARTIAL_LOCAL","evidence":"Artifact registration/hash and bounded factory evidence; no media factory."},
-    {"stage":"Existing session authentication","status":"PARTIAL","evidence":"ORCA profile/session readiness and identity checks."},
-    {"stage":"Autonomous credential login","status":"NOT_IMPLEMENTED","evidence":"Credentials are host-managed; MFA/CAPTCHA/device challenges require human handling."},
-    {"stage":"Browser execution","status":"PARTIAL_LOCAL_VERIFIED","evidence":"JEV -> LinkedIn -> ORCA path and exact pre-submit controls tested synthetically."},
-    {"stage":"Final platform submit","status":"LIVE_UNVERIFIED","evidence":"No fresh exact live authority; no real click in this audit."},
-    {"stage":"Semantic activation","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"Separate post-click structural evidence; command receipt cannot imply activation."},
-    {"stage":"Platform acceptance","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"Separate confirmation/candidate acceptance contract."},
-    {"stage":"Independent publication verification","status":"IMPLEMENTED_LOCAL_VERIFIED","evidence":"LinkedIn feed/recent activity verifier with author/content/time/permalink checks; real post absent."},
-    {"stage":"Campaign state/persistence","status":"IMPLEMENTED_PARTIAL","evidence":"Schema 8 JSON store, audit, lease, execution state; no verified publication in canonical state."},
-    {"stage":"Retry/resume","status":"PARTIAL","evidence":"Pre-submit bounded retry and read-only UNKNOWN reconciliation; long-running recovery unproven."},
-    {"stage":"Analytics/reporting","status":"PARTIAL","evidence":"Metric/interactions/conversions collections and dashboard projections; canonical runtime empty."},
-    {"stage":"Learning/strategy update","status":"PARTIAL_LOCAL","evidence":"Advisory deterministic strategy history, outcome summaries, learning feedback and opt-in control cycle exist; no autonomous authority or outcome-driven provider planner."}
+    {
+      "stage": "Repository/product input",
+      "status": "PARTIAL",
+      "evidence": "Campaign requires an existing productRepo; no upstream ProductRun handoff."
+    },
+    {
+      "stage": "Build/run/render product",
+      "status": "PARTIAL",
+      "evidence": "Fail-closed relative node --check manifest probe in temporary staging; unsafe scripts remain unexecuted; no project-specific render/media pipeline."
+    },
+    {
+      "stage": "Product understanding",
+      "status": "IMPLEMENTED_LOCAL_VERIFIED",
+      "evidence": "Evidence-grounded WHAT/PROBLEM/BETTER/AUDIENCE document and hash-linked claims."
+    },
+    {
+      "stage": "Evidence/claim verification",
+      "status": "IMPLEMENTED_LOCAL_VERIFIED",
+      "evidence": "Stable evidence hashes and unsupported claim quarantine."
+    },
+    {
+      "stage": "Audience discovery",
+      "status": "NOT_IMPLEMENTED",
+      "evidence": "No autonomous audience search or matching engine."
+    },
+    {
+      "stage": "Channel discovery",
+      "status": "PARTIAL_LOCAL",
+      "evidence": "Bounded public HTTP observer and opt-in 15-minute polling feed normalized, policy-classified and scored observations; sources remain caller-configured."
+    },
+    {
+      "stage": "Community rules/eligibility",
+      "status": "PARTIAL",
+      "evidence": "Configured target rules/membership and host policies; no crawler."
+    },
+    {
+      "stage": "Campaign planning",
+      "status": "PARTIAL_LOCAL_VERIFIED",
+      "evidence": "Campaign, schedules, targets and authorization plus deterministic advisory strategy decisions with bounded persistence; no outcome-driven planner."
+    },
+    {
+      "stage": "Channel-specific content",
+      "status": "PARTIAL_LOCAL_VERIFIED",
+      "evidence": "Seeded variants, grounded stories and deterministic evidence-grounded draft candidates with claim/evidence refs and bounded identity; no production model/provider."
+    },
+    {
+      "stage": "Asset preparation",
+      "status": "PARTIAL_LOCAL",
+      "evidence": "Artifact registration/hash and bounded factory evidence; no media factory."
+    },
+    {
+      "stage": "Existing session authentication",
+      "status": "PARTIAL",
+      "evidence": "ORCA profile/session readiness and identity checks."
+    },
+    {
+      "stage": "Autonomous credential login",
+      "status": "NOT_IMPLEMENTED",
+      "evidence": "Credentials are host-managed; MFA/CAPTCHA/device challenges require human handling."
+    },
+    {
+      "stage": "Browser execution",
+      "status": "PARTIAL_LOCAL_VERIFIED",
+      "evidence": "JEV -> LinkedIn -> ORCA path and exact pre-submit controls tested synthetically; local reversible ORCA fixture activation is 10/10 for both transports."
+    },
+    {
+      "stage": "Final platform submit",
+      "status": "LIVE_UNVERIFIED",
+      "evidence": "No fresh exact live authority; no real click in this audit."
+    },
+    {
+      "stage": "Semantic activation",
+      "status": "IMPLEMENTED_LOCAL_VERIFIED",
+      "evidence": "Separate post-click structural evidence; command receipt cannot imply activation."
+    },
+    {
+      "stage": "Platform acceptance",
+      "status": "IMPLEMENTED_LOCAL_VERIFIED",
+      "evidence": "Separate confirmation/candidate acceptance contract."
+    },
+    {
+      "stage": "Independent publication verification",
+      "status": "IMPLEMENTED_LOCAL_VERIFIED",
+      "evidence": "LinkedIn feed/recent activity verifier with author/content/time/permalink checks; real post absent."
+    },
+    {
+      "stage": "Campaign state/persistence",
+      "status": "IMPLEMENTED_PARTIAL",
+      "evidence": "Schema 8 JSON store, audit, lease, execution state; no verified publication in canonical state."
+    },
+    {
+      "stage": "Retry/resume",
+      "status": "PARTIAL",
+      "evidence": "Pre-submit bounded retry and read-only UNKNOWN reconciliation; long-running recovery unproven."
+    },
+    {
+      "stage": "Analytics/reporting",
+      "status": "PARTIAL",
+      "evidence": "Metric/interactions/conversions collections and dashboard projections; canonical runtime empty."
+    },
+    {
+      "stage": "Learning/strategy update",
+      "status": "PARTIAL_LOCAL",
+      "evidence": "Advisory deterministic strategy history, outcome summaries, learning feedback and opt-in control cycle exist; no autonomous authority or outcome-driven provider planner."
+    }
   ]
 }

@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "blockers": [
     {
+      "blocker_id": "ORCA-RUNTIME-CONFIG-001",
+      "classification": "CONFIGURATION_BLOCKER",
+      "milestone": "browser-runtime-pinning",
+      "root_cause": "Canonical private runtime configuration referenced a missing older ORCA AppTranslocation executable while the connected host runtime was ORCA 1.4.229.",
+      "affected_scope": "starting a controlled future ORCA live lane from canonical configuration",
+      "detected_at": "2026-10-19T01:45:00Z",
+      "status": "RESOLVED",
+      "owner_worker": "master",
+      "remediation": "Updated only the private runtime configuration to the installed explicitly verified ORCA 1.4.229 executable; preserved file mode 0600 and did not restart ORCA or the service.",
+      "verification": "Read-only executable --version and status probes both report 1.4.229; runtime state is ready/connected; configured path exists; canonical state SHA-256 remains 5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6.",
+      "resolved_at": "2026-10-19T02:02:27Z",
+      "resume_point": "Use the exact pinned executable and connected-runtime guard in any future authorized live lane.",
+      "external_dependency": "None for configuration repair; real live execution still requires separate exact authority and controlled session.",
+      "last_checked_at": "2026-10-19T02:02:27Z"
+    },
+    {
       "blocker_id": "LIVE-LINKEDIN-AUTH-001",
       "classification": "EXTERNAL_HARD_BLOCKER",
       "milestone": "live-linkedin-proof",
@@ -11,27 +27,27 @@
       "status": "EXTERNAL_HARD_BLOCKER",
       "owner_worker": "master",
       "remediation": "Implemented and regression-tested standing bounded delegation; obtain fresh exact authority only in a separately authorized live lane.",
-      "verification": "Read-only canonical state inspection, `/health`, focused/full Node test gates; no external action taken.",
+      "verification": "Read-only canonical state inspection, ORCA runtime probe, focused/full Node gates; active authorizations/windows/grants/leases remain 0/0/0/0, no external action taken.",
       "resolved_at": null,
       "resume_point": "Fresh exact authorized LinkedIn campaign/account/profile/session input and policy permitting one harmless live test",
       "external_dependency": "Authorized campaign objective/content, account/profile, target and policy permitting one harmless live test",
-      "last_checked_at": "2026-10-18T00:00:00Z"
+      "last_checked_at": "2026-10-19T02:02:27Z"
     },
     {
       "blocker_id": "ORCA-TRANSPORT-LIVE-CERT-001",
       "classification": "BROWSER_BLOCKER",
       "milestone": "browser-transport-certification",
-      "root_cause": "Both local transports pass the reversible fixture, but ORCA 1.4.229 browser probing did not produce a valid repeatable semantic activation trial; no irreversible-submit calibration is available in the current browser lane.",
+      "root_cause": "ORCA 1.4.229 accessibility and pointer transports each pass 10/10 semantic activation trials on a resettable local browser fixture; real LinkedIn final-submit semantic activation, platform acceptance and independent publication verification remain unproven.",
       "affected_scope": "certifying the ORCA final-submit transport for irreversible LinkedIn action",
       "detected_at": "2026-10-17T00:00:00Z",
       "status": "OPEN",
       "owner_worker": "master",
-      "remediation": "Retain fail-closed transport policy; collect repeatable reversible-control activation evidence in an authorized ORCA session before considering irreversible transport certification.",
-      "verification": "Accessibility and pointer fixture certifications are 10/10 each; focused transport/LinkedIn/JEV gate is 98/98; direct ORCA 1.4.229 localhost probe produced an empty error page and browser_stale_ref, then was cleaned up. No live action was performed.",
+      "remediation": "Re-pinned the executable and connected runtime to ORCA 1.4.229, then ran the repeatable certification harness for both accessibility and pointer transports plus a reversible LinkedIn composer control. The transport abstraction remains deterministic and fail-closed for irreversible scope.",
+      "verification": "ORCA 1.4.229 executable and connected daemon match; local resettable fixture accessibility 10/10 and pointer 10/10 semantic activations; LinkedIn reversible Cancel control accessibility 10/10 and pointer 10/10; zero wrong-target, no-transition, silent-fallback, observation or transport failures; focused transport/JEV/LinkedIn gate 151/151; full npm test 527/525/0/2; no Post click, social mutation, canonical write or UNKNOWN mutation. Certification scope is CONTROL_ACTIVATION only.",
       "resolved_at": null,
-      "resume_point": "A permitted read-only/reversible ORCA calibration session with positive structural activation evidence and unchanged canonical runtime.",
-      "external_dependency": "ORCA runtime/session available in a controlled browser lane",
-      "last_checked_at": "2026-10-18T12:00:00Z"
+      "resume_point": "Use either pinned transport only after a fresh exact live authority and readiness are available; irreversible LinkedIn publication still requires independent acceptance and publication proof.",
+      "external_dependency": "Fresh authorized LinkedIn live lane is required for irreversible-submit/publication proof; transport control-activation certification itself is complete.",
+      "last_checked_at": "2026-10-19T08:28:40Z"
     },
     {
       "blocker_id": "METRICS-CHECKPOINT-LIVE-001",
@@ -47,7 +63,7 @@
       "resolved_at": null,
       "resume_point": "Authorized provider credentials/network and a durable collection cadence policy.",
       "external_dependency": "Live provider access and policy authorization",
-      "last_checked_at": "2026-10-18T00:00:00Z"
+      "last_checked_at": "2026-10-19T02:02:27Z"
     },
     {
       "blocker_id": "PRODUCT-FACTORY-SANDBOX-001",
@@ -58,12 +74,28 @@
       "detected_at": "2026-10-18T00:00:00Z",
       "status": "OPEN",
       "owner_worker": "master",
-      "remediation": "Added a versioned capability preflight and kept execution fail-closed; obtain and independently audit a resource-limited sandbox backend/profile before enabling arbitrary commands.",
-      "verification": "Host probe: backend invocation PASS, overall UNSUPPORTED, executionEligible false. Focused 94/94 and full 464/462/0/2 pass; no project command executed.",
+      "remediation": "Re-audited host capabilities and preserved fail-closed Product Factory; no safe backend available to enable.",
+      "verification": "Re-audit 2026-10-19c: sandbox-exec invocation PASS only; no audited profile or alternative sandbox backend. Focused Product Factory gate 23/23 pass; executionEligible remains false.",
       "resolved_at": null,
       "resume_point": "An independently reviewed sandbox with explicit network/filesystem/process/resource policy and descendant cleanup",
       "external_dependency": "Audited OS/container sandbox capability on the execution host",
-      "last_checked_at": "2026-10-18T00:00:00Z"
+      "last_checked_at": "2026-10-19T02:02:27Z"
+    },
+    {
+      "blocker_id": "RELEASE-JOURNAL-DRIFT-001",
+      "classification": "RELEASE_BLOCKER",
+      "milestone": "release-journal-reconciliation",
+      "root_cause": "Current-facing journal snapshots lagged the latest dirty-tree test inventory.",
+      "affected_scope": "Release evidence accuracy and freeze readiness.",
+      "detected_at": "2026-10-19T04:04:17Z",
+      "status": "RESOLVED",
+      "owner_worker": "master",
+      "remediation": "Reran the full suite and reconciled current-facing release snapshots to 527 total, 525 passed, 0 failed, 2 skipped while retaining older counts as historical evidence.",
+      "verification": "Fresh npm test exited 0 at 527/525/0/2; focused gate 151/151; syntax, diff and UI gates pass. Canonical state hash/revision and protected UNKNOWN records are unchanged.",
+      "resolved_at": "2026-10-19T04:04:17Z",
+      "resume_point": "Use current release snapshot and rerun the gate after any subsequent source/test change.",
+      "external_dependency": "None.",
+      "last_checked_at": "2026-10-19T04:04:17Z"
     }
   ]
 }

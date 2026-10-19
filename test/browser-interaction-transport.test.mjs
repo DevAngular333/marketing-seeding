@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
   OrcaAccessibilityTransport,
   OrcaPointerTransport,
@@ -8,6 +11,7 @@ import {
   selectCertifiedTransport,
   transportReceipt
 } from "../src/browser-interaction-transport.mjs";
+import { OrcaCliClient } from "../src/orca-browser-client.mjs";
 import { certifyTransport, DEFAULT_CERTIFICATION_POLICY, summarizeCertification } from "../src/transport-certification.mjs";
 import { BrowserInteractionFixture } from "./fixtures/browser-interaction-fixture.mjs";
 
@@ -125,12 +129,94 @@ test("certification counts stale, moving, detached, and overlay preflight failur
 });
 
 test("selection is deterministic and transport cannot switch after durable intent", () => {
-  const a = { runtimeIdentity: () => ({ transport: "orca-accessibility", providerVersion: "1.4.227" }) };
-  const b = { runtimeIdentity: () => ({ transport: "playwright-pointer", providerVersion: "1.56.0" }) };
-  const selected = selectCertifiedTransport({ transports: [b, a], platform: "linkedin", runtime: { providerVersion: "1.4.227" }, certifications: [{ transport: "orca-accessibility", providerVersion: "1.4.227", certified: true }] });
+  const a = { runtimeIdentity: () => ({ transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.227" }) };
+  const b = { runtimeIdentity: () => ({ transport: "playwright-pointer", provider: "playwright", providerVersion: "1.56.0" }) };
+  const selected = selectCertifiedTransport({ transports: [b, a], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.227" }, certifications: [{ transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.227", certified: true }] });
   assert.equal(selected, a);
   assert.throws(() => assertTransportCannotChangeAfterIntent({ selectedTransport: "orca-accessibility", requestedTransport: "playwright-pointer", intentPersisted: true }), /cannot change/);
   assert.equal(assertTransportCannotChangeAfterIntent({ selectedTransport: "orca-accessibility", requestedTransport: "playwright-pointer", intentPersisted: false }), "orca-accessibility");
+});
+
+test("certified transport selection fails closed when runtime or certification version is missing", () => {
+  const transport = { runtimeIdentity: () => ({ transport: "orca-accessibility", providerVersion: null }) };
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport],
+    platform: "linkedin",
+    runtime: {},
+    certifications: [{ transport: "orca-accessibility", platform: "linkedin", certified: true, providerVersion: "1.4.229" }]
+  }), /No certified browser interaction transport/);
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport],
+    platform: "linkedin",
+    runtime: { providerVersion: "1.4.229" },
+    certifications: [{ transport: "orca-accessibility", platform: "linkedin", certified: true }]
+  }), /No certified browser interaction transport/);
+});
+
+test("certified transport selection requires an exact non-empty runtime version match", () => {
+  const transport = { runtimeIdentity: () => ({ transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.229" }) };
+  assert.equal(selectCertifiedTransport({
+    transports: [transport],
+    platform: "linkedin",
+    runtime: { provider: "orca", providerVersion: "1.4.229" },
+    certifications: [{ transport: "orca-accessibility", provider: "orca", platform: "linkedin", certified: true, providerVersion: "1.4.229" }]
+  }), transport);
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport],
+    platform: "linkedin",
+    runtime: { provider: "orca", providerVersion: "1.4.227" },
+    certifications: [{ transport: "orca-accessibility", provider: "orca", platform: "linkedin", certified: true, providerVersion: "1.4.229" }]
+  }), /No certified browser interaction transport/);
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport],
+    platform: "linkedin",
+    runtime: { provider: "orca", providerVersion: "1.4.229" },
+    requireIrreversibleSubmit: true,
+    certifications: [{ transport: "orca-accessibility", provider: "orca", platform: "linkedin", certified: true, providerVersion: "1.4.229", certificationScope: "LOCAL_REAL_BROWSER_FIXTURE_CONTROL_ACTIVATION_ONLY" }]
+  }), /No certified browser interaction transport/);
+  assert.equal(selectCertifiedTransport({
+    transports: [transport],
+    platform: "linkedin",
+    runtime: { provider: "orca", providerVersion: "1.4.229" },
+    requireIrreversibleSubmit: true,
+    certifications: [{ transport: "orca-accessibility", provider: "orca", platform: "linkedin", certified: true, providerVersion: "1.4.229", irreversibleSubmit: true, certificationScope: "IRREVERSIBLE_LINKEDIN_SUBMIT" }]
+  }), transport);
+});
+
+test("transport certification requires exact provider identity, not only version", () => {
+  const transport = { runtimeIdentity: () => ({ transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.229" }) };
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport], platform: "linkedin",
+    runtime: { provider: "other-provider", providerVersion: "1.4.229" },
+    certifications: [{ transport: "orca-accessibility", provider: "orca", platform: "linkedin", certified: true, providerVersion: "1.4.229" }]
+  }), /No certified browser interaction transport/);
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport], platform: "linkedin",
+    runtime: { provider: "orca", providerVersion: "1.4.229" },
+    certifications: [{ transport: "orca-accessibility", provider: "other-provider", platform: "linkedin", certified: true, providerVersion: "1.4.229" }]
+  }), /No certified browser interaction transport/);
+});
+
+test("ORCA runtime probe rejects an unpinned or mismatched executable before final input", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "orca-version-fixture-"));
+  const executable = path.join(directory, "orca-version-fixture");
+  await writeFile(executable, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf '%s' '1.4.229\\n'; exit 0; fi\nif [ \"$1\" = \"status\" ]; then printf '%s' '{\"ok\":true,\"result\":{\"runtime\":{\"appVersion\":\"1.4.229\"}}}'; exit 0; fi\nprintf '%s' '{\"ok\":true,\"result\":{}}'\n", "utf8");
+  await chmod(executable, 0o755);
+  const unpinned = new OrcaCliClient({ executable });
+  await assert.rejects(unpinned.assertRuntimeVersion(), { code: "ORCA_RUNTIME_VERSION_UNPINNED" });
+  const mismatched = new OrcaCliClient({ executable, providerVersion: "1.4.227" });
+  await assert.rejects(mismatched.assertRuntimeVersion(), { code: "ORCA_RUNTIME_VERSION_MISMATCH" });
+  const pinned = new OrcaCliClient({ executable, providerVersion: "1.4.229" });
+  assert.deepEqual(await pinned.assertRuntimeVersion(), { expectedVersion: "1.4.229", observedVersion: "1.4.229", connectedRuntimeVersion: "1.4.229", executable });
+});
+
+test("ORCA connected runtime status must match the executable certification pin", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "orca-connected-version-fixture-"));
+  const executable = path.join(directory, "orca-connected-version-fixture");
+  await writeFile(executable, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf '%s' '1.4.229\\n'; exit 0; fi\nif [ \"$1\" = \"status\" ]; then printf '%s' '{\"ok\":true,\"result\":{\"runtime\":{\"appVersion\":\"1.4.227\"}}}'; exit 0; fi\nprintf '%s' '{\"ok\":true,\"result\":{}}'\n", "utf8");
+  await chmod(executable, 0o755);
+  const client = new OrcaCliClient({ executable, providerVersion: "1.4.229" });
+  await assert.rejects(client.assertRuntimeVersion(), { code: "ORCA_CONNECTED_RUNTIME_VERSION_MISMATCH" });
 });
 
 test("final-submit validation contract rejects an unmarked custom transport", () => {

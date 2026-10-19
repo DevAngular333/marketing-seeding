@@ -1,24 +1,114 @@
 {
   "schemaVersion": 1,
-  "verifiedAt": "2026-10-18",
+  "verifiedAt": "2026-10-19",
   "readiness": [
-    {"area":"Architecture","status":"READY","evidence":"Existing layered service/store/JEV/adapter/verifier contracts; System-Agentic Core remains frozen.","blocker":null},
-    {"area":"Campaign persistence","status":"READY","evidence":"JsonStore schema 8, atomic replace, audit log and writer lease.","blocker":null},
-    {"area":"Browser runtime","status":"PARTIAL","evidence":"ORCA client and JEV worker exist; live ORCA submit not proven.","blocker":"No real activation/publication evidence."},
-    {"area":"Browser observation","status":"PARTIAL","evidence":"DOM expressions, structural preflight and verifier tests.","blocker":"No live website proof and ORCA executable unavailable in current shell."},
-    {"area":"Auth/session","status":"PARTIAL","evidence":"Existing ORCA profile/session reuse with identity/readiness checks.","blocker":"No secure credential broker or automated human challenge recovery."},
-    {"area":"Research/product intelligence","status":"PARTIAL","evidence":"Bounded repository inspector, caller-supplied evidence/claim graph and versioned handoff.","blocker":"No autonomous model research or claim generation."},
-    {"area":"Product factory","status":"PARTIAL","evidence":"Fail-closed relative node --check manifest probe in temporary staging, bounded classifier/hash evidence, campaign-owned 24-run lineage and restart persistence; focused 45/45 and current full 381/379/0/2.","blocker":"No generic build/render/media artifact workflow; arbitrary manifest scripts remain NOT_EXECUTED_UNSAFE."},
-    {"area":"Channel adapters","status":"PARTIAL","evidence":"LinkedIn adapter registered; other platform contracts/foundation only.","blocker":"Only LinkedIn has execution adapter/readiness provider."},
-    {"area":"Publishing","status":"BLOCKED","evidence":"Canonical state has zero published posts and no active exact LIVE authority.","blocker":"Fresh authorized live lane required."},
-    {"area":"Publication verification","status":"PARTIAL","evidence":"Synthetic LinkedIn verifier receipts and contracts.","blocker":"No live permalink/post ID receipt."},
-    {"area":"Restart recovery","status":"PARTIAL","evidence":"Atomic state, lease recovery and lifecycle tests.","blocker":"No machine reboot/long-duration multi-platform proof."},
-    {"area":"Idempotency","status":"READY_LOCAL","evidence":"Publication keys, durable intent, grants, leases and UNKNOWN quarantine tests.","blocker":"Real provider behavior unproven."},
-    {"area":"Safety","status":"READY_LOCAL","evidence":"Exact bindings, kill epoch, preflight, four evidence layers and no blind retry tests.","blocker":"Live transport certification absent."},
-    {"area":"Observability","status":"PARTIAL","evidence":"Audit, execution IDs, receipts, flow graph and dashboard projections.","blocker":"No live publication timeline."},
-    {"area":"Tests","status":"READY_LOCAL","evidence":"381 total; 379 passed; 0 failed; 2 skipped; strategy fit gate 36/36; UI typecheck/build pass; focused discovery/service/server gate 50/50; observer-hardening subset 17/17; Product Factory project-evidence gate 45/45.","blocker":null},
-    {"area":"Secrets/privacy","status":"PARTIAL","evidence":"Loopback bearer auth, redaction and runtime state outside Git.","blocker":"Host-managed browser/session material lacks a full broker."},
-    {"area":"Multi-account","status":"PARTIAL","evidence":"Exact single account/profile binding and collision prevention.","blocker":"No account pool/selector/recovery."},
-    {"area":"Operator UX","status":"PARTIAL","evidence":"Existing dashboard plus read-only Mission Control projection for control-cycle, strategy, learning, outcome and account context.","blocker":"Advisory only; no full autonomous reasoning timeline or live publication proof."}
+    {
+      "area": "Architecture",
+      "status": "READY",
+      "evidence": "Existing layered service/store/JEV/adapter/verifier contracts; System-Agentic Core remains frozen.",
+      "blocker": null
+    },
+    {
+      "area": "Campaign persistence",
+      "status": "READY",
+      "evidence": "JsonStore schema 8, atomic replace, audit log and writer lease.",
+      "blocker": null
+    },
+    {
+      "area": "Browser runtime",
+      "status": "PARTIAL",
+      "evidence": "ORCA 1.4.229 client, JEV worker and transport boundary; resettable local fixture control activation is 10/10 for accessibility and pointer; live LinkedIn submit remains unproven.",
+      "blocker": "No fresh exact authority/session and no real activation/publication evidence."
+    },
+    {
+      "area": "Browser observation",
+      "status": "PARTIAL",
+      "evidence": "DOM expressions, structural preflight and verifier tests.",
+      "blocker": "No fresh authorized live website proof; local fixture observation is certified but stored canonical readiness is expired."
+    },
+    {
+      "area": "Auth/session",
+      "status": "PARTIAL",
+      "evidence": "Existing ORCA profile/session reuse with identity/readiness checks.",
+      "blocker": "No secure credential broker or automated human challenge recovery."
+    },
+    {
+      "area": "Research/product intelligence",
+      "status": "PARTIAL",
+      "evidence": "Bounded repository inspector, caller-supplied evidence/claim graph and versioned handoff.",
+      "blocker": "No autonomous model research or claim generation."
+    },
+    {
+      "area": "Product factory",
+      "status": "PARTIAL",
+      "evidence": "Fail-closed relative node --check manifest probe in temporary staging, bounded classifier/hash evidence, campaign-owned 24-run lineage and restart persistence; focused 45/45 and current full 527/525/0/2.",
+      "blocker": "No generic build/render/media artifact workflow; arbitrary manifest scripts remain NOT_EXECUTED_UNSAFE."
+    },
+    {
+      "area": "Channel adapters",
+      "status": "PARTIAL",
+      "evidence": "LinkedIn adapter registered; other platform contracts/foundation only.",
+      "blocker": "Only LinkedIn has execution adapter/readiness provider."
+    },
+    {
+      "area": "Publishing",
+      "status": "BLOCKED",
+      "evidence": "Canonical state has zero published posts and no active exact LIVE authority.",
+      "blocker": "Fresh authorized live lane required."
+    },
+    {
+      "area": "Publication verification",
+      "status": "PARTIAL",
+      "evidence": "Synthetic LinkedIn verifier receipts and contracts.",
+      "blocker": "No live permalink/post ID receipt."
+    },
+    {
+      "area": "Restart recovery",
+      "status": "PARTIAL",
+      "evidence": "Atomic state, lease recovery and lifecycle tests.",
+      "blocker": "No machine reboot/long-duration multi-platform proof."
+    },
+    {
+      "area": "Idempotency",
+      "status": "READY_LOCAL",
+      "evidence": "Publication keys, durable intent, grants, leases and UNKNOWN quarantine tests.",
+      "blocker": "Real provider behavior unproven."
+    },
+    {
+      "area": "Safety",
+      "status": "READY_LOCAL",
+      "evidence": "Exact bindings, kill epoch, preflight, four evidence layers and no blind retry tests.",
+      "blocker": "Real transport/platform behavior remains unproven."
+    },
+    {
+      "area": "Observability",
+      "status": "PARTIAL",
+      "evidence": "Audit, execution IDs, receipts, flow graph, bounded execution timeline and dashboard projections.",
+      "blocker": "No live publication timeline."
+    },
+    {
+      "area": "Tests",
+      "status": "READY_LOCAL",
+      "evidence": "527 total; 525 passed; 0 failed; 2 skipped; focused transport/LinkedIn/JEV 106/106; UI typecheck/build pass.",
+      "blocker": null
+    },
+    {
+      "area": "Secrets/privacy",
+      "status": "PARTIAL",
+      "evidence": "Loopback bearer auth, redaction and runtime state outside Git.",
+      "blocker": "Host-managed browser/session material lacks a full broker."
+    },
+    {
+      "area": "Multi-account",
+      "status": "PARTIAL",
+      "evidence": "Exact single account/profile binding and collision prevention.",
+      "blocker": "No account pool/selector/recovery."
+    },
+    {
+      "area": "Operator UX",
+      "status": "PARTIAL",
+      "evidence": "Existing dashboard plus read-only Mission Control projection for control-cycle, strategy, learning, outcome and account context.",
+      "blocker": "Advisory only; no full autonomous reasoning timeline or live publication proof."
+    }
   ]
 }

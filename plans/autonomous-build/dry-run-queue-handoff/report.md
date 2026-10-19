@@ -41,7 +41,7 @@ read for mutation and no external side effect occurred.
 
 ## Limitations
 
-ORCA is unavailable in this shell, there is no active exact live campaign
+ORCA executable 1.4.229 is available locally, there is no active exact live campaign
 authorization/window/grant/lease, and no real LinkedIn activation, acceptance
 or independent publication verification was attempted. The milestone is
 therefore `COMPLETE_LOCAL_VERIFIED`; live LinkedIn proof remains blocked.

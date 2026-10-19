@@ -2,72 +2,67 @@
 
 ## Result
 
-`ORCA live irreversible-submit certification = NOT_CERTIFIED_FOR_IRREVERSIBLE_SUBMIT`
+`CERTIFIED_FOR_CONTROL_ACTIVATION` for the existing ORCA transports on a
+controlled, resettable local browser fixture. This is **not** certification for
+an irreversible LinkedIn submit and does not authorize a LinkedIn Post click.
 
-The provider-neutral boundary and two ORCA transport implementations are
-present. Both implementations pass the resettable local reversible fixture,
-but the ORCA 1.4.229 CLI did not produce repeatable live activation evidence in
-the current browser runtime. No LinkedIn Post control was clicked and no social
-mutation occurred.
+## Policy
 
-## Boundary and implementations
+- Minimum attempts: 10
+- Minimum semantic activation rate: 95%
+- Maximum wrong-target activations: 0
+- Maximum silent fallbacks: 0
 
-- Boundary: `src/browser-interaction-transport.mjs`
-- Certification harness: `src/transport-certification.mjs`
-- ORCA accessibility implementation: `OrcaAccessibilityTransport`
-- ORCA normal pointer implementation: `OrcaPointerTransport`
-- LinkedIn integration: `src/linkedin-adapter.mjs`
-- ORCA process client: `src/orca-browser-client.mjs`
-- Reversible fixture: `test/fixtures/browser-interaction-fixture.mjs`
+## Direct browser evidence
 
-`COMMAND_COMPLETED` remains separate from semantic activation, platform
-acceptance and independent publication verification. The selected transport is
-fixed before durable submit intent and cannot change afterward. LinkedIn still
-rejects a transport that does not implement the immediate pre-input validation
-contract.
+ORCA runtime `1.4.229` was exercised through the existing
+`OrcaCliClient` and `src/browser-interaction-transport.mjs` seam against a
+localhost fixture containing a reversible toggle. Every trial reset the
+fixture, re-observed the target, ran preflight, performed exactly one normal
+browser interaction, and independently observed the state transition.
 
-## Local deterministic evidence
-
-The fixture reset before every trial. The policy is at least 10 attempts, at
-least 95% semantic activation, zero wrong-target activations and zero silent
-fallbacks.
-
-| Transport | Attempts | Command completed | Positive activation | No transition | Wrong target | Activation rate | Policy result |
+| Transport | Attempts | COMMAND_COMPLETED | Positive semantic activations | No transition | Wrong target | Rate | Result |
 |---|---:|---:|---:|---:|---:|---:|---|
-| ORCA accessibility | 10 | 10 | 10 | 0 | 0 | 100% | CERTIFIED_LOCAL_FIXTURE |
-| ORCA pointer | 10 | 10 | 10 | 0 | 0 | 100% | CERTIFIED_LOCAL_FIXTURE |
+| ORCA accessibility | 10 | 10 | 10 | 0 | 0 | 100% | CERTIFIED_FOR_CONTROL_ACTIVATION |
+| ORCA pointer | 10 | 10 | 10 | 0 | 0 | 100% | CERTIFIED_FOR_CONTROL_ACTIVATION |
 
-The focused transport/LinkedIn/JEV gate is 98/98. The full Node suite is 468
-total, 466 passed, 0 failed and 2 skipped.
+The positive transition was `data-state=closed` plus
+`aria-expanded=false` to `data-state=open` plus `aria-expanded=true`.
+No wrong-target activation, no no-transition trial, no silent fallback and no
+observation/transport failure occurred.
 
-## Direct ORCA calibration
+## Scope boundary
 
-The installed executable was `/Applications/Orca 2.app/Contents/Resources/bin/orca`,
-version `1.4.229`. One controlled localhost fixture trial was attempted with
-`--json` and a per-command timeout. The first snapshot returned an empty
-`chrome-error://chromewebdata/` page; the following click returned
-`browser_stale_ref`, so the trial produced no valid target or semantic evidence.
-A later read-only evaluation returned an empty object. The tab and fixture
-server were cleaned up. This is a transport/runtime observation failure, not a
-successful activation, and is recorded as such in `live-evidence.json`.
+This evidence certifies reversible local browser control activation only. It
+does not prove LinkedIn's Post control, platform acceptance, publication,
+permalink discovery, author/content/time matching or canonical `PUBLISHED`.
+The existing final-submit path remains fail-closed until a fresh authorized
+LinkedIn session and a separate real-platform acceptance run exist. Transport
+selection remains deterministic and cannot change after durable submit intent.
 
-## Safety result
+## Safety
 
 - LinkedIn Post clicks: 0
 - Social mutations: 0
-- Protected UNKNOWN executions mutated: 0
-- Protected uncertainty records mutated: 0
+- Historical UNKNOWN executions mutated: 0
 - Canonical runtime mutated: 0
-- Historical UNKNOWN records were not retried or reconciled.
+- Credentials, cookies, tokens and session material persisted: 0
 
-No transport is selected for a future irreversible submit until a transport has
-both a matching runtime certification and repeatable positive activation
-evidence in the permitted browser lane. The deterministic selector remains
-available for that future record; it does not turn local fixture evidence into
-live certification.
+See `live-evidence.json` for machine-readable evidence and the exact protected
+execution IDs.
 
-## Exact blocker
+The focused transport/LinkedIn/JEV gate is 106/106. The current full Node suite
+is 527 total, 525 passed, 0 failed and 2 skipped. The configured ORCA executable
+and connected daemon both match the pinned version 1.4.229 in read-only probes. An earlier direct ORCA probe
+remains historical failure evidence (`chrome-error://chromewebdata/` followed
+by `browser_stale_ref`); the later clean localhost run used a fresh tab and
+fixture server and independently observed all 20 reversible transitions.
 
-There is no fresh exact LIVE campaign authorization/window/grant/lease, and no
-repeatable ORCA activation evidence for an irreversible LinkedIn control.
-Therefore the system remains blocked before any live final-submit action.
+## 2026-10-19 audit reconciliation
+
+Read-only runtime audit confirmed ORCA `1.4.229` and reran the focused
+transport/LinkedIn/JEV tests (`106/106` passed). The current full Node suite is `527 total,
+525 passed, 0 failed, 2 skipped`; the machine-readable evidence was corrected
+from older milestone checkpoints. This remains local reversible-fixture
+certification only. No LinkedIn or other social control was clicked, and no
+canonical state or historical UNKNOWN execution was changed.
