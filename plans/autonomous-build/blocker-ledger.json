@@ -100,11 +100,11 @@
   ],
   "last_audit": {
     "at": "2026-10-19T20:13:48Z",
-    "head": "e1206d4",
+    "head": "fdf3419",
     "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
     "externalSideEffects": false,
     "canonicalRuntimeMutated": false,
     "historicalUnknownMutated": false,
-    "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020b.md"
+    "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020c.md"
   }
 }

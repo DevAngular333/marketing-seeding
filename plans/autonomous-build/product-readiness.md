@@ -80,4 +80,4 @@ Latest post-HEAD gate: `npm test` **536 total, 534 passed, 0 failed, 2 skipped**
 
 The release gate was rerun after the fresh authority audit and transport-certification hardening: full Node suite 530/528/0/2, focused safety/transport/authority/recovery 152/152, syntax/diff/UI/JSON checks pass. The pinned ORCA executable and connected runtime both report 1.4.229, ready/connected (read-only probe; no browser command). No fresh exact authority exists; the canonical service remains undeployed from this branch. A bounded implementation scout found no safe dependency-independent source lane.
 
-Current release record: `plans/autonomous-build/discovery-feed-observer/`; integration HEAD `6e37177`; full 536/534/0/2, focused feed 28/28 and prior safety gate 152/152.
+Current release record: `plans/autonomous-build/reports/master-continuation-final-audit-20261020c.md`; tested source HEAD `fdf3419`; full 536/534/0/2, focused feed 28/28 and prior safety gate 152/152.
