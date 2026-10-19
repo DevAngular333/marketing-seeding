@@ -25,4 +25,4 @@ Result: **110 passed, 0 failed, 0 skipped**.
 - `node --check src/*.mjs`: pass.
 - `git diff --check`: pass.
 
-Full-suite and UI/release gates are recorded after this patch is integrated.
+Full-suite release gate after integration: **536 total, 534 passed, 0 failed, 2 skipped**; UI typecheck/build and journal JSON checks pass.

@@ -17,9 +17,16 @@
   social mutation or historical UNKNOWN change.
 - Artifact: `plans/autonomous-build/discovery-feed-observer/`.
 
+## Current release gate after discovery feed lane (2026-10-20; release 6e37177)
+
+- Source implementation commit `43322b8` and journal commit `6e37177` are pushed on `origin/integration/autonomous-build`.
+- Final full suite on this tree: `npm test` **536 total, 534 passed, 0 failed, 2 skipped**; focused discovery feed gate **28/28**; syntax, diff, journal JSON and UI typecheck/build pass.
+- Canonical runtime remains schema 8/revision 194 with SHA-256 `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`; active authorization/window/grant/lease counts remain `0/0/0/0`.
+- This release remains local/integration only; main and `SYSTEM_AGENTIC_AI` Core were not changed or deployed.
+
 ## Follow-up release gate (2026-10-20)
 
-- Fresh rerun remains green: `npm test` **530 total, 528 passed, 0 failed, 2 skipped**; standard focused transport/JEV/LinkedIn/authority/recovery gate **152/152**; broader focused product/service gate **337/337**.
+- Fresh rerun remains green: `npm test` **536 total, 534 passed, 0 failed, 2 skipped**; focused discovery feed gate **28/28**; standard focused transport/JEV/LinkedIn/authority/recovery gate **152/152**; broader focused product/service gate **337/337**.
 - `node --check src/*.mjs`, journal JSON parsing, `git diff --check`, UI typecheck and UI build pass. UI build emits only existing Vite configuration warnings.
 - Read-only ORCA probes report executable and connected runtime `1.4.229`, `ready` / `connected`; no browser command was issued.
 - A separate read-only ORCA inventory found five configured profiles and one existing LinkedIn feed tab on the host-managed `marketing-linkedin-mac-primary` profile; identifiers were redacted and no tab interaction occurred. This does not create authority or make persisted readiness fresh.
@@ -29,8 +36,8 @@
 
 ## Current verification overlay (2026-10-20)
 
-- Integration source HEAD remains `fd253dd` (`fix: reject ambiguous transport certifications`); latest journal commit is `5aa4b42`.
-- Fresh `npm test`: **530 total, 528 passed, 0 failed, 2 skipped**.
+- Integration source HEAD remains `6e37177` (discovery-feed release journal); source safety HEAD remains `fd253dd`; latest journal commit is `6e37177`.
+- Fresh `npm test`: **536 total, 534 passed, 0 failed, 2 skipped**.
 - Focused transport/JEV/LinkedIn/authority/recovery gate: **152 passed, 0 failed, 0 skipped**.
 - An expanded transport/JEV/LinkedIn/authority gate also passed **201/201**; the
   standard journal gate is retained as 152/152 for comparability.

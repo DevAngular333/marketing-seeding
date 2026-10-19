@@ -18,6 +18,13 @@
 - The supplied Design OS Studio authority still lacks exact runtime campaign binding, target/account/profile tuple, approved LinkedIn content hash, media declaration, canonical audience and explicit UTC bounds. No live controls were derived and no external action occurred.
 - Current follow-up evidence: `plans/autonomous-build/reports/master-continuation-final-audit-20261020b.md`.
 
+## Current release-owner reconciliation (2026-10-20; release 6e37177)
+
+- Source implementation commit `43322b8` and journal commit `6e37177` are pushed to `origin/integration/autonomous-build`; main and the canonical service remain untouched.
+- Final full suite: **536 total, 534 passed, 0 failed, 2 skipped**. Focused discovery feed gate: **28/28**. Syntax, diff, journal JSON, UI typecheck and UI build pass.
+- Canonical state remains schema 8/revision 194, hash `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`, with active authorization/window/grant/lease counts `0/0/0/0`; four historical UNKNOWN records remain immutable.
+- No browser command, external URL fetch, authority creation, canonical write, credential/session mutation, social mutation or historical UNKNOWN retry occurred.
+
 ## Current continuation release reconciliation overlay (2026-10-20)
 
 - HEAD is `fd253dd` (`fix: reject ambiguous transport certifications`) on `integration/autonomous-build`.
@@ -67,7 +74,7 @@
 
 ## Latest release gate
 
-The latest integration-branch `npm test` run is **530 total, 528 passed, 0 failed, 2 skipped**. Syntax, diff, UI typecheck and UI build checks pass. This branch is not deployed to the canonical service.
+The latest integration-branch `npm test` run is **536 total, 534 passed, 0 failed, 2 skipped**. Focused feed gate 28/28, syntax, diff, UI typecheck and UI build checks pass. This branch is not deployed to the canonical service.
 
 ## Unverified first
 
@@ -262,18 +269,18 @@ RESTART_RECOVERY = PARTIAL_LOCAL_DRY_RUN_PROVEN
 24_7_READINESS = NOT_PROVEN
 
 Git:
-MAIN_HEAD = untouched by this wave; integration source HEAD = fd253dd; latest journal HEAD = 5aa4b42
+MAIN_HEAD = untouched by this wave; integration source HEAD = 6e37177; latest journal HEAD = 6e37177
 MAIN_STATUS = unchanged; no merge or deployment performed
 INTEGRATION_BRANCHES = integration/autonomous-build
 WORKER_BRANCHES = accepted worker evidence and review artifacts; no worker branch was merged into main
-PUSH_STATUS = no push/deployment performed; integration branch remains local
+PUSH_STATUS = integration/autonomous-build pushed to origin at 6e37177; main/canonical service not deployed
 MERGED_WORK = accepted local implementation and journal work is present on the integration branch; only intentional untracked post-HEAD audit reports remain
 
 Tests:
 
 FULL_TEST_RESULT = PASS_LOCAL
-TOTAL = 530
-PASS = 528
+TOTAL = 536
+PASS = 534
 FAIL = 0
 SKIP = 2 existing ACL/evidence-environment skips
 
@@ -315,6 +322,8 @@ Important commits:
 - `139f09c` — expose distribution intelligence in Mission Control
 - `ed9d2cd` — verify independent product runtime surfaces
 - `fd253dd` — reject ambiguous transport certifications (fail closed)
+- `43322b8` — add bounded RSS/Atom discovery feed observer
+- `6e37177` — record discovery feed release gate
 
 Blockers:
 

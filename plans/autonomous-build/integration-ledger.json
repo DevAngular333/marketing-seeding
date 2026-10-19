@@ -1733,7 +1733,7 @@
       "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020.md"
     }
   ],
-  "latestHead": "43322b8",
+  "latestHead": "6e37177",
   "latestGate": "discovery_feed_observer_20261020",
   "followupGate": {
     "name": "master_continuation_followup_20261020b",
