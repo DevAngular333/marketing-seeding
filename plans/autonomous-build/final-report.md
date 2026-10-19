@@ -271,7 +271,7 @@ RESTART_RECOVERY = PARTIAL_LOCAL_DRY_RUN_PROVEN
 24_7_READINESS = NOT_PROVEN
 
 Git:
-MAIN_HEAD = untouched by this wave; integration source release gate = 6e37177; current branch includes documentation-only reconciliation after that gate
+MAIN_HEAD = untouched by this wave; current integration branch HEAD = e1206d4; source release gate = 6e37177; docs-only reconciliation follows
 MAIN_STATUS = unchanged; no merge or deployment performed
 INTEGRATION_BRANCHES = integration/autonomous-build
 WORKER_BRANCHES = accepted worker evidence and review artifacts; no worker branch was merged into main
