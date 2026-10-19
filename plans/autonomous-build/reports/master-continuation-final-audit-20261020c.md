@@ -10,9 +10,9 @@ this audit.
 
 ## Current release evidence
 
-- Integration branch HEAD: `fdf3419` after documentation-only continuation
-  reconciliation; source implementation release: `43322b8`; source gate
-  reconciliation: `6e37177`.
+- Tested source lineage: implementation release `43322b8`, source gate
+  reconciliation `6e37177`, and continuation-plan reconciliation `fdf3419`.
+  The current branch contains only subsequent documentation/audit commits.
 - `origin/integration/autonomous-build` matches the local HEAD.
 - Full Node suite on the implementation tree: **536 total, 534 passed, 0
   failed, 2 skipped**.
