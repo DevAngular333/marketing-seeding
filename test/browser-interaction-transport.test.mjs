@@ -197,6 +197,19 @@ test("transport certification requires exact provider identity, not only version
   }), /No certified browser interaction transport/);
 });
 
+test("certified transport selection fails closed on conflicting duplicate certification records", () => {
+  const transport = { runtimeIdentity: () => ({ transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.229" }) };
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport],
+    platform: "linkedin",
+    runtime: { provider: "orca", providerVersion: "1.4.229" },
+    certifications: [
+      { transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.229", platform: "linkedin", certified: true, certificationScope: "LOCAL_REAL_BROWSER_FIXTURE_CONTROL_ACTIVATION_ONLY" },
+      { transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.229", platform: "linkedin", certified: true, irreversibleSubmit: true, certificationScope: "IRREVERSIBLE_LINKEDIN_SUBMIT" }
+    ]
+  }), { code: "TRANSPORT_CERTIFICATION_AMBIGUOUS" });
+});
+
 test("ORCA runtime probe rejects an unpinned or mismatched executable before final input", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "orca-version-fixture-"));
   const executable = path.join(directory, "orca-version-fixture");

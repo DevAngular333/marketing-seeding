@@ -168,11 +168,32 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
 }
 
 export function selectCertifiedTransport({ transports = [], certifications = [], platform = "linkedin", runtime = {}, requireIrreversibleSubmit = false } = {}) {
-  const certified = new Map(certifications.filter((item) => item?.certified === true).map((item) => [item.transport, item]));
+  // A transport identity must have one unambiguous certification policy. Do
+  // not let array ordering silently select the last record when configuration
+  // accidentally contains conflicting scopes (for example a local fixture
+  // record and an irreversible-submit record for the same ORCA transport).
+  const certified = new Map();
+  for (const item of certifications.filter((candidate) => candidate?.certified === true)) {
+    const transportId = String(item.transport || "").trim();
+    if (!transportId) continue;
+    const policyIdentity = JSON.stringify({
+      provider: String(item.provider || "").trim(),
+      providerVersion: String(item.providerVersion || "").trim(),
+      platform: item.platform ? String(item.platform).trim() : null,
+      irreversibleSubmit: item.irreversibleSubmit === true,
+      certificationScope: item.certificationScope ? String(item.certificationScope).trim() : null
+    });
+    const existing = certified.get(transportId);
+    if (existing && existing.policyIdentity !== policyIdentity) {
+      throw Object.assign(new Error(`Ambiguous certified browser transport identity: ${transportId}`), { code: "TRANSPORT_CERTIFICATION_AMBIGUOUS" });
+    }
+    if (!existing) certified.set(transportId, { item, policyIdentity });
+  }
   const candidates = transports.filter((transport) => {
     const identity = transport?.runtimeIdentity?.() || {};
-    const record = certified.get(identity.transport);
-    if (!record) return false;
+    const certification = certified.get(identity.transport);
+    if (!certification) return false;
+    const record = certification.item;
     if (record.platform && record.platform !== platform) return false;
     // Local fixture/reversible calibration records must never authorize an
     // irreversible final submit. Production callers opt into this stricter
