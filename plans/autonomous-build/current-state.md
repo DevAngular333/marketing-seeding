@@ -1,4 +1,4 @@
-# Current State (latest verified 2026-10-20; fd253dd release-owner reconciliation)
+# Current State (latest verified 2026-10-20; 5aa4b42 release-owner reconciliation)
 
 ## Follow-up release gate (2026-10-20)
 
@@ -12,7 +12,7 @@
 
 ## Current verification overlay (2026-10-20)
 
-- Integration HEAD is `fd253dd` (`fix: reject ambiguous transport certifications`).
+- Integration source HEAD remains `fd253dd` (`fix: reject ambiguous transport certifications`); latest journal commit is `5aa4b42`.
 - Fresh `npm test`: **530 total, 528 passed, 0 failed, 2 skipped**.
 - Focused transport/JEV/LinkedIn/authority/recovery gate: **152 passed, 0 failed, 0 skipped**.
 - An expanded transport/JEV/LinkedIn/authority gate also passed **201/201**; the

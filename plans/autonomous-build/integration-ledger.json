@@ -1733,12 +1733,12 @@
       "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020.md"
     }
   ],
-  "latestHead": "fd253dd",
+  "latestHead": "5aa4b42",
   "latestGate": "master_continuation_followup_20261020b",
   "followupGate": {
     "name": "master_continuation_followup_20261020b",
     "result": "PASS_LOCAL_FOUNDATION_ONLY",
-    "head": "fd253dd",
+    "head": "5aa4b42",
     "tests": 530,
     "passed": 528,
     "failed": 0,

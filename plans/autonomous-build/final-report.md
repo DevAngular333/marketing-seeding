@@ -2,7 +2,7 @@
 
 ## Follow-up release-owner gate (2026-10-20)
 
-- HEAD remains `fd253dd`; the fresh full suite is **530 total, 528 passed, 0 failed, 2 skipped** and the standard focused transport/JEV/LinkedIn/authority/recovery gate is **152/152**. A broader focused product/service run is **337/337**.
+- Source HEAD remains `fd253dd`; latest journal commit is `5aa4b42`. The fresh full suite is **530 total, 528 passed, 0 failed, 2 skipped** and the standard focused transport/JEV/LinkedIn/authority/recovery gate is **152/152**. A broader focused product/service run is **337/337**.
 - Syntax, journal JSON, diff, UI typecheck and UI build checks pass. Read-only ORCA executable and connected runtime both report `1.4.229`, `ready`, `connected`.
 - A read-only ORCA tab/profile inventory found one existing LinkedIn feed tab on the host-managed `marketing-linkedin-mac-primary` profile. No tab interaction occurred, and this observation does not substitute for exact campaign authority or fresh persisted readiness.
 - The supplied Design OS Studio authority still lacks exact runtime campaign binding, target/account/profile tuple, approved LinkedIn content hash, media declaration, canonical audience and explicit UTC bounds. No live controls were derived and no external action occurred.
@@ -252,7 +252,7 @@ RESTART_RECOVERY = PARTIAL_LOCAL_DRY_RUN_PROVEN
 24_7_READINESS = NOT_PROVEN
 
 Git:
-MAIN_HEAD = untouched by this wave; integration HEAD = fd253dd
+MAIN_HEAD = untouched by this wave; integration source HEAD = fd253dd; latest journal HEAD = 5aa4b42
 MAIN_STATUS = unchanged; no merge or deployment performed
 INTEGRATION_BRANCHES = integration/autonomous-build
 WORKER_BRANCHES = accepted worker evidence and review artifacts; no worker branch was merged into main
