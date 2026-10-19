@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "integrationBranch": "integration/autonomous-build",
   "baseHead": "8e8455fda55ca0f8f31d6c1a1405a570a84428ee",
-  "checkpointCommit": "8dac262",
+  "checkpointCommit": "5d1a0e3",
   "acceptedCommits": [
     "c4fb42f feat: add bounded standing campaign delegation",
     "2428606 feat: add evidence-grounded product intelligence",
@@ -1662,8 +1662,35 @@
       "canonicalRuntimeMutated": false,
       "historicalUnknownMutated": false,
       "report": "plans/autonomous-build/reports/journal-reconcile-20261019.md"
+    },
+    {
+      "name": "journal_reconcile_authority_product_20261019",
+      "result": "PASS_LOCAL_FOUNDATION_ONLY",
+      "head": "5d1a0e3",
+      "tests": 529,
+      "passed": 527,
+      "failed": 0,
+      "skipped": 2,
+      "command": "npm test (last full suite; documentation-only commits afterward)",
+      "focusedGate": {
+        "tests": 151,
+        "passed": 151,
+        "failed": 0,
+        "skipped": 0
+      },
+      "syntax": "passed",
+      "gitDiffCheck": "passed",
+      "journalJson": "passed",
+      "auditReports": [
+        "plans/autonomous-build/reports/authority-binding-audit-20261019.md",
+        "plans/autonomous-build/reports/product-intelligence-design-os-studio-20261019.md"
+      ],
+      "externalSideEffects": false,
+      "canonicalRuntimeMutated": false,
+      "historicalUnknownMutated": false,
+      "report": "plans/autonomous-build/reports/journal-reconcile-authority-product-20261019.md"
     }
   ],
-  "latestHead": "8dac262",
-  "latestGate": "journal_reconcile_20261019"
+  "latestHead": "5d1a0e3",
+  "latestGate": "journal_reconcile_authority_product_20261019"
 }
