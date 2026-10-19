@@ -2,7 +2,7 @@
 
 ## Current release gate (2026-10-19)
 
-- Fresh post-audit integration-branch `npm test`: **527 total, 525 passed, 0 failed, 2 skipped**.
+- Fresh post-HEAD integration-branch `npm test`: **529 total, 527 passed, 0 failed, 2 skipped**.
 - Focused transport/JEV/LinkedIn/authority and local continuity gate: **151 total, 151 passed, 0 failed, 0 skipped**.
 - `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI build pass.
 - Older 522/520/0/2 and 523/521/0/2 values below are historical milestone snapshots.
@@ -13,7 +13,7 @@
 - No LinkedIn Post click, social mutation, credential/session mutation, canonical
   write, or UNKNOWN retry occurred.
 
-See `plans/autonomous-build/reports/release-journal-reconciliation-20261019b.md` for the post-HEAD gate and `plans/autonomous-build/reports/next-bounded-implementation-scout-20261019.md` for the dependency-independent lane audit.
+See `plans/autonomous-build/reports/journal-reconcile-20261019.md` for the current post-HEAD gate and `plans/autonomous-build/reports/next-bounded-implementation-scout-20261019.md` for the dependency-independent lane audit.
 
 ## ORCA runtime configuration remediation overlay (2026-10-19)
 
@@ -34,9 +34,9 @@ See `plans/autonomous-build/reports/release-journal-reconciliation-20261019b.md`
 
 ## Final release-owner audit overlay (2026-10-19)
 
-- Integration HEAD is `9c09793` on `integration/autonomous-build`; the worktree
+- Integration HEAD is `8dac262` on `integration/autonomous-build`; the worktree
   contains only the intentional untracked post-HEAD audit reports.
-- Fresh full gate at the latest release reconciliation: `npm test` **527 total, 525 passed, 0 failed, 2 skipped**. The 522/520 figure in this historical overlay predates the latest test additions.
+- Fresh full gate at the latest journal reconciliation: `npm test` **529 total, 527 passed, 0 failed, 2 skipped**. The 522/520 figure in this historical overlay predates the latest test additions.
   `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI build pass.
 - Independent master release review is **ACCEPT — bounded foundation only**.
 - No additional safe implementation lane was found after re-review. Remaining
@@ -55,7 +55,7 @@ See `plans/autonomous-build/reports/release-journal-reconciliation-20261019b.md`
 
 ## Latest release gate
 
-- Latest post-HEAD integration-branch `npm test`: **527 total, 525 passed, 0 failed, 2 skipped**. `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI production build pass.
+- Latest post-HEAD integration-branch `npm test`: **529 total, 527 passed, 0 failed, 2 skipped**. `node --check src/*.mjs`, `git diff --check`, UI typecheck and UI production build pass.
 - This is local branch evidence only. Canonical `/health` still runs source commit `b4fa42b…`, schema 8 revision 194; the integration branch is not deployed.
 - Canonical runtime has zero active `campaignAuthorizations`, one-time execution windows, `liveExecutionGrants` or execution leases; four historical UNKNOWN executions remain immutable.
 - ORCA 1.4.229 is available and its executable/connected daemon pin matches. Accessibility and pointer transports each pass 10/10 semantic activation trials on the resettable local fixture; real LinkedIn irreversible submit remains unproven.
