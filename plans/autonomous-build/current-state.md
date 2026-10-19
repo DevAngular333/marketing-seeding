@@ -1,5 +1,20 @@
 # Current State (latest verified 2026-10-20; 4f71083 continuation audit)
 
+## Fresh authority intake recheck (2026-10-20f)
+
+- The supplied Design OS Studio scope binds campaign intent, product label,
+  LinkedIn/public action, audience intent, one-post quota, single cadence,
+  concurrency one, a 24-hour validity intent and the non-secret standing
+  reference `design-os-studio-linkedin-launch-2026-10-19`.
+- It still does not provide the immutable campaign/productRepo, target URL and
+  target ID, account ID and ORCA profile UUID, exact approved LinkedIn payload
+  bytes/content hash, explicit media declaration/hashes, canonical audience
+  serialization, UTC bounds or schedule fields required by the existing
+  fail-closed authorization contract.
+- Read-only intake recheck: no campaign, authorization, window, grant, lease,
+  post, browser input, ORCA input, canonical state mutation or historical
+  UNKNOWN mutation. Evidence: `plans/autonomous-build/reports/authority-intake-recheck-20261020f.md`.
+
 ## Fresh continuation audit (2026-10-20e)
 
 - Integration branch HEAD and origin are `4f71083` (`docs: reconcile live session blocker evidence`); worktree is clean.
