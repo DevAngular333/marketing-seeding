@@ -1988,6 +1988,8 @@ test("dashboard exposes recent metrics, interactions, replies, and audit history
   }, "ai-drafter");
   const dashboard = await service.dashboard();
   assert.equal(dashboard.latestMetricSnapshots.length, 1);
+  assert.ok(dashboard.metricCheckpointSummary);
+  assert.equal(dashboard.metricCheckpointSummary.totalPublishedPosts, 0);
   assert.equal(dashboard.recentInteractions.length, 1);
   assert.equal(dashboard.recentReplies.length, 1);
   assert.ok(dashboard.recentAudit.length >= 6);
