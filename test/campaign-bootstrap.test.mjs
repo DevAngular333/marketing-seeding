@@ -178,3 +178,49 @@ test("expired bootstrap schedule renews exact authority without mutating histori
   assert.ok(Date.parse(campaign.autonomousBootstrap.schedule.validUntil) > now.getTime());
   assert.equal(after.executionRequests.filter((item) => item.jobId === renewed.postId && item.request?.dryRun !== true).length, 2);
 });
+
+test("bootstrap never reuses a cancelled request or its terminal controls", async (t) => {
+  const { service, productRepo, now } = await fixture(t);
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(first.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  const before = await service.snapshot();
+  const oldRequest = structuredClone(before.executionRequests.find((item) => item.executionId === first.executionId));
+  const oldWindow = structuredClone(before.oneTimeExecutionWindows.find((item) => item.windowId === first.oneTimeWindowId));
+  const oldGrant = structuredClone(before.liveExecutionGrants.find((item) => item.grantId === first.liveGrantId));
+
+  const cancelled = await service.cancelExecutionRequest(first.executionId, {
+    reason: "bootstrap regression fixture cancellation",
+    operatorAuthorizationReference: "bootstrap-regression-fixture"
+  }, "operator");
+  assert.equal(cancelled.state, "CANCELLED_PRE_SUBMIT");
+  await service.store.mutate("test", "expire_cancelled_bootstrap_controls", (state) => {
+    const window = state.oneTimeExecutionWindows.find((item) => item.windowId === first.oneTimeWindowId);
+    if (window) {
+      window.status = "EXPIRED";
+      window.expiredAt = new Date().toISOString();
+    }
+    const grant = state.liveExecutionGrants.find((item) => item.grantId === first.liveGrantId);
+    if (grant) {
+      grant.status = "EXPIRED";
+      grant.expiredAt = new Date().toISOString();
+    }
+  });
+
+  const renewed = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(renewed.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  assert.notEqual(renewed.executionId, first.executionId);
+  assert.notEqual(renewed.oneTimeWindowId, first.oneTimeWindowId);
+  assert.notEqual(renewed.liveGrantId, first.liveGrantId);
+  assert.equal(renewed.readinessFresh, true);
+
+  const after = await service.snapshot();
+  const historicalRequest = after.executionRequests.find((item) => item.executionId === first.executionId);
+  const historicalWindow = after.oneTimeExecutionWindows.find((item) => item.windowId === first.oneTimeWindowId);
+  const historicalGrant = after.liveExecutionGrants.find((item) => item.grantId === first.liveGrantId);
+  assert.deepEqual(historicalRequest, { ...oldRequest, state: "CANCELLED_PRE_SUBMIT", executionPhase: "CANCELLED_PRE_SUBMIT", cancelledAt: historicalRequest.cancelledAt, cancelledBy: "operator", cancellationReason: "bootstrap regression fixture cancellation", operatorAuthorizationReference: "bootstrap-regression-fixture" });
+  assert.equal(historicalWindow.status, "EXPIRED");
+  assert.equal(historicalGrant.status, "EXPIRED");
+  assert.equal(historicalWindow.binding, oldWindow.binding);
+  assert.equal(historicalGrant.grantId, oldGrant.grantId);
+  assert.equal(after.executionRequests.filter((item) => item.jobId === renewed.postId && item.request?.dryRun !== true).length, 2);
+});

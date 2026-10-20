@@ -2983,25 +2983,51 @@ export class SeedingService {
       requireStandingAuthorization: true
     }, actor);
     state = await this.store.read();
-    const currentPost = state.posts.find((item) => item.id === post.id) || post;
+    let currentPost = state.posts.find((item) => item.id === post.id) || post;
     const currentTarget = state.targets.find((item) => item.id === target.id) || target;
-    const currentReadinessFresh = isReadinessFresh(currentTarget.readiness, {
+    const currentBinding = {
       platform,
       accountId: account.accountId,
       profileId: account.profileId,
       targetId: currentTarget.id
-    }, new Date(), this.readinessTtlMs);
-    const request = state.executionRequests
-      .filter((item) => item.jobId === currentPost.id && item.request?.dryRun !== true)
+    };
+    let currentReadinessFresh = isReadinessFresh(currentTarget.readiness, currentBinding, new Date(), this.readinessTtlMs);
+    let request = null;
+    const latestLiveRequest = () => state.executionRequests
+      .filter((item) => item.jobId === currentPost.id && item.request?.dryRun !== true &&
+        item.request?.authorization?.authorizationId === authorization.id &&
+        item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED")
       .sort((left, right) => (Number(right.attempt) || 0) - (Number(left.attempt) || 0) || String(right.createdAt || right.request?.createdAt || "").localeCompare(String(left.createdAt || left.request?.createdAt || "")))[0] || null;
+    request = latestLiveRequest();
+    // A cancelled, expired, or otherwise terminal bootstrap request cannot be
+    // surfaced as READY and cannot be revived. Re-enter the existing standing
+    // delegation path with a fresh provider readiness observation; it derives
+    // a new window, grant, lease and execution request while preserving every
+    // historical execution record.
+    if (!request && !["published", "publishing", "processing", UNKNOWN_POST_STATUS, "removed", "rejected"].includes(currentPost.status)) {
+      const refreshed = await this.refreshCampaignJobReadiness(currentPost.id, actor, { force: true });
+      state = await this.store.read();
+      currentPost = state.posts.find((item) => item.id === post.id) || currentPost;
+      currentReadinessFresh = isReadinessFresh((state.targets || []).find((item) => item.id === target.id)?.readiness, currentBinding, new Date(), this.readinessTtlMs);
+      if (refreshed.status === "queued") {
+        await this.prepareExecutionRequest(currentPost.id, actor);
+        await this.ensureStandingExecutionGrant(currentPost.id, "execution-router");
+        state = await this.store.read();
+        currentPost = state.posts.find((item) => item.id === post.id) || currentPost;
+      }
+      request = latestLiveRequest();
+    }
     const window = request?.request?.oneTimeWindow?.windowId
       ? state.oneTimeExecutionWindows.find((item) => item.windowId === request.request.oneTimeWindow.windowId)
       : null;
     const grant = request?.request?.liveGrant?.grantId
       ? state.liveExecutionGrants.find((item) => item.grantId === request.request.liveGrant.grantId)
       : null;
+    const windowActive = window && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(window, new Date())) &&
+      window.authorizationFingerprint === authorization.binding && window.campaignAuthorizationId === authorization.id;
+    const grantActive = grant && liveGrantEffectiveStatus(grant) === "ACTIVE" && grant.campaignAuthorizationId === authorization.id;
     return {
-      status: request && grant && window ? "READY_FOR_AUTONOMOUS_EXECUTION" : "BLOCKED",
+      status: request && grantActive && windowActive ? "READY_FOR_AUTONOMOUS_EXECUTION" : "BLOCKED",
       campaignId: identity.campaignId,
       authorizationId: authorization.id,
       targetId: target.id,
@@ -3023,7 +3049,7 @@ export class SeedingService {
       executionId: request?.executionId || null,
       oneTimeWindowId: window?.windowId || null,
       liveGrantId: grant?.grantId || null,
-      blockers: request && grant && window ? [] : [{ code: currentPost.readinessReasonCode || "EXECUTION_CONTROLS_NOT_DERIVED", classification: "RUNTIME_BLOCKER", message: "Fresh readiness did not produce the complete execution controls" }],
+      blockers: request && grantActive && windowActive ? [] : [{ code: currentPost.readinessReasonCode || "EXECUTION_CONTROLS_NOT_DERIVED", classification: "RUNTIME_BLOCKER", message: "Fresh readiness did not produce the complete execution controls" }],
       externalSideEffects: false,
       authoritySideEffects: true
     };
