@@ -426,6 +426,7 @@ function automationCanMutate(method, pathname) {
   if (/^\/api\/campaigns\/[^/]+\/product-factory$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/product-factory\/artifacts\/promote$/.test(pathname)) return false;
   if (/^\/api\/campaigns\/[^/]+\/product-intelligence\/inspect$/.test(pathname)) return true;
+  if (pathname === "/api/campaigns/bootstrap") return true;
   if (/^\/api\/campaigns\/[^/]+\/distribution-handoff$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/content-candidates\/materialize$/.test(pathname)) return true;
   if (/^\/api\/campaigns\/[^/]+\/discoveries\/observe$/.test(pathname)) return true;
@@ -663,6 +664,9 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname === "/api/targets") {
       return sendJson(response, 201, await service.createTarget(await readJson(request), actor));
+    }
+    if (request.method === "POST" && url.pathname === "/api/campaigns/bootstrap") {
+      return sendJson(response, 201, await service.bootstrapAutonomousCampaign(await readJson(request), actor));
     }
     if (request.method === "POST" && url.pathname === "/api/execution-accounts") {
       return sendJson(response, 201, await service.registerExecutionAccount(await readJson(request), actor));

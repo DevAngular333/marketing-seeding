@@ -6,7 +6,11 @@ const DEFAULT_ALLOWLIST = [
   "README.md", "README", "package.json", "pyproject.toml", "Cargo.toml",
   "go.mod", "composer.json", "pom.xml", "CHANGELOG.md", "docs/README.md",
 ];
-const DEFAULTS = { maxFileBytes: 64 * 1024, maxTotalBytes: 256 * 1024, maxFiles: 32, maxTextBytes: 16 * 1024 };
+// Keep repository inspection bounded, while allowing the common repository
+// README size (including generated product documentation) to remain usable as
+// evidence.  Content stored in state is still capped by maxTextBytes and the
+// aggregate byte budget remains finite.
+const DEFAULTS = { maxFileBytes: 128 * 1024, maxTotalBytes: 512 * 1024, maxFiles: 32, maxTextBytes: 16 * 1024 };
 const SECRET_KEY = /(password|passwd|secret|token|cookie|authorization|credential|api[_-]?key|private[_-]?key|session)/i;
 const SECRET_VALUE = /\b(?:bearer\s+|sk-|gh[pousr]_)[a-z0-9._-]{8,}/i;
 const FORBIDDEN_PATH = /(^|\/)(?:\.env(?:\..*)?|(?:password|passwd|secret|token|cookie|credential|credentials|private[-_]?key|auth|authorization)(?:[._-]|$))/i;

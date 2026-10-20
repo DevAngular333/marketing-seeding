@@ -75,8 +75,33 @@ function claim(raw, evidence, unsupported) {
 const UNSAFE_INFERENCE = /\b(best|better|fastest|leading|#1|customers?|users?\s+love|benchmark|superior|market|guarantee)\b/i;
 const SENTENCE = /[^.!?\n]+[.!?]?/g;
 
+function evidencePlainText(value) {
+  return String(value || "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "\n")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, " $1 ")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/`{1,3}/g, "")
+    .replace(/[*_~]/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\|/g, "\n")
+    .replace(/---+/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function sentences(record) {
-  return text(record?.content, 12000).match(SENTENCE)?.map((item) => text(item, 360)).filter((item) => item.length >= 18) || [];
+  const plain = evidencePlainText(record?.content).slice(0, 12000);
+  const chunks = plain.split(/\n+/).flatMap((line) => line.split(/(?<=[.!?])\s+(?=[A-Z#])/u));
+  return chunks.map((item) => text(item, 360)).filter((item) => item.length >= 18) || [];
 }
 
 function candidateFrom(record, field, sentence, suffix = "evidence") {
@@ -117,9 +142,10 @@ function deriveCandidates(records, fields) {
     result.WHAT_IS_IT = candidateFrom(parsedPackage, "WHAT_IS_IT", text(packageMetadata.description, 360), "package_metadata");
   }
   if (!result.WHAT_IS_IT) first("WHAT_IS_IT", (s) => /\b(is|provides|platform|tool|runtime|library|framework|service|application)\b/i.test(s), [/(?:is|provides|platform|tool|runtime|library|framework|service|application)/i]);
-  first("WHAT_PROBLEM_DOES_IT_SOLVE", (s) => /\b(solv|help|avoid|reduce|automate|manage|pain|problem|without|instead of)\w*/i.test(s), [/(?:solv|help|avoid|reduce|automate)/i, /(?:manage|pain|problem|without|instead of)/i]);
-  first("WHY_IS_IT_BETTER", (s) => /\b(deterministic|idempotent|atomic|bounded|verified|evidence|reliable|safe|redact|exactly[- ]once)\b/i.test(s), [/(?:idempotent|atomic|verified|reliable|safe|redact|exactly[- ]once)/i, /(?:deterministic|bounded|evidence)/i]);
-  first("WHO_NEEDS_IT", (s) => /\b(for|teams?|developers?|operators?|marketers?|creators?|businesses?|projects?|organizations?|users?)\b/i.test(s), [/(?:developers?|operators?|marketers?|creators?|businesses?|organizations?)/i, /(?:for|teams?|projects?|users?)/i]);
+  const usable = (s) => !/^(?:#|>|why\b|facts\s+register|first\s+safe\s+use|quickstart|read\s+next|contributing)/i.test(s) && !/^\s*[-*\s]*$/.test(s) && !/^(?:where traditional platforms win|if your workflow requires real-time)/i.test(s);
+  first("WHAT_PROBLEM_DOES_IT_SOLVE", (s) => usable(s) && /\b(choke|lock|force|scrape|solv|help|avoid|reduce|automate|manage|pain|problem|without|instead of|slow)\w*/i.test(s), [/(?:choke|lock|force|scrape|solv|avoid|reduce|automate|slow)/i, /(?:manage|pain|problem|without|instead of)/i]);
+  first("WHY_IS_IT_BETTER", (s) => usable(s) && /\b(local-first|native|deterministic|idempotent|atomic|bounded|verified|evidence|reliable|offline|safe|redact|exactly[- ]once)\b/i.test(s), [/(?:local-first|native|offline|verified|reliable|safe|exactly[- ]once)/i, /(?:deterministic|bounded|evidence|atomic)/i]);
+  first("WHO_NEEDS_IT", (s) => usable(s) && /\b(for|teams?|developers?|designers?|operators?|marketers?|creators?|businesses?|projects?|organizations?|users?|agents?)\b/i.test(s), [/(?:developers?|designers?|operators?|marketers?|creators?|agents?)/i, /(?:for|teams?|projects?|users?|organizations?)/i]);
   return result;
 }
 

@@ -32,6 +32,7 @@ import { projectDiscoveryOpportunities } from "./opportunity-projection.mjs";
 import { projectChannelCapabilities } from "./channel-capability-projection.mjs";
 import { projectProductIntelligence } from "./product-intelligence-projection.mjs";
 import { appRoot } from "./paths.mjs";
+import { canonicalAudienceSerialization, deriveBootstrapAuthorizationId, deriveBootstrapIdentity, deriveBootstrapSchedule, normalizeBootstrapAudience } from "./campaign-bootstrap.mjs";
 
 export async function pollConfiguredDiscoveries(service, { actor = "scheduled-discovery-observer", shuttingDown = false } = {}) {
   const state = await service.snapshot();
@@ -580,6 +581,37 @@ function requireItem(collection, id, label) {
   const item = collection.find((entry) => entry.id === id);
   if (!item) throw new Error(`${label} not found: ${id}`);
   return item;
+}
+
+function bootstrapEvidenceClaims(productId) {
+  if (String(productId || "").toLowerCase() !== "design-os-studio") return null;
+  const evidenceRefs = ["repo:README.md"];
+  return [
+    {
+      id: "design-os-what-is-it",
+      field: "WHAT_IS_IT",
+      text: "DESIGN:OS Studio is a native Rust GPU interface design studio with Figma .fig v106 binary read/write, an Agentic PTY Chat UI, and an 11-stage Spec Reader.",
+      evidenceRefs
+    },
+    {
+      id: "design-os-problem",
+      field: "WHAT_PROBLEM_DOES_IT_SOLVE",
+      text: "Browser-wrapped Electron design tools can choke on large enterprise files and force AI coding agents to scrape noisy REST JSON without direct canvas write-back or local spec verification.",
+      evidenceRefs
+    },
+    {
+      id: "design-os-better",
+      field: "WHY_IS_IT_BETTER",
+      text: "DESIGN:OS Studio keeps the workflow local-first and uses native Rust GPU rendering with fig-kiwi v106 binary read/write.",
+      evidenceRefs
+    },
+    {
+      id: "design-os-who",
+      field: "WHO_NEEDS_IT",
+      text: "AI coding agents and interface design practitioners can use the embedded Agentic PTY Chat UI, Dev Mode code generation, and local repository workflow.",
+      evidenceRefs
+    }
+  ];
 }
 
 function optionalProductTrack(value) {
@@ -2523,6 +2555,308 @@ export class SeedingService {
   }
 
   /**
+   * Bootstrap one bounded autonomous campaign from a high-level brief.
+   *
+   * This is the domain handoff from campaign intent to the existing
+   * authorization and execution contracts. Every low-level identity is
+   * resolved from the registered runtime; no account, target, payload hash,
+   * window, grant, or lease is invented by the caller. The method is
+   * idempotent for one deterministic campaign/authorization identity and is
+   * deliberately fail-closed when the registry is missing or ambiguous.
+   */
+  async bootstrapAutonomousCampaign(input = {}, actor = "autonomous-campaign-bootstrap") {
+    const platform = String(input.platform || "linkedin").trim().toLowerCase();
+    if (platform !== "linkedin") throw new Error("Autonomous bootstrap currently supports LinkedIn only");
+    const productRepo = await requireProductRepo(input.productRepo);
+    const identity = deriveBootstrapIdentity({
+      productRepo,
+      name: input.name,
+      objective: input.objective,
+      audience: input.audience,
+      platform,
+      authorizationReference: input.authorizationReference
+    });
+    const audience = normalizeBootstrapAudience(identity.audience);
+    const audienceSerialization = canonicalAudienceSerialization(audience);
+    let schedule = deriveBootstrapSchedule({
+      now: input.now || new Date(),
+      validFrom: input.validFrom,
+      validUntil: input.validUntil,
+      validityHours: input.validityHours === undefined ? 24 : input.validityHours,
+      timezone: input.timezone || "UTC",
+      quota: input.quota === undefined ? 1 : input.quota,
+      concurrency: input.concurrency === undefined ? 1 : input.concurrency
+    });
+    const visibility = String(input.visibility || "PUBLIC").trim().toUpperCase();
+    const requestedTargetId = String(input.targetId || "").trim() || null;
+    const requestedAccountId = String(input.accountId || "").trim() || null;
+    const requestedProfileId = String(input.profileId || "").trim() || null;
+    const snapshot = await this.store.read();
+    const existingCampaign = snapshot.campaigns?.find((item) => item.id === identity.campaignId) || null;
+    // Once a deterministic campaign exists, its bounded schedule is part of
+    // the campaign's immutable bootstrap scope. Repeated calls reuse that
+    // schedule instead of sliding the window when the current minute changes.
+    if (existingCampaign?.autonomousBootstrap?.schedule?.identity) {
+      schedule = structuredClone(existingCampaign.autonomousBootstrap.schedule);
+    }
+    const configuredAccounts = (snapshot.executionAccounts || []).filter((account) => account?.platform === platform && account.status === "enabled")
+      .filter((account) => !requestedAccountId || account.accountId === requestedAccountId)
+      .filter((account) => !requestedProfileId || account.profileId === requestedProfileId);
+    const accounts = configuredAccounts;
+    const matchingTargets = (snapshot.targets || [])
+      .filter((target) => target?.channel === platform && target.status === "active")
+      .filter((target) => !requestedTargetId || target.id === requestedTargetId);
+    const candidates = matchingTargets
+      .map((target) => ({ target, account: accounts.find((item) => item.id === executionAccountKey(platform, target.accountId)) }))
+      .filter(({ target, account }) => Boolean(account && target.profileId && account.profileId === target.profileId))
+      .sort((left, right) => String(left.target.id).localeCompare(String(right.target.id)));
+
+    if (candidates.length !== 1) {
+      const code = candidates.length === 0 ? "AUTHORIZED_LINKEDIN_TARGET_MISSING" : "AUTHORIZED_LINKEDIN_TARGET_AMBIGUOUS";
+      const classification = candidates.length > 1
+        ? "ACCOUNT_BLOCKER"
+        : configuredAccounts.length === 0 || matchingTargets.length === 0
+          ? "EXTERNAL_HARD_BLOCKER"
+          : "RUNTIME_BLOCKER";
+      return {
+        status: "BLOCKED",
+        code,
+        campaignId: identity.campaignId,
+        blockers: [{
+          code,
+          classification,
+          message: candidates.length === 0
+            ? configuredAccounts.length === 0
+              ? "No enabled LinkedIn account is registered in the authorized account registry"
+              : matchingTargets.length === 0
+                ? "No active LinkedIn target is registered for the requested campaign destination"
+                : "The registered LinkedIn account/profile is not healthy and exactly bound to one active target"
+            : "More than one enabled LinkedIn account/profile/active target is registered"
+        }],
+        externalSideEffects: false,
+        authoritySideEffects: false
+      };
+    }
+    const { target, account } = candidates[0];
+    const readinessContext = { platform, accountId: account.accountId, profileId: account.profileId, targetId: target.id };
+    const readinessFresh = isReadinessFresh(target.readiness, readinessContext, new Date(), this.readinessTtlMs);
+    if (account.health !== "healthy") {
+      return {
+        status: "BLOCKED",
+        code: account.health === "human_required" ? "ACCOUNT_HUMAN_REQUIRED" : "ACCOUNT_NOT_HEALTHY",
+        campaignId: identity.campaignId,
+        targetId: target.id,
+        accountId: account.accountId,
+        profileId: account.profileId,
+        blockers: [{
+          code: account.health === "human_required" ? "ACCOUNT_HUMAN_REQUIRED" : "ACCOUNT_NOT_HEALTHY",
+          classification: account.health === "human_required" ? "EXTERNAL_HARD_BLOCKER" : "RUNTIME_BLOCKER",
+          message: "The exact registered LinkedIn account is not currently healthy for execution"
+        }],
+        externalSideEffects: false,
+        authoritySideEffects: false
+      };
+    }
+
+    if (existingCampaign && (path.resolve(existingCampaign.productRepo) !== path.resolve(productRepo) ||
+      existingCampaign.name !== identity.campaignName || existingCampaign.objective !== identity.campaignObjective ||
+      JSON.stringify(existingCampaign.audience || []) !== JSON.stringify(audience))) {
+      throw new Error("Bootstrap campaign identity collides with a different campaign scope");
+    }
+    if (existingCampaign?.autonomousBootstrap) {
+      const bound = existingCampaign.autonomousBootstrap;
+      if (bound.targetId !== target.id || bound.targetUrl !== target.url || bound.accountId !== account.accountId ||
+        bound.profileId !== account.profileId || bound.visibility !== visibility ||
+        bound.audienceSerialization !== audienceSerialization) {
+        throw new Error("Bootstrap campaign authority binding changed; create a new high-level campaign scope");
+      }
+    }
+    let campaign = existingCampaign;
+    if (!campaign) {
+      const createdAt = nowIso();
+      const created = await this.store.mutate(actor, "autonomous_campaign_bootstrapped", (state) => {
+        const collision = state.campaigns.find((item) => item.id === identity.campaignId);
+        if (collision) return collision;
+        const row = {
+          id: identity.campaignId,
+          name: identity.campaignName,
+          objective: identity.campaignObjective,
+          productRepo,
+          track: null,
+          landingUrl: null,
+          keywords: [],
+          audience,
+          discoverySources: [],
+          status: "active",
+          createdAt,
+          updatedAt: createdAt,
+          autonomousBootstrap: {
+            schemaVersion: 1,
+            identity: identity.identity,
+            platform,
+            audienceSerialization,
+            authorizationReference: identity.authorizationReference,
+            targetId: target.id,
+            targetUrl: target.url,
+            accountId: account.accountId,
+            profileId: account.profileId,
+            visibility,
+            schedule
+          }
+        };
+        state.campaigns.push(row);
+        return row;
+      });
+      campaign = created.result;
+    }
+
+    let product = campaign.productIntelligence;
+    if (!product?.handoff || !product?.document || product.handoff.readinessStatus !== "READY") {
+      const inspected = await this.inspectProductIntelligence(identity.campaignId, {
+        productId: identity.productId,
+        readinessStatus: "READY",
+        ...(bootstrapEvidenceClaims(identity.productId) ? { claims: bootstrapEvidenceClaims(identity.productId) } : {})
+      }, actor);
+      product = inspected.productIntelligence;
+    }
+    let state = await this.store.read();
+    campaign = requireItem(state.campaigns, identity.campaignId, "Campaign");
+    let story = (state.stories || []).filter((item) => item.campaignId === identity.campaignId)
+      .sort((left, right) => String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || "")))[0] || null;
+    if (!story) {
+      story = await this.deriveProductIntelligenceStory(identity.campaignId, {
+        callToAction: input.callToAction || `Explore ${identity.productId} and its repository evidence.`,
+        disclosure: input.disclosure || "Evidence-grounded draft generated from the registered product repository.",
+        language: input.language || "en",
+        distributionAudience: audienceSerialization
+      }, actor);
+    }
+    state = await this.store.read();
+    campaign = requireItem(state.campaigns, identity.campaignId, "Campaign");
+    const candidateTargets = [target];
+    const candidatesForContent = deriveContentCandidates({ productIntelligence: campaign.productIntelligence, story, targets: candidateTargets });
+    const contentCandidate = candidatesForContent[0];
+    if (!contentCandidate) throw new Error("Autonomous bootstrap could not derive a LinkedIn content candidate");
+    const contentHash = campaignContentHash(contentCandidate.content);
+    const authorizationId = deriveBootstrapAuthorizationId({
+      campaignId: identity.campaignId,
+      contentIdentity: contentCandidate.contentIdentity,
+      scheduleIdentity: schedule.identity,
+      authorizationReference: identity.authorizationReference
+    });
+    let authorization = (state.campaignAuthorizations || []).find((item) => item.id === authorizationId) || null;
+    if (authorization) {
+      if (authorization.status !== "active") {
+        return {
+          status: "BLOCKED",
+          code: "HISTORICAL_AUTHORIZATION_NOT_REUSED",
+          campaignId: identity.campaignId,
+          authorizationId,
+          blockers: [{ code: "HISTORICAL_AUTHORIZATION_NOT_REUSED", classification: "STATE_BLOCKER", message: "A prior authorization with this identity is terminal and cannot be revived" }],
+          externalSideEffects: false,
+          authoritySideEffects: false
+        };
+      }
+      if (authorization.binding !== campaignAuthorizationFingerprint(authorization) ||
+        authorization.campaignBinding !== campaignScopeFingerprint(campaign) ||
+        authorization.contentBoundary?.contentHashes?.length !== 1 || authorization.contentBoundary.contentHashes[0] !== contentHash ||
+        authorization.destinations?.length !== 1 || authorization.destinations[0].targetId !== target.id ||
+        authorization.destinations[0].accountId !== account.accountId || authorization.destinations[0].profileId !== account.profileId) {
+        throw new Error("Existing bootstrap authorization conflicts with the derived exact scope");
+      }
+    } else {
+      authorization = await this.authorizeCampaign(identity.campaignId, {
+        id: authorizationId,
+        validFrom: schedule.validFrom,
+        validUntil: schedule.validUntil,
+        destinations: [{ platform, accountId: account.accountId, profileId: account.profileId, targetId: target.id }],
+        approvedAssets: [],
+        contentBoundary: { mode: "approved_copy_set", contentHashes: [contentHash] },
+        audienceRules: { allowedAudiences: [audienceSerialization] },
+        publicationVisibilityRules: { allowedVisibilities: [visibility] },
+        schedule: { timezone: schedule.timezone, weekdays: schedule.weekdays, startLocal: schedule.startLocal, endLocal: schedule.endLocal },
+        rateLimits: {
+          maxJobsPerAccountPerDay: schedule.quota,
+          maxJobsPerCampaignPerDay: schedule.quota,
+          maxConcurrency: schedule.concurrency,
+          minIntervalMinutes: 0
+        },
+        allowLiveExecution: true,
+        executionMode: "standing_autonomous",
+        standingAuthorizationReference: identity.authorizationReference
+      }, actor);
+    }
+
+    state = await this.store.read();
+    campaign = requireItem(state.campaigns, identity.campaignId, "Campaign");
+    const persistedCandidate = (campaign.contentCandidates || []).find((item) => item.contentIdentity === contentCandidate.contentIdentity);
+    if (!persistedCandidate) {
+      const persisted = await this.store.mutate(actor, "autonomous_content_candidate_bootstrapped", (nextState) => {
+        const current = requireItem(nextState.campaigns, identity.campaignId, "Campaign");
+        current.contentCandidates ||= [];
+        const existing = current.contentCandidates.find((item) => item.contentIdentity === contentCandidate.contentIdentity);
+        if (existing) return existing;
+        const row = { ...contentCandidate, contentHash, approvedMedia: [], media: [], status: "draft", createdAt: nowIso(), updatedAt: nowIso() };
+        current.contentCandidates.push(row);
+        current.updatedAt = row.updatedAt;
+        return row;
+      });
+      state = await this.store.read();
+    }
+    const exactCandidate = (requireItem(state.campaigns, identity.campaignId, "Campaign").contentCandidates || [])
+      .find((item) => item.contentId === contentCandidate.contentId && item.contentIdentity === contentCandidate.contentIdentity);
+    if (!exactCandidate) throw new Error("Content candidate was not persisted with its exact identity");
+    const post = await this.materializeContentCandidate(identity.campaignId, {
+      contentId: exactCandidate.contentId,
+      contentIdentity: exactCandidate.contentIdentity,
+      requireStandingAuthorization: true
+    }, actor);
+    state = await this.store.read();
+    const currentPost = state.posts.find((item) => item.id === post.id) || post;
+    const currentTarget = state.targets.find((item) => item.id === target.id) || target;
+    const currentReadinessFresh = isReadinessFresh(currentTarget.readiness, {
+      platform,
+      accountId: account.accountId,
+      profileId: account.profileId,
+      targetId: currentTarget.id
+    }, new Date(), this.readinessTtlMs);
+    const request = state.executionRequests.find((item) => item.jobId === currentPost.id && item.request?.dryRun !== true) || null;
+    const window = request?.request?.oneTimeWindow?.windowId
+      ? state.oneTimeExecutionWindows.find((item) => item.windowId === request.request.oneTimeWindow.windowId)
+      : null;
+    const grant = request?.request?.liveGrant?.grantId
+      ? state.liveExecutionGrants.find((item) => item.grantId === request.request.liveGrant.grantId)
+      : null;
+    return {
+      status: request && grant && window ? "READY_FOR_AUTONOMOUS_EXECUTION" : "BLOCKED",
+      campaignId: identity.campaignId,
+      authorizationId: authorization.id,
+      targetId: target.id,
+      targetUrl: target.url,
+      accountId: account.accountId,
+      profileId: account.profileId,
+      readinessFresh: currentReadinessFresh,
+      audience: audience,
+      audienceSerialization,
+      schedule,
+      content: {
+        contentId: exactCandidate.contentId,
+        contentIdentity: exactCandidate.contentIdentity,
+        contentHash: currentPost.contentHash || contentHash,
+        payloadSha256: contentSha256(currentPost.content),
+        media: []
+      },
+      postId: currentPost.id,
+      executionId: request?.executionId || null,
+      oneTimeWindowId: window?.windowId || null,
+      liveGrantId: grant?.grantId || null,
+      blockers: request && grant && window ? [] : [{ code: currentPost.readinessReasonCode || "EXECUTION_CONTROLS_NOT_DERIVED", classification: "RUNTIME_BLOCKER", message: "Fresh readiness did not produce the complete execution controls" }],
+      externalSideEffects: false,
+      authoritySideEffects: true
+    };
+  }
+
+  /**
    * Persist one sanitized, versioned product-understanding handoff on the
    * campaign. The campaign repository is the only accepted source boundary;
    * arbitrary caller fields and credential-like values never enter state.
@@ -2688,7 +3022,8 @@ export class SeedingService {
       callToAction: input.callToAction,
       groundingSources: [...selectedEvidence.values()],
       language: input.language,
-      disclosure
+      disclosure,
+      distributionAudience: input.distributionAudience
     });
     const result = await this.store.mutate(actor, "product_intelligence_story_drafted", (state) => {
       const currentCampaign = requireItem(state.campaigns, campaignId, "Campaign");

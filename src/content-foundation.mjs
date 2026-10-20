@@ -89,7 +89,7 @@ function storyField(value, field) {
  * Derive one draft-only story from already validated product intelligence.
  * This helper is pure: repository reads and persistence belong to the service.
  */
-export function deriveProductIntelligenceStory({ campaignId, productIntelligence, callToAction, groundingSources = [], language = "en", disclosure } = {}) {
+export function deriveProductIntelligenceStory({ campaignId, productIntelligence, callToAction, groundingSources = [], language = "en", disclosure, distributionAudience } = {}) {
   const handoff = productIntelligence?.handoff;
   const document = productIntelligence?.document;
   if (!handoff || handoff.readinessStatus !== "READY" || !document) {
@@ -144,7 +144,20 @@ export function deriveProductIntelligenceStory({ campaignId, productIntelligence
   const problem = selected.find((claim) => claim.field === "WHAT_PROBLEM_DOES_IT_SOLVE");
   const better = selected.find((claim) => claim.field === "WHY_IS_IT_BETTER");
   const audience = selected.find((claim) => claim.field === "WHO_NEEDS_IT");
+  const normalizedDistributionAudience = distributionAudience === undefined
+    ? audience.text
+    : String(distributionAudience || "").replace(/\s+/g, " ").trim();
+  if (!normalizedDistributionAudience || normalizedDistributionAudience.length > PRODUCT_STORY_MAX_FIELD) {
+    throw new Error("story distributionAudience must contain 1-1200 characters");
+  }
+  assertSafe(normalizedDistributionAudience, "story.distributionAudience");
   const title = what.text;
+  // Content contracts bound the channel title fragment to 240 characters,
+  // while the full evidence-backed answer remains in the story and claim
+  // lineage. Keep the shortening deterministic and sentence-safe.
+  const contentTitle = title.length <= 240
+    ? title
+    : `${title.slice(0, 237).replace(/\s+\S*$/, "").trim()}...`;
   const angle = `${problem.text} ${better.text}`.replace(/\s+/g, " ").trim();
   if (angle.length > PRODUCT_STORY_MAX_FIELD) throw new Error(`story angle exceeds ${PRODUCT_STORY_MAX_FIELD} characters`);
   const claimIds = selected.map((claim) => claim.id);
@@ -155,8 +168,9 @@ export function deriveProductIntelligenceStory({ campaignId, productIntelligence
     productId: String(document.productId || "").trim(),
     productIntelligenceDocumentHash: String(handoff.evidenceClaimDocumentHash || "").trim(),
     title,
+    contentTitle,
     angle,
-    audience: audience.text,
+    audience: normalizedDistributionAudience,
     callToAction: cta,
     disclosure: normalizedDisclosure,
     language: normalizedLanguage,
@@ -169,8 +183,10 @@ export function deriveProductIntelligenceStory({ campaignId, productIntelligence
     storyIdentity: identity,
     campaignId: String(campaignId || "").trim(),
     title,
+    contentTitle,
     angle,
-    audience: audience.text,
+    audience: normalizedDistributionAudience,
+    productAudience: audience.text,
     callToAction: cta,
     disclosure: normalizedDisclosure,
     language: normalizedLanguage,
@@ -208,7 +224,7 @@ export function deriveContentCandidates({ productIntelligence, story, targets = 
   }
   if (!story) throw new Error("Content derivation requires an existing story");
   const storyId = bounded(story.id, "story id", 160);
-  const storyTitle = bounded(story.title, "story title", 240);
+  const storyTitle = bounded(story.contentTitle || story.title, "story title", 240);
   const storyCta = bounded(story.callToAction, "story callToAction", 300);
   assertSafe(storyTitle, "story.title"); assertSafe(storyCta, "story.callToAction");
   const requestedClaimIds = Array.isArray(story.claimIds) && story.claimIds.length ? story.claimIds.map((id) => clean(id, 160)) : [...claimMap.keys()];
