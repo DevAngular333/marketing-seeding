@@ -198,6 +198,11 @@ test("certified durable submit intent rejects malformed or non-actionable contro
     await assert.rejects(f.service.beginExecutionSubmitIntent(row.executionId, acquired.lease, {
       liveEnabled: true, liveExecutionId: row.executionId, requireTransportCertification: true,
       transportIdentity: { transport: "fixture", provider: "fixture", providerVersion: "1" },
+      transportCertification: {
+        certificationScope: "IRREVERSIBLE_LINKEDIN_SUBMIT",
+        evidenceReference: "fixture-certification",
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      },
       preSubmitControlEvidence: { ...base, ...override }, verifiedGates: gates
     }), (error) => error.code === "SUBMIT_CONTROL_EVIDENCE_INVALID", label);
     const state = await f.service.snapshot();

@@ -2208,7 +2208,7 @@ export class SeedingService {
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
     if (!account || account.status !== "enabled" || account.profileId !== target.profileId) throw new Error("Standing delegation requires an exact enabled account/profile binding");
     const now = new Date();
-    const existing = (snapshot.oneTimeExecutionWindows || []).filter((item) => item.jobId === post.id && item.campaignAuthorizationId === authorization.id && item.authorizationFingerprint === authorization.binding && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, now)));
+    const existing = (snapshot.oneTimeExecutionWindows || []).filter((item) => item.jobId === post.id && item.campaignAuthorizationId === authorization.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, now)));
     if (existing.length > 1) throw new Error("Multiple active standing execution windows match this job");
     if (existing.length === 1) {
       const current = existing[0];
@@ -2256,7 +2256,7 @@ export class SeedingService {
       });
       const current = currentBinding.post;
       if (unresolvedSubmission(state, current)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
-      const active = (state.oneTimeExecutionWindows || []).find((item) => item.jobId === postId && item.campaignAuthorizationId === currentBinding.authorization.id && item.authorizationFingerprint === currentBinding.authorization.binding && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
+      const active = (state.oneTimeExecutionWindows || []).find((item) => item.jobId === postId && item.campaignAuthorizationId === currentBinding.authorization.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
       if (active) {
         if (active.campaignId !== current.campaignId || active.campaignAuthorizationId !== currentBinding.authorization.id ||
             active.authorizationFingerprint !== currentBinding.authorization.binding || active.binding !== oneTimeExecutionWindowFingerprint(active) ||
@@ -2293,7 +2293,7 @@ export class SeedingService {
     }
     const target = requireItem(snapshot.targets, post.targetId, "Target");
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
-    const window = (snapshot.oneTimeExecutionWindows || []).find((item) => item.jobId === post.id && item.campaignAuthorizationId === authorization.id && item.authorizationFingerprint === authorization.binding && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
+    const window = (snapshot.oneTimeExecutionWindows || []).find((item) => item.jobId === post.id && item.campaignAuthorizationId === authorization.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
     if (!window) throw new Error("Standing execution grant requires an active one-time window");
     if (window.campaignId !== post.campaignId || window.campaignAuthorizationId !== authorization.id ||
         window.jobId !== post.id || window.authorizationFingerprint !== authorization.binding ||
