@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { JsonStore } from "../src/store.mjs";
@@ -19,7 +19,7 @@ async function fixture(t, { accountCount = 1, freshReadiness = true } = {}) {
     "Designers and Figma users need a local design workflow."
   ].join(" "), "utf8");
   const now = new Date();
-  const service = new SeedingService(new JsonStore(path.join(root, "state.json")), { readinessTtlMs: 300_000 });
+  const service = new SeedingService(new JsonStore(path.join(root, "state.json")), { readinessTtlMs: 300_000, productRepoRoots: [root] });
   await service.init();
   const profiles = [];
   for (let index = 0; index < accountCount; index += 1) {
@@ -87,6 +87,39 @@ test("zero-touch bootstrap derives exact authority and is idempotent", async (t)
   assert.equal(after.oneTimeExecutionWindows.length, before.oneTimeExecutionWindows.length);
   assert.equal(after.liveExecutionGrants.length, before.liveExecutionGrants.length);
   assert.equal(after.submissionUncertainties.length, before.submissionUncertainties.length);
+});
+
+test("zero-touch bootstrap resolves a product-only brief from a bounded repository root", async (t) => {
+  const { service, productRepo, now } = await fixture(t);
+  const result = await service.bootstrapAutonomousCampaign({
+    product: "design-os-studio",
+    name: "Design OS Studio launch",
+    objective: "Introduce Design OS Studio to an authorized design audience",
+    audience: ["UI/UX designers", "Figma users", "design engineers"],
+    authorizationReference: "design-os-studio-product-only-test",
+    now
+  });
+  assert.equal(result.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  assert.equal((await service.snapshot()).campaigns[0].productRepo, await realpath(productRepo));
+});
+
+test("product-only bootstrap fails closed when the bounded repository match is ambiguous", async (t) => {
+  const { now } = await fixture(t);
+  // Use a separate root with two exact product directory matches and a fresh
+  // runtime registry; no campaign or authority is written before resolution.
+  const root = await mkdtemp(path.join(os.tmpdir(), "campaign-bootstrap-ambiguous-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const suffix of ["one", "two"]) {
+    const repo = path.join(root, suffix, "design-os-studio");
+    await mkdir(repo, { recursive: true });
+    await writeFile(path.join(repo, "README.md"), "Design OS Studio evidence.", "utf8");
+  }
+  const ambiguous = new SeedingService(new JsonStore(path.join(root, "state.json")), { productRepoRoots: [path.join(root, "one"), path.join(root, "two")] });
+  await ambiguous.init();
+  const result = await ambiguous.bootstrapAutonomousCampaign({ productId: "design-os-studio", audience: ["designers"], authorizationReference: "ambiguous-test", now });
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.code, "PRODUCT_REPOSITORY_AMBIGUOUS");
+  assert.equal((await ambiguous.snapshot()).campaigns.length, 0);
 });
 
 test("zero-touch bootstrap fails closed when account or target authority is missing or ambiguous", async (t) => {

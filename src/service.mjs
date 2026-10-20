@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, realpath, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { CHANNELS, nowIso } from "./constants.mjs";
 import { approvalFingerprint, assertReplyCanSend, assertTransition, evaluateQueue, killSwitchReasons } from "./guards.mjs";
@@ -32,7 +32,7 @@ import { projectDiscoveryOpportunities } from "./opportunity-projection.mjs";
 import { projectChannelCapabilities } from "./channel-capability-projection.mjs";
 import { projectProductIntelligence } from "./product-intelligence-projection.mjs";
 import { appRoot } from "./paths.mjs";
-import { canonicalAudienceSerialization, deriveBootstrapAuthorizationId, deriveBootstrapIdentity, deriveBootstrapSchedule, normalizeBootstrapAudience } from "./campaign-bootstrap.mjs";
+import { canonicalAudienceSerialization, deriveBootstrapAuthorizationId, deriveBootstrapIdentity, deriveBootstrapSchedule, normalizeBootstrapAudience, normalizeBootstrapProductKeys } from "./campaign-bootstrap.mjs";
 
 export async function pollConfiguredDiscoveries(service, { actor = "scheduled-discovery-observer", shuttingDown = false } = {}) {
   const state = await service.snapshot();
@@ -633,6 +633,121 @@ async function requireProductRepo(value) {
   const info = await stat(resolved);
   if (!info.isDirectory()) throw new Error(`Campaign productRepo is not a directory: ${requested}`);
   return resolved;
+}
+
+function bootstrapProductReference(input = {}) {
+  const product = input.product && typeof input.product === "object" && !Array.isArray(input.product) ? input.product : {};
+  const productValue = typeof input.product === "string" ? input.product : null;
+  return {
+    productId: input.productId || productValue || product.productId || product.id,
+    productName: input.productName || product.productName || product.name,
+    productRepo: input.productRepo || input.productRepository || product.productRepo || product.repository || product.repo || product.path
+  };
+}
+
+function productRepositoryKey(value) {
+  return String(value || "").trim().replaceAll("\\", "/").split("/").filter(Boolean).at(-1)?.toLowerCase() || "";
+}
+
+async function maybeProductRepo(value) {
+  if (!value || typeof value !== "string") return null;
+  try { return await requireProductRepo(value); } catch { return null; }
+}
+
+async function readProductRegistryFile(filePath, keys) {
+  if (!filePath || !keys.length) return [];
+  let parsed;
+  try {
+    const info = await stat(filePath);
+    if (!info.isFile() || info.size > 256 * 1024) return [];
+    parsed = JSON.parse(await readFile(filePath, "utf8"));
+  } catch { return []; }
+  const rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.products) ? parsed.products : Object.entries(parsed?.products || {}).map(([id, value]) => ({ id, repository: value }));
+  const candidates = [];
+  for (const row of rows) {
+    const item = typeof row === "string" ? { repository: row } : row;
+    if (!item || typeof item !== "object") continue;
+    const id = String(item.productId || item.id || item.name || "");
+    const repository = item.repository || item.repo || item.productRepo || item.path || item.clone_path || item.sourceRepository;
+    const matches = keys.includes(id.toLowerCase()) || keys.includes(productRepositoryKey(repository));
+    if (!repository || !matches) continue;
+    const resolved = await maybeProductRepo(String(repository));
+    if (resolved) candidates.push(resolved);
+  }
+  return candidates;
+}
+
+async function readCampaignStateRepositories(plansRoot, keys) {
+  const candidates = [];
+  let entries;
+  try { entries = await readdir(plansRoot, { withFileTypes: true }); } catch { return candidates; }
+  const workspaceRoot = path.resolve(plansRoot, "..");
+  for (const entry of entries.slice(0, 128)) {
+    if (!entry.isDirectory()) continue;
+    const file = path.join(plansRoot, entry.name, "campaign-state.json");
+    let parsed;
+    try {
+      const info = await stat(file);
+      if (!info.isFile() || info.size > 256 * 1024) continue;
+      parsed = JSON.parse(await readFile(file, "utf8"));
+    } catch { continue; }
+    const productId = String(parsed?.product_id || parsed?.productId || parsed?.campaign_id || "").toLowerCase();
+    const repository = parsed?.repository || {};
+    const raw = repository.clone_path || repository.local_path || repository.path;
+    const matches = keys.includes(productId) || keys.includes(productRepositoryKey(raw));
+    if (!raw || !matches) continue;
+    const candidate = path.isAbsolute(String(raw)) ? String(raw) : path.resolve(workspaceRoot, String(raw));
+    const resolved = await maybeProductRepo(candidate);
+    if (resolved) candidates.push(resolved);
+  }
+  return candidates;
+}
+
+/**
+ * Resolve a product repository from a high-level product reference.  The
+ * resolver has a deliberately small, deterministic search boundary and
+ * returns no result on ambiguity; it never guesses from fuzzy text.
+ */
+async function resolveBootstrapProductRepo(input, { state, roots = [], registryFile = null, plansRoot = null } = {}) {
+  const reference = bootstrapProductReference(input);
+  if (reference.productRepo) return { productRepo: await requireProductRepo(reference.productRepo), source: "explicit" };
+  const keys = normalizeBootstrapProductKeys({ ...reference, name: input.name });
+  if (!keys.length) return { blocker: { code: "PRODUCT_REFERENCE_REQUIRED", classification: "INPUT_BLOCKER", message: "A product ID/name is required when productRepo is omitted" } };
+  const candidates = new Map();
+  const add = (value, source) => { if (value) candidates.set(path.resolve(value), source); };
+  for (const campaign of state?.campaigns || []) {
+    const known = [campaign.productIntelligence?.document?.productId, campaign.productId, campaign.name, campaign.productRepo].filter(Boolean).map((value) => String(value).toLowerCase());
+    if (known.some((value) => keys.includes(productRepositoryKey(value)) || keys.includes(value))) add(await maybeProductRepo(campaign.productRepo), "campaign_state");
+  }
+  for (const value of await readProductRegistryFile(registryFile, keys)) add(value, "product_registry");
+  for (const root of roots) {
+    const resolvedRoot = await maybeProductRepo(root);
+    if (resolvedRoot && keys.includes(productRepositoryKey(resolvedRoot))) add(resolvedRoot, "repository_root");
+    let entries;
+    try { entries = await readdir(root, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries.slice(0, 256)) {
+      if (!entry.isDirectory() || !keys.includes(entry.name.toLowerCase())) continue;
+      add(await maybeProductRepo(path.join(root, entry.name)), "repository_root");
+    }
+  }
+  if (plansRoot) {
+    for (const value of await readCampaignStateRepositories(plansRoot, keys)) add(value, "campaign_reference");
+  }
+  const unique = [...candidates.keys()].sort();
+  if (unique.length !== 1) {
+    return {
+      blocker: {
+        code: unique.length === 0 ? "PRODUCT_REPOSITORY_NOT_FOUND" : "PRODUCT_REPOSITORY_AMBIGUOUS",
+        classification: unique.length === 0 ? "EXTERNAL_HARD_BLOCKER" : "RUNTIME_BLOCKER",
+        message: unique.length === 0
+          ? `No local product repository matched the exact product reference: ${keys.join(", ")}`
+          : `More than one local product repository matched the exact product reference: ${unique.length}`
+      },
+      productKeys: keys,
+      candidates: unique
+    };
+  }
+  return { productRepo: unique[0], source: candidates.get(unique[0]), productKeys: keys };
 }
 
 function isInside(root, candidate) {
@@ -1641,6 +1756,18 @@ export class SeedingService {
       : probeFactorySandboxCapability;
     this.productFactorySandboxProbeTtlMs = Math.min(60_000, Math.max(1_000, Number(options.productFactorySandboxProbeTtlMs) || 15_000));
     this.productFactorySandboxProbeCache = null;
+    const explicitProductRoots = options.productRepoRoots !== undefined || Boolean(String(process.env.SEEDING_PRODUCT_REPO_ROOTS || "").trim());
+    this.productRepoRoots = (options.productRepoRoots || String(process.env.SEEDING_PRODUCT_REPO_ROOTS || "").split(path.delimiter))
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .map((value) => path.resolve(value));
+    if (!this.productRepoRoots.length) {
+      this.productRepoRoots = [path.resolve(appRoot, "..", "System-Agentic_AI", "references")];
+    }
+    this.productRegistryFile = options.productRegistryFile || process.env.SEEDING_PRODUCT_REGISTRY_FILE || null;
+    this.productReferencePlansRoot = options.productReferencePlansRoot === undefined
+      ? explicitProductRoots ? null : path.resolve(appRoot, "..", "System-Agentic_AI", "plans")
+      : options.productReferencePlansRoot;
   }
 
   async init() {
@@ -2567,7 +2694,25 @@ export class SeedingService {
   async bootstrapAutonomousCampaign(input = {}, actor = "autonomous-campaign-bootstrap") {
     const platform = String(input.platform || "linkedin").trim().toLowerCase();
     if (platform !== "linkedin") throw new Error("Autonomous bootstrap currently supports LinkedIn only");
-    const productRepo = await requireProductRepo(input.productRepo);
+    const bootstrapState = await this.store.read();
+    const resolvedProduct = await resolveBootstrapProductRepo(input, {
+      state: bootstrapState,
+      roots: this.productRepoRoots,
+      registryFile: this.productRegistryFile,
+      plansRoot: this.productReferencePlansRoot
+    });
+    if (!resolvedProduct.productRepo) {
+      return {
+        status: "BLOCKED",
+        code: resolvedProduct.blocker.code,
+        blockers: [resolvedProduct.blocker],
+        productKeys: resolvedProduct.productKeys || [],
+        candidates: resolvedProduct.candidates || [],
+        externalSideEffects: false,
+        authoritySideEffects: false
+      };
+    }
+    const productRepo = resolvedProduct.productRepo;
     const identity = deriveBootstrapIdentity({
       productRepo,
       name: input.name,
@@ -2591,7 +2736,7 @@ export class SeedingService {
     const requestedTargetId = String(input.targetId || "").trim() || null;
     const requestedAccountId = String(input.accountId || "").trim() || null;
     const requestedProfileId = String(input.profileId || "").trim() || null;
-    const snapshot = await this.store.read();
+    const snapshot = bootstrapState;
     const existingCampaign = snapshot.campaigns?.find((item) => item.id === identity.campaignId) || null;
     // Once a deterministic campaign exists, its bounded schedule is part of
     // the campaign's immutable bootstrap scope. Repeated calls reuse that

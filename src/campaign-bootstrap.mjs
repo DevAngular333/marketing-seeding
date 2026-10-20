@@ -35,6 +35,28 @@ function safeSlug(value, fallback = "product") {
   return slug || fallback;
 }
 
+/**
+ * Turn a high-level product reference into bounded lookup keys.  This is
+ * intentionally conservative: lookup aliases are used only to find an
+ * existing local repository and never become an authority or target binding.
+ */
+export function normalizeBootstrapProductKeys({ productId, product, productName, name, productRepo } = {}) {
+  const values = [productId, product, productName, productRepo, name]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const keys = new Set();
+  for (const value of values) {
+    const normalized = safeSlug(path.basename(value.replaceAll("\\", "/")), "");
+    if (!normalized) continue;
+    keys.add(normalized);
+    // Human briefs commonly append a distribution verb/suffix to the product
+    // name.  Remove only known suffixes; do not perform fuzzy matching.
+    const base = normalized.replace(/-(?:launch|distribution|campaign|release|promotion)$/u, "");
+    if (base) keys.add(base);
+  }
+  return [...keys].sort();
+}
+
 /** Normalize the human-facing audience policy into one stable serialization. */
 export function normalizeBootstrapAudience(value = []) {
   const source = Array.isArray(value) ? value : [value];
