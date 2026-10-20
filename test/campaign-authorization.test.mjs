@@ -145,6 +145,42 @@ test("publication idempotency reuses a legacy job without a stored key and block
   assert.ok(distinctContentId.authorizationDecision.reasons.includes("duplicate_content_for_account"));
 });
 
+test("pre-submit cancellation does not block a new exact authorization for the same copy", async () => {
+  const { service, campaign, targets, authorization } = await campaignFixture({ channels: ["linkedin"] });
+  const copy = "A harmless single-shot LinkedIn launch copy.";
+  await authorization([copy], {
+    id: "cancelled-copy-auth",
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "cancelled-copy-regression"
+  });
+  const first = await service.createPost({ campaignId: campaign.id, targetId: targets[0].id, content: copy, audience: "public" }, "producer");
+  await service.store.mutate("fixture", "mark_exact_pre_submit_cancellation", (state) => {
+    const post = state.posts.find((item) => item.id === first.id);
+    post.status = "blocked";
+    post.executionState = "CANCELLED_PRE_SUBMIT";
+    state.executionRequests.push({ executionId: "cancelled-copy-execution", jobId: post.id, state: "CANCELLED_PRE_SUBMIT", submitState: "NOT_STARTED", request: { executionId: "cancelled-copy-execution", jobId: post.id, idempotencyKey: post.idempotencyKey } });
+  });
+
+  const secondAuth = await authorization([copy], {
+    id: "fresh-copy-auth",
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "fresh-copy-regression"
+  });
+  await service.store.mutate("fixture", "bind_fresh_copy_authorization", (state) => {
+    const post = state.posts.find((item) => item.id === first.id);
+    post.id = "fresh-copy-post";
+    post.campaignAuthorizationId = secondAuth.id;
+    post.campaignAuthorizationBinding = secondAuth.binding;
+    post.idempotencyKey = "fresh-copy-idempotency";
+    post.status = "draft";
+    post.executionState = undefined;
+  });
+  const state = await service.snapshot();
+  const fresh = state.posts.find((item) => item.id === "fresh-copy-post");
+  const decision = evaluateCampaignAuthorization(fresh, state);
+  assert.equal(decision.reasons.includes("duplicate_content_for_account"), false);
+});
+
 test("same-platform/account copy duplicates are blocked across different targets", async () => {
   const { service, campaign, targets, authorization } = await campaignFixture();
   const secondTarget = await service.createTarget({

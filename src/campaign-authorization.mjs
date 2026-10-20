@@ -23,6 +23,21 @@ function normalizeDuplicateContent(value) {
   return String(value || "").toLowerCase().replace(/https?:\/\/\S+/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+/**
+ * A terminal pre-submit cancellation proves that no platform input was
+ * emitted. It must not poison a later, independently authorized publication
+ * with the same copy. Any submitted, uncertain, or published history remains
+ * a duplicate fence and fails closed.
+ */
+function hasPossibleExternalSubmission(item, state) {
+  if (!item || item.executionState !== "CANCELLED_PRE_SUBMIT") return true;
+  if (item.publicationUrl || ["published", "publishing", "processing", "submit_result_unknown"].includes(String(item.status || "").toLowerCase())) return true;
+  const requests = (state.executionRequests || []).filter((request) => request.jobId === item.id);
+  if (requests.some((request) => ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(request.state) || ["SUBMIT_SENT", "UNKNOWN", "CONFIRMED"].includes(request.submitState))) return true;
+  if ((state.submissionUncertainties || []).some((uncertainty) => uncertainty.status === "UNKNOWN" && (uncertainty.jobId === item.id || uncertainty.idempotencyKeys?.includes(item.idempotencyKey)))) return true;
+  return false;
+}
+
 function normalizeStoryPolicy(input, mode) {
   if (input === undefined || input === null) return null;
   if (mode !== "approved_template_set") throw new Error("storyPolicy requires approved_template_set authorization");
@@ -393,6 +408,7 @@ export function evaluateCampaignAuthorization(post, state, now = new Date(), { m
   const normalizedContent = normalizeDuplicateContent(post.content);
   const repeatedContent = normalizedContent && authorization.contentBoundary?.allowRepeatSameContent !== true && (state.posts || []).some((item) => {
     if (item.id === post.id || ["failed", "rejected", "removed"].includes(item.status) || normalizeDuplicateContent(item.content) !== normalizedContent) return false;
+    if (!hasPossibleExternalSubmission(item, state)) return false;
     const itemTarget = state.targets?.find((targetItem) => targetItem.id === item.targetId);
     return itemTarget?.channel === target?.channel && itemTarget?.accountId === target?.accountId;
   });
