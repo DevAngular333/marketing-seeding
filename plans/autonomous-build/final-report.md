@@ -1,5 +1,28 @@
 # Autonomous Build — Current Release Report
 
+## Fresh continuation overlay — 2026-10-20f
+
+- Current HEAD is `d354b5f` on `integration/autonomous-build`, pushed to
+  `origin/integration/autonomous-build`.
+- Fresh full gate: `npm test` **538 total, 536 passed, 0 failed, 2 skipped**;
+  focused standing/account/transport/LinkedIn gate **93/93**; syntax, diff and
+  blocker-ledger JSON checks pass.
+- The supplied Design OS Studio authority was rechecked. Campaign intent,
+  audience intent, public visibility, one-post quota, single cadence,
+  concurrency one, 24-hour validity intent and standing reference are present.
+  Exact campaign/productRepo, target/account/profile tuple, approved LinkedIn
+  bytes/hash, media declaration, canonical audience value, UTC bounds and
+  schedule fields remain absent. No authority or execution artifacts were
+  derived.
+- Canonical state remains schema 8/revision 194 with SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`;
+  active authorization/window/grant/lease counts are `0/0/0/0`; four
+  historical UNKNOWN executions remain immutable; published posts and social
+  mutations remain `0`.
+- Current result remains `FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS` and live
+  proof remains `LIVE_PROOF_BLOCKED`.
+- Evidence: `plans/autonomous-build/reports/master-continuation-final-audit-20261020f.md`.
+
 ## Follow-up release-owner gate (2026-10-20; source 43322b8)
 
 ### Discovery feed observer continuation
