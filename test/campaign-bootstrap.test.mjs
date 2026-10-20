@@ -7,7 +7,7 @@ import { JsonStore } from "../src/store.mjs";
 import { SeedingService } from "../src/service.mjs";
 import { contentSha256 } from "../src/execution-contracts.mjs";
 
-async function fixture(t, { accountCount = 1, freshReadiness = true } = {}) {
+async function fixture(t, { accountCount = 1, freshReadiness = true, readinessProvider = false } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "campaign-bootstrap-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const productRepo = path.join(root, "design-os-studio");
@@ -19,7 +19,26 @@ async function fixture(t, { accountCount = 1, freshReadiness = true } = {}) {
     "Designers and Figma users need a local design workflow."
   ].join(" "), "utf8");
   const now = new Date();
-  const service = new SeedingService(new JsonStore(path.join(root, "state.json")), { readinessTtlMs: 300_000, productRepoRoots: [root] });
+  const service = new SeedingService(new JsonStore(path.join(root, "state.json")), {
+    readinessTtlMs: 300_000,
+    productRepoRoots: [root],
+    ...(readinessProvider ? {
+      readinessProviders: {
+        linkedin: {
+          async checkReadiness(context) {
+            const checkedAt = new Date().toISOString();
+            return {
+              state: "READY",
+              checkedAt,
+              expiresAt: new Date(Date.now() + 240_000).toISOString(),
+              capabilities: { sessionAuthenticated: true, identityVerified: true, feedReachable: true, composerAvailable: true },
+              evidenceReference: `fixture-readiness:${context.targetId}`
+            };
+          }
+        }
+      }
+    } : {})
+  });
   await service.init();
   const profiles = [];
   for (let index = 0; index < accountCount; index += 1) {
@@ -222,5 +241,38 @@ test("bootstrap never reuses a cancelled request or its terminal controls", asyn
   assert.equal(historicalGrant.status, "EXPIRED");
   assert.equal(historicalWindow.binding, oldWindow.binding);
   assert.equal(historicalGrant.grantId, oldGrant.grantId);
+  assert.equal(after.executionRequests.filter((item) => item.jobId === renewed.postId && item.request?.dryRun !== true).length, 2);
+});
+
+test("bootstrap renews a stale REQUEST_READY control package without mutating its historical request", async (t) => {
+  const { service, productRepo, now } = await fixture(t, { readinessProvider: true });
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(first.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  const before = await service.snapshot();
+  const oldRequest = structuredClone(before.executionRequests.find((item) => item.executionId === first.executionId));
+  await service.store.mutate("test", "expire_stale_bootstrap_controls", (state) => {
+    const request = state.executionRequests.find((item) => item.executionId === first.executionId);
+    // Expire only the persisted control package's copy; the historical row is
+    // expected to remain immutable even when its controls are stale.
+    const window = state.oneTimeExecutionWindows.find((item) => item.windowId === first.oneTimeWindowId);
+    window.status = "EXPIRED";
+    window.expiredAt = new Date(now.getTime() - 500).toISOString();
+    const grant = state.liveExecutionGrants.find((item) => item.grantId === first.liveGrantId);
+    grant.status = "EXPIRED";
+    grant.expiredAt = new Date(now.getTime() - 500).toISOString();
+  });
+
+  const renewed = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(renewed.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  assert.notEqual(renewed.executionId, first.executionId);
+  assert.notEqual(renewed.oneTimeWindowId, first.oneTimeWindowId);
+  assert.notEqual(renewed.liveGrantId, first.liveGrantId);
+  const after = await service.snapshot();
+  const historical = after.executionRequests.find((item) => item.executionId === first.executionId);
+  assert.equal(historical.executionId, oldRequest.executionId);
+  assert.equal(historical.createdAt, oldRequest.createdAt);
+  assert.equal(historical.request.oneTimeWindow.windowId, oldRequest.request.oneTimeWindow.windowId);
+  assert.equal(historical.request.liveGrant.grantId, oldRequest.request.liveGrant.grantId);
+  assert.equal(historical.request.readiness.expiresAt, oldRequest.request.readiness.expiresAt);
   assert.equal(after.executionRequests.filter((item) => item.jobId === renewed.postId && item.request?.dryRun !== true).length, 2);
 });

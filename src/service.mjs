@@ -91,6 +91,17 @@ function normalizeSubmitTransportIdentity(value) {
   return { transport, provider, providerVersion };
 }
 
+function isExecutionRequestReadinessFresh(readiness, expected, now, ttlMs) {
+  if (!readiness || typeof readiness !== "object") return false;
+  const checkedAt = Date.parse(readiness.checkedAt || "");
+  const expiresAt = Date.parse(readiness.expiresAt || "");
+  const current = now instanceof Date ? now.getTime() : Number(now);
+  if (String(readiness.state || "").toUpperCase() !== "READY" ||
+      !Number.isFinite(checkedAt) || !Number.isFinite(expiresAt) || !Number.isFinite(current) ||
+      checkedAt > current + 30_000 || current - checkedAt > ttlMs || expiresAt <= current || expiresAt - checkedAt > ttlMs) return false;
+  return readiness.binding === readinessBinding(expected);
+}
+
 function normalizeTransportCertification(value) {
   if (!value || typeof value !== "object") return null;
   const scope = String(value.certificationScope || "").trim();
@@ -2301,10 +2312,22 @@ export class SeedingService {
         !oneTimeExecutionWindowInBounds(window, new Date())) {
       throw new Error("Standing execution grant window binding is stale");
     }
-    const pending = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id && item.request?.authorization?.authorizationId === authorization.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
+    const now = new Date();
+    const pending = (snapshot.executionRequests || []).filter((item) => {
+      if (item.jobId !== post.id || item.request?.authorization?.authorizationId !== authorization.id ||
+          item.state !== "REQUEST_READY" || item.submitState !== "NOT_STARTED" || item.request?.dryRun === true) return false;
+      const request = item.request || {};
+      const requestReadiness = request.readiness || {};
+      const requestWindowId = request.oneTimeWindow?.windowId;
+      const requestWindow = requestWindowId ? snapshot.oneTimeExecutionWindows?.find((candidate) => candidate.windowId === requestWindowId) : null;
+      if (request.executionId !== item.executionId || requestWindowId !== window.windowId ||
+          !isExecutionRequestReadinessFresh(requestReadiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, now, this.readinessTtlMs) ||
+          !requestWindow || requestWindow.status !== "RESERVED" || requestWindow.reservedExecutionId !== item.executionId ||
+          requestWindow.binding !== oneTimeExecutionWindowFingerprint(requestWindow)) return false;
+      return true;
+    });
     if (pending.length > 1) throw new Error("Multiple live executions are pending for standing delegation");
     if (!account || account.status !== "enabled" || account.profileId !== target.profileId) throw new Error("Standing execution grant requires an exact enabled account/profile binding");
-    const now = new Date();
     if (account.health !== "healthy") throw new Error("Standing execution grant requires a healthy account");
     if (!isReadinessFresh(target.readiness, { platform: target.channel, accountId: target.accountId, profileId: target.profileId, targetId: target.id }, now, this.readinessTtlMs)) throw new Error("Standing execution grant requires fresh readiness");
     const validFrom = new Date(Math.max(now.getTime() - 5_000, Date.parse(window.validFrom))).toISOString();
@@ -2347,7 +2370,7 @@ export class SeedingService {
         throw new Error("Standing execution grant requires a fresh healthy account/profile binding");
       }
       if (unresolvedSubmission(state, currentPost)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
-      const currentRequest = (state.executionRequests || []).find((item) => item.jobId === postId && item.request?.authorization?.authorizationId === currentAuthorization.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
+      const currentRequest = (state.executionRequests || []).find((item) => item.jobId === postId && item.request?.authorization?.authorizationId === currentAuthorization.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true && item.executionId === expectedRequest?.executionId && item.request?.oneTimeWindow?.windowId === window.windowId);
       if (!currentRequest) throw new Error("Standing execution grant requires a pending live execution request");
       const requestMatches = currentRequest.executionId === expectedRequest?.executionId &&
         currentRequest.jobId === currentPost.id && currentRequest.campaignId === currentPost.campaignId &&
@@ -2994,9 +3017,42 @@ export class SeedingService {
     let currentReadinessFresh = isReadinessFresh(currentTarget.readiness, currentBinding, new Date(), this.readinessTtlMs);
     let request = null;
     const latestLiveRequest = () => state.executionRequests
-      .filter((item) => item.jobId === currentPost.id && item.request?.dryRun !== true &&
-        item.request?.authorization?.authorizationId === authorization.id &&
-        item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED")
+      .filter((item) => {
+        if (item.jobId !== currentPost.id || item.request?.dryRun === true ||
+            item.request?.authorization?.authorizationId !== authorization.id ||
+            item.state !== "REQUEST_READY" || item.submitState !== "NOT_STARTED") return false;
+        const request = item.request || {};
+        const requestTarget = request.target || {};
+        const requestContent = request.content || {};
+        const requestReadiness = request.readiness || {};
+        if (request.executionId !== item.executionId || request.jobId !== currentPost.id ||
+            request.campaignId !== currentPost.campaignId || request.platform !== platform ||
+            request.accountId !== account.accountId || request.profileId !== account.profileId ||
+            requestTarget.targetId !== currentTarget.id || requestTarget.url !== currentTarget.url ||
+            request.authorization?.binding !== authorization.binding ||
+            requestContent.sha256 !== contentSha256(currentPost.content) ||
+            request.audience !== currentPost.audience ||
+            String(request.publicationVisibility || "PUBLIC").toUpperCase() !== String(currentPost.publicationVisibility || "PUBLIC").toUpperCase() ||
+            !isExecutionRequestReadinessFresh(requestReadiness, currentBinding, new Date(), this.readinessTtlMs)) return false;
+        const requestWindowId = request.oneTimeWindow?.windowId;
+        const window = requestWindowId ? state.oneTimeExecutionWindows.find((candidate) => candidate.windowId === requestWindowId) : null;
+        if (!window || !["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(window, new Date())) ||
+            !oneTimeExecutionWindowInBounds(window, new Date()) || window.campaignId !== currentPost.campaignId ||
+            window.campaignAuthorizationId !== authorization.id || window.jobId !== currentPost.id ||
+            window.authorizationFingerprint !== authorization.binding || window.binding !== oneTimeExecutionWindowFingerprint(window) ||
+            (window.status === "RESERVED" && window.reservedExecutionId !== item.executionId)) return false;
+        const grantId = request.liveGrant?.grantId;
+        const grant = grantId ? state.liveExecutionGrants.find((candidate) => candidate.grantId === grantId) : null;
+        if (!grant || liveGrantEffectiveStatus(grant) !== "ACTIVE" || grant.campaignAuthorizationId !== authorization.id ||
+            grant.campaignId !== currentPost.campaignId || grant.jobId !== currentPost.id ||
+            grant.boundExecutionId !== item.executionId) return false;
+        try {
+          assertLiveGrantMatchesExecution(grant, request, authorization, new Date(), { checkWindow: false });
+        } catch {
+          return false;
+        }
+        return true;
+      })
       .sort((left, right) => (Number(right.attempt) || 0) - (Number(left.attempt) || 0) || String(right.createdAt || right.request?.createdAt || "").localeCompare(String(left.createdAt || left.request?.createdAt || "")))[0] || null;
     request = latestLiveRequest();
     // A cancelled, expired, or otherwise terminal bootstrap request cannot be
@@ -3010,7 +3066,7 @@ export class SeedingService {
       currentPost = state.posts.find((item) => item.id === post.id) || currentPost;
       currentReadinessFresh = isReadinessFresh((state.targets || []).find((item) => item.id === target.id)?.readiness, currentBinding, new Date(), this.readinessTtlMs);
       if (refreshed.status === "queued") {
-        await this.prepareExecutionRequest(currentPost.id, actor);
+        await this.prepareExecutionRequest(currentPost.id, actor, { forceNewLiveExecution: true });
         await this.ensureStandingExecutionGrant(currentPost.id, "execution-router");
         state = await this.store.read();
         currentPost = state.posts.find((item) => item.id === post.id) || currentPost;
@@ -4474,12 +4530,16 @@ export class SeedingService {
     return result.result;
   }
 
-  async prepareExecutionRequest(postId, actor = "execution-router", { dryRun = false } = {}) {
-    const snapshot = await this.store.read();
+  async prepareExecutionRequest(postId, actor = "execution-router", { dryRun = false, forceNewLiveExecution = false } = {}) {
+    let snapshot = await this.store.read();
     const post = requireItem(snapshot.posts, postId, "Post");
     const authorizationForDelegation = (snapshot.campaignAuthorizations || []).find((item) => item.id === post.campaignAuthorizationId);
+    if (forceNewLiveExecution && (dryRun || authorizationForDelegation?.executionMode !== "standing_autonomous")) {
+      throw new Error("Forced live renewal requires standing autonomous authorization");
+    }
     if (!dryRun && authorizationForDelegation?.executionMode === "standing_autonomous") {
       await this.ensureStandingExecutionWindow(postId, "execution-router");
+      snapshot = await this.store.read();
     }
     if (unresolvedSubmission(snapshot, post)) throw new Error("SUBMISSION_UNCERTAIN: job or publication identity is quarantined");
     const previous = (snapshot.executionRequests || []).filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
@@ -4508,7 +4568,18 @@ export class SeedingService {
     }
     const eligibility = evaluateQueue(post, snapshot, new Date(), { mode: dryRun ? "dry_run" : "live", executionId: previous?.executionId || null });
     if (!eligibility.allowed) throw new Error(`Execution request blocked: ${eligibility.reasons.join(", ")}`);
-    if (!dryRun && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && previous?.request?.authorization?.authorizationId === authorization?.id && eligibility.oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
+    if (!dryRun && !forceNewLiveExecution && previous?.state === "REQUEST_READY" && previous.submitState === "NOT_STARTED" && authorization?.executionMode === "standing_autonomous") {
+      const currentWindow = eligibility.oneTimeWindow;
+      const currentGrant = (snapshot.liveExecutionGrants || []).find((item) => item.grantId === previous.request?.liveGrant?.grantId);
+      const previousControlsCurrent = previous.request?.executionId === previous.executionId &&
+        isExecutionRequestReadinessFresh(previous.request?.readiness, readinessContext, new Date(), this.readinessTtlMs) &&
+        previous.request?.oneTimeWindow?.windowId === currentWindow?.windowId &&
+        previous.request?.liveGrant?.grantId === currentGrant?.grantId &&
+        currentGrant && liveGrantEffectiveStatus(currentGrant) === "ACTIVE" &&
+        currentGrant.boundExecutionId === previous.executionId;
+      if (!previousControlsCurrent) forceNewLiveExecution = true;
+    }
+    if (!dryRun && !forceNewLiveExecution && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && previous?.request?.authorization?.authorizationId === authorization?.id && eligibility.oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
       throw new Error("Execution request's reserved one-time window is no longer valid");
     }
     if (!authorization) throw new Error("Execution request requires a campaign authorization");
@@ -4532,7 +4603,7 @@ export class SeedingService {
         if (previous.state !== "REQUEST_READY" && !(dryRun && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state))) throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
         if (Boolean(previous.request?.dryRun) !== dryRun) throw new Error("Execution request mode cannot be changed after creation");
       }
-      const reusePrevious = previous?.state === "REQUEST_READY" && Boolean(previous.request?.dryRun) === dryRun && (dryRun || previous.request?.authorization?.authorizationId === authorization.id);
+      const reusePrevious = !forceNewLiveExecution && previous?.state === "REQUEST_READY" && Boolean(previous.request?.dryRun) === dryRun && (dryRun || previous.request?.authorization?.authorizationId === authorization.id);
       const executionId = reusePrevious ? previous.executionId : randomUUID();
       const attempt = reusePrevious ? previous.attempt : (previous?.attempt || 0) + 1;
       const currentAuthorization = requireItem(state.campaignAuthorizations || [], authorization.id, "Campaign authorization");
@@ -4540,7 +4611,7 @@ export class SeedingService {
       const currentEligibility = evaluateQueue(currentPost, state, new Date(), { mode: dryRun ? "dry_run" : "live", executionId });
       if (!currentEligibility.allowed) throw new Error(`Execution request blocked: ${currentEligibility.reasons.join(", ")}`);
       const oneTimeWindow = dryRun ? null : currentEligibility.oneTimeWindow;
-      if (!dryRun && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && previous?.request?.authorization?.authorizationId === currentAuthorization.id && oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
+      if (!dryRun && !forceNewLiveExecution && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && previous?.request?.authorization?.authorizationId === currentAuthorization.id && oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
         throw new Error("Execution request's reserved one-time window is no longer valid");
       }
       const matchingGrants = dryRun ? [] : (state.liveExecutionGrants || []).filter((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE" && (!item.boundExecutionId || item.boundExecutionId === executionId));
