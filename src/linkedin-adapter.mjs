@@ -626,6 +626,24 @@ export class LinkedInAdapter {
     };
   }
 
+  async #captureSubmitControlStable(context, { attempts = 4, delayMs = 150 } = {}) {
+    let lastError = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await this.#captureSubmitControl(context);
+      } catch (error) {
+        lastError = error;
+        // LinkedIn briefly exposes a detached/secondary React composer while
+        // the dialog settles. Re-observe only this structural state before
+        // provider input; no click or other browser input is retried here.
+        const transient = ["SUBMIT_CONTROL_WRONG_COMPOSER", "SUBMIT_CONTROL_AMBIGUOUS"].includes(error?.code);
+        if (!transient || attempt + 1 >= attempts) throw error;
+        await sleep(delayMs);
+      }
+    }
+    throw lastError || new Error("LinkedIn submit control could not be stabilized");
+  }
+
   async verifyPreSubmit(context) {
     const media = context.media || { mediaHashMatched: true, mediaPreviewConfirmed: true };
     const gates = {
@@ -727,7 +745,7 @@ export class LinkedInAdapter {
 
   async submit(context, { beforeSubmitIntent, beforeProviderSend, onSubmitSent } = {}) {
     if (typeof beforeSubmitIntent !== "function" || typeof onSubmitSent !== "function") throw new Error("Live submit requires durable intent and submit-state callbacks");
-    const currentControl = await this.#captureSubmitControl(context);
+    const currentControl = await this.#captureSubmitControlStable(context);
     if (context.preClickControlEvidence?.controlIdentity && currentControl.preClickControlEvidence.controlIdentity !== context.preClickControlEvidence.controlIdentity) {
       throw submitControlFailure("SUBMIT_CONTROL_IDENTITY_CHANGED", "LinkedIn submit control changed after pre-submit validation", "finalSubmitControl", currentControl.preClickControlEvidence);
     }
@@ -804,7 +822,7 @@ export class LinkedInAdapter {
       assertTransportCannotChangeAfterIntent({ selectedTransport: this.selectedTransportIdentity, requestedTransport: this.selectedTransportIdentity, intentPersisted: context.intentPersisted === true });
       commandResult = await this.transport.click({ pageId: context.pageId, targetRef: context.submitRef, targetIdentity: context.preClickControlEvidence.controlIdentity, boundingBox: context.preClickControlEvidence.boundingBox }, {
         validate: async () => {
-          const latest = await this.#captureSubmitControl(context);
+          const latest = await this.#captureSubmitControlStable(context);
           if (latest.preClickControlEvidence.controlIdentity !== context.preClickControlEvidence.controlIdentity) {
             throw submitControlFailure("SUBMIT_CONTROL_IDENTITY_CHANGED", "LinkedIn submit control changed immediately before browser input", "finalSubmitControl", latest.preClickControlEvidence);
           }

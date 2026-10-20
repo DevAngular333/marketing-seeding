@@ -618,6 +618,65 @@ test("post-intent validation abort records a pre-provider outcome and never emit
   assert.equal(providerCalls, 0);
 });
 
+test("transient submit-control ambiguity is re-observed before one final click", async (t) => {
+  for (const [name, transientObservation] of [
+    ["secondary composer", { ...submitControlObservation(), composerCount: 2 }],
+    ["ambiguous controls", { ...submitControlObservation(), buttonCount: 2 }]
+  ]) {
+    await t.test(name, async () => {
+      let observations = 0;
+      let intents = 0;
+      let clicks = 0;
+      const browser = {
+        async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+        async evaluate(_page, expression) {
+          if (expression === linkedinAdapterExpressions.submitControl) {
+            observations += 1;
+            return observations === 2 ? transientObservation : submitControlObservation();
+          }
+          return {};
+        }
+      };
+      browser.showTab = async () => ({ url: "https://www.linkedin.com/feed/" });
+      const transport = {
+        transportContractVersion: 1,
+        requiresPreClickValidation: true,
+        runtimeIdentity: () => ({ transport: "fixture-certified", provider: "fixture", providerVersion: "1" }),
+        assertPreClickValidation() { return true; },
+        async assertReadyForFinalSubmit() { return true; },
+        async click(_target, { validate } = {}) {
+          await validate?.();
+          clicks += 1;
+          return { status: "COMMAND_COMPLETED" };
+        }
+      };
+      const adapter = new LinkedInAdapter(browser, { verifier: {}, transport });
+      adapter.prepareExecution = async (requestValue) => ({ request: requestValue, pageId: "page-1", expectedIdentityUrl });
+      adapter.navigate = async (context) => context;
+      adapter.verifyTarget = async (context) => ({ ...context, targetVerified: true });
+      adapter.openComposer = async (context) => context;
+      adapter.fillContent = async (context) => context;
+      adapter.attachMedia = async (context) => ({ ...context, media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
+      adapter.verifyPublished = async () => ({
+        state: "UNKNOWN", submitState: "UNKNOWN", reasonCode: "publication_not_observed",
+        publicationEvidence: { marker: "read-only" }, verificationEvidence: { marker: "read-only" }
+      });
+
+      const result = await adapter.execute(request({ withMedia: false }), {
+        dryRun: false, liveEnabled: true,
+        async beforeSubmitIntent() { intents += 1; return {}; },
+        async onSubmitSent() {}
+      });
+
+      assert.equal(result.submitState, "UNKNOWN");
+      assert.equal(result.reasonCode, "publication_not_observed");
+      assert.equal(intents, 1, "durable intent is persisted once after stable observation");
+      assert.equal(clicks, 1, "transient observation retry never retries the final click");
+      assert.ok(observations >= 3, "initial observation, retry, and immediate pre-click validation all ran");
+    });
+  }
+});
+
 test("immediate click preflight rejects a moved or covered control before durable intent", async (t) => {
   for (const [name, override] of [["moved", { controlId: "moved-control" }], ["covered", { hitTargetMatched: false }], ["detached", { connected: false }]]) {
     await t.test(name, async () => {
