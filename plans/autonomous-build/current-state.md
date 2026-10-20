@@ -1,3 +1,13 @@
+# Zero-touch authority bootstrap update — 2026-10-20T06:10:00Z (HEAD 8082312)
+
+- Added deterministic product-only repository resolution to the existing campaign bootstrap.
+- `product: "design-os-studio"` resolves the bounded local reference repository when it is the unique match; explicit `productRepo` remains compatible.
+- Exact duplicate repository matches return `PRODUCT_REPOSITORY_AMBIGUOUS` before campaign persistence. Missing matches return `PRODUCT_REPOSITORY_NOT_FOUND`.
+- Product-only isolated bootstrap produced one exact campaign, evidence-grounded content hash, bounded schedule, standing authorization, one-time window, live grant, request and execution ID in a temporary state file.
+- Focused bootstrap: 5/5. Full `npm test`: 543 total, 541 passed, 0 failed, 2 skipped. Syntax, diff and UI build pass.
+- Canonical runtime was not touched: schema 8 revision 194, active authorization/window/grant/lease 0/0/0/0, four historical UNKNOWN rows unchanged, no browser/social mutation.
+- Live LinkedIn remains unproven: canonical readiness is expired and no `IRREVERSIBLE_LINKEDIN_SUBMIT` transport record exists.
+
 # Current State (latest verified 2026-10-20; bc49a72 continuation release gate)
 
 ## Continuation release gate — 2026-10-20g

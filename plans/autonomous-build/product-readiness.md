@@ -1,3 +1,13 @@
+# Product Readiness Snapshot — zero-touch bootstrap (2026-10-20T06:10:00Z; 8082312)
+
+The high-level campaign bridge is now LOCAL_READY for product resolution: a product ID/name can resolve one exact bounded local repository and flow through existing product intelligence/content/standing-authority contracts. Product-only and ambiguity regressions pass; no new store, router, state machine or browser layer was added.
+
+Latest gate after this change: `npm test` **543 total, 541 passed, 0 failed, 2 skipped**; `node --check src/*.mjs`, `git diff --check`, and `npm --prefix ui run build` pass (existing Vite config warnings only).
+
+The live LinkedIn lane remains **BLOCKED**: no fresh canonical readiness, no irreversible transport certification, no live execution or independent permalink. Canonical state remains schema 8/revision 194 with active authorization/window/grant/lease counts 0/0/0/0 and four immutable UNKNOWN records.
+
+---
+
 # Product Readiness Snapshot (verified 2026-10-20; selector hardening release)
 
 Fresh gate after commits `f28de78` and `7c9f813`: full `npm test` **538 total, 536 passed, 0 failed, 2 skipped**; broader transport/JEV/LinkedIn/authority/recovery gate **154/154**; selector/authority/readiness/LinkedIn gate **75/75**; syntax, `git diff --check`, journal JSON and `npm --prefix ui run build` pass. UI build emits only existing Vite configuration warnings. Canonical service remains undeployed from this branch.

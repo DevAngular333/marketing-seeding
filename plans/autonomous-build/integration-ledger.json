@@ -1733,8 +1733,32 @@
       "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020.md"
     }
   ],
-  "latestHead": "7c9f813",
-  "latestGate": "authorized_account_selector_hardening_20261020",
+  "latestHead": "8082312",
+  "latestGate": {
+    "name": "zero_touch_authority_bootstrap",
+    "result": "PASS_LOCAL_FOUNDATION_ONLY",
+    "head": "8082312",
+    "focusedBootstrap": {
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "fullSuite": {
+      "tests": 543,
+      "passed": 541,
+      "failed": 0,
+      "skipped": 2,
+      "exitCode": 0
+    },
+    "syntax": "passed",
+    "gitDiffCheck": "passed",
+    "uiBuild": "passed",
+    "canonicalRuntimeMutated": false,
+    "historicalUnknownMutated": false,
+    "externalSideEffects": false,
+    "artifact": "plans/autonomous-build/zero-touch-authority-bootstrap/"
+  },
   "followupGate": {
     "name": "master_continuation_followup_20261020b",
     "result": "PASS_LOCAL_FOUNDATION_ONLY",
@@ -1789,31 +1813,19 @@
     "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020b.md"
   },
   "masterContinuationAudit": {
-    "name": "master_continuation_audit_20261020c",
+    "name": "zero_touch_authority_bootstrap_20261020",
     "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
-    "head": "fdf3419",
+    "head": "8082312",
     "fullSuite": {
-      "tests": 536,
-      "passed": 534,
+      "tests": 543,
+      "passed": 541,
       "failed": 0,
       "skipped": 2
-    },
-    "focusedDiscoveryFeed": {
-      "tests": 28,
-      "passed": 28,
-      "failed": 0,
-      "skipped": 0
-    },
-    "priorSafetyGate": {
-      "tests": 152,
-      "passed": 152,
-      "failed": 0,
-      "skipped": 0
     },
     "externalSideEffects": false,
     "canonicalRuntimeMutated": false,
     "historicalUnknownMutated": false,
-    "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020c.md"
+    "report": "plans/autonomous-build/zero-touch-authority-bootstrap/report.md"
   },
   "discoveryFeedGate": {
     "name": "discovery_feed_observer_20261020",
