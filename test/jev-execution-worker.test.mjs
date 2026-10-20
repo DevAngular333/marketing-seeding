@@ -978,6 +978,7 @@ test("LinkedIn adapter waits for the authenticated shell after navigation instea
 test("LinkedIn composer trigger uses one strictly guarded direct DOM activation when ORCA click dispatch is unavailable", async () => {
   let phase = "feed";
   let directActivations = 0;
+  let nestedTriggerExpressionSeen = false;
   let postClicks = 0;
   const request = {
     executionId: "exec-click-fallback", jobId: "job-click-fallback", campaignId: "campaign-click-fallback", platform: "linkedin",
@@ -995,7 +996,12 @@ test("LinkedIn composer trigger uses one strictly guarded direct DOM activation 
       if (expression.includes("LINKEDIN_MEDIA_CLEAR_COMPOSER")) return { cleared: true };
       if (expression.includes("LINKEDIN_MEDIA_CANCEL_COMPOSER")) { phase = "feed"; return { clicked: true }; }
       if (expression.includes("const expectedPath")) return { linkedinDomain: true, loginRequired: false, securityChallenge: false, sessionAuthenticated: true, identityVerified: true, feedReachable: true };
-      if (expression.includes("candidates[0].click()")) { directActivations += 1; phase = "composer"; return { clicked: true }; }
+      if (expression.includes("dispatchEvent(new MouseEvent") && expression.includes("wrapperCandidates") && expression.includes("labelledCandidates")) {
+        nestedTriggerExpressionSeen = true;
+        directActivations += 1;
+        phase = "composer";
+        return { clicked: true };
+      }
       if (expression === linkedInReadinessExpressions().composer) return { linkedinDomain: true, route: phase === "composer", routeCompatible: phase === "composer", dialogCount: phase === "composer" ? 1 : 0, editorCount: phase === "composer" ? 1 : 0, audience: phase === "composer", postButton: phase === "composer", mediaControl: phase === "composer", advertisingControls: 0, confirmed: phase === "composer" };
       if (expression.includes('const expected = "public"')) return { dialogCount: 1, audienceMatch: true };
       if (expression.includes("contenteditable") && expression.includes("editorCount")) return { dialogCount: 1, editorCount: 1, text: "draft" };
@@ -1014,6 +1020,7 @@ test("LinkedIn composer trigger uses one strictly guarded direct DOM activation 
   assert.equal(result.gates.composerConfirmed, true);
   assert.equal(result.telemetry.domClickFallbacks, 1);
   assert.equal(directActivations, 1);
+  assert.equal(nestedTriggerExpressionSeen, true);
   assert.equal(postClicks, 0);
   assert.equal(phase, "feed");
 });

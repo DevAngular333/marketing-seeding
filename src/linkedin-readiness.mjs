@@ -99,15 +99,25 @@ const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
   const host = location.hostname.toLowerCase().replace(/^www\\./, '');
   const path = location.pathname.replace(/\\/$/, '').toLowerCase() || '/';
   const dialogs = Array.from(document.querySelectorAll('dialog,[role="dialog"]')).filter(visible);
-  const candidates = Array.from(document.querySelectorAll('button,[role="button"]')).filter((node) => {
+  const candidates = Array.from(document.querySelectorAll('button,[role="button"],[aria-label]')).filter((node) => {
     if (!visible(node) || node.disabled || node.getAttribute('aria-disabled') === 'true') return false;
     const labels = [node.getAttribute('aria-label') || '', node.innerText || ''].map((value) => value.trim());
     return labels.some((label) => /^(?:start a post|b\u1eaft \u0111\u1ea7u b\u00e0i \u0111\u0103ng)$/i.test(label));
   });
-  if (host !== 'linkedin.com' || path !== '/feed' || dialogs.length !== 0 || candidates.length !== 1) {
+  const wrapperCandidates = candidates.filter((node) => node.tagName === 'BUTTON' || node.getAttribute('role') === 'button');
+  const labelledCandidates = candidates.filter((node) => node.tagName !== 'BUTTON' && node.getAttribute('role') !== 'button' && node.getAttribute('aria-label'));
+  if (host !== 'linkedin.com' || path !== '/feed' || dialogs.length !== 0 || wrapperCandidates.length !== 1 || labelledCandidates.length !== 1) {
     return { clicked: false, reason: 'composer_trigger_fallback_precondition_failed' };
   }
-  candidates[0].click();
+  // LinkedIn's current trigger is a role=button wrapper around a labelled
+  // child. ORCA 1.4.230 acknowledges the wrapper click without dispatching the
+  // framework event; dispatch exactly one click on the owned labelled child.
+  const activationTarget = labelledCandidates[0];
+  if (activationTarget !== candidates[0]) {
+    activationTarget.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+  } else {
+    candidates[0].click();
+  }
   return { clicked: true };
 })()`;
 
