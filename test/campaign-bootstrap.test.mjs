@@ -276,3 +276,45 @@ test("bootstrap renews a stale REQUEST_READY control package without mutating it
   assert.equal(historical.request.readiness.expiresAt, oldRequest.request.readiness.expiresAt);
   assert.equal(after.executionRequests.filter((item) => item.jobId === renewed.postId && item.request?.dryRun !== true).length, 2);
 });
+
+test("queue repairs a REQUEST_READY row whose live grant reference was lost", async (t) => {
+  const { service, productRepo, now } = await fixture(t);
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  await service.store.mutate("test", "drop_bootstrap_grant_reference", (state) => {
+    const row = state.executionRequests.find((item) => item.executionId === first.executionId);
+    row.request.liveGrant = null;
+    row.liveGrantId = null;
+    state.liveExecutionGrants = state.liveExecutionGrants.filter((item) => item.grantId !== first.liveGrantId);
+  });
+  const before = await service.snapshot();
+  const decisions = await service.queueAuthorizedCampaignJobs(first.campaignId, "scheduler");
+  const after = await service.snapshot();
+  const rows = after.executionRequests.filter((item) => item.jobId === first.postId && item.request?.dryRun !== true);
+  assert.equal(decisions[0].status, "queued");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].executionId, first.executionId);
+  assert.ok(rows[0].request.liveGrant?.grantId);
+  assert.equal(after.liveExecutionGrants.filter((item) => item.jobId === first.postId && item.status === "ACTIVE").length, 1);
+  assert.equal(after.oneTimeExecutionWindows.filter((item) => item.jobId === first.postId).length, before.oneTimeExecutionWindows.filter((item) => item.jobId === first.postId).length);
+});
+
+test("queue renews controls when the pending request window is stale", async (t) => {
+  const { service, productRepo, now } = await fixture(t);
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  await service.store.mutate("test", "stale_bootstrap_window", (state) => {
+    const window = state.oneTimeExecutionWindows.find((item) => item.windowId === first.oneTimeWindowId);
+    window.status = "EXPIRED";
+    window.expiredAt = new Date(now.getTime() - 1_000).toISOString();
+    state.liveExecutionGrants = state.liveExecutionGrants.filter((item) => item.grantId !== first.liveGrantId);
+    const row = state.executionRequests.find((item) => item.executionId === first.executionId);
+    row.request.liveGrant = null;
+    row.liveGrantId = null;
+  });
+  const result = await service.queueAuthorizedCampaignJobs(first.campaignId, "scheduler");
+  const after = await service.snapshot();
+  const rows = after.executionRequests.filter((item) => item.jobId === first.postId && item.request?.dryRun !== true);
+  assert.equal(result[0].status, "queued");
+  assert.equal(rows.length, 2);
+  assert.notEqual(rows[1].executionId, first.executionId);
+  assert.ok(rows[1].request.liveGrant?.grantId);
+});

@@ -4263,6 +4263,12 @@ export class SeedingService {
 
   async queueAuthorizedCampaignJobs(campaignId, actor = "scheduler") {
     const snapshot = await this.store.read();
+    // A REQUEST_READY row can survive a bootstrap/transport interruption
+    // before ensureStandingExecutionGrant persists its grant reference. Keep
+    // that exact pending row eligible for the next queue tick so recovery can
+    // attach the grant in place instead of redispatching a second execution.
+    const grantRecoveryPostIds = new Set();
+    const forceNewExecutionPostIds = new Set();
     const candidates = snapshot.posts.filter((post) => {
       if (post.campaignId !== campaignId || !post.campaignAuthorizationId) return false;
       if (["blocked", "draft"].includes(post.status)) return true;
@@ -4270,6 +4276,26 @@ export class SeedingService {
       const authorization = snapshot.campaignAuthorizations?.find((item) => item.id === post.campaignAuthorizationId);
       if (authorization?.executionMode === "standing_autonomous" && !post.executionState) return true;
       const latestExecution = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id).sort((a, b) => b.attempt - a.attempt)[0];
+      if (authorization?.executionMode === "standing_autonomous" && latestExecution?.state === "REQUEST_READY" && latestExecution.submitState === "NOT_STARTED" && latestExecution.request?.dryRun !== true) {
+        const requestGrantId = latestExecution.request?.liveGrant?.grantId || null;
+        const rowGrantId = latestExecution.liveGrantId || null;
+        const grant = requestGrantId ? (snapshot.liveExecutionGrants || []).find((item) => item.grantId === requestGrantId) : null;
+        const requestWindowId = latestExecution.request?.oneTimeWindow?.windowId || null;
+        const requestWindow = requestWindowId ? (snapshot.oneTimeExecutionWindows || []).find((item) => item.windowId === requestWindowId) : null;
+        const windowStatus = requestWindow ? oneTimeExecutionWindowStatus(requestWindow, new Date()) : "INVALID";
+        const windowBound = Boolean(requestWindow && requestWindow.campaignId === post.campaignId &&
+          requestWindow.campaignAuthorizationId === authorization.id && requestWindow.jobId === post.id &&
+          requestWindow.binding === oneTimeExecutionWindowFingerprint(requestWindow) &&
+          oneTimeExecutionWindowInBounds(requestWindow, new Date()) &&
+          ((windowStatus === "RESERVED" && requestWindow.reservedExecutionId === latestExecution.executionId) ||
+            (windowStatus === "ACTIVE" && !requestWindow.reservedExecutionId)));
+        const grantInvalid = !requestGrantId || rowGrantId !== requestGrantId || !grant || liveGrantEffectiveStatus(grant) !== "ACTIVE" || grant.boundExecutionId !== latestExecution.executionId;
+        if (grantInvalid) {
+          if (windowBound) grantRecoveryPostIds.add(post.id);
+          else forceNewExecutionPostIds.add(post.id);
+          return true;
+        }
+      }
       if (latestExecution?.state === "FAILED" && latestExecution.recoveryClassification === "RECOVERABLE" && latestExecution.submitState === "FAILED" && latestExecution.attempt < 3) return true;
       if (post.executionState !== "REQUEST_READY") return false;
       const target = snapshot.targets.find((item) => item.id === post.targetId);
@@ -4280,7 +4306,10 @@ export class SeedingService {
       const result = await this.refreshCampaignJobReadiness(post.id, actor);
       decisions.push({ postId: post.id, status: result.status, readinessState: result.readinessState, reasons: result.reasons || [] });
       if (result.status === "queued") {
-        await this.prepareExecutionRequest(post.id, actor);
+        // Recover the existing REQUEST_READY row in place. Calling prepare
+        // here would intentionally force a fresh execution when its grant is
+        // missing, which can collide with its already RESERVED window.
+        if (!grantRecoveryPostIds.has(post.id)) await this.prepareExecutionRequest(post.id, actor, { forceNewLiveExecution: forceNewExecutionPostIds.has(post.id) });
         await this.ensureStandingExecutionGrant(post.id, "campaign-queue-scheduler");
       }
     }
