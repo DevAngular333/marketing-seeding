@@ -177,7 +177,12 @@ export function selectCertifiedTransport({ transports = [], certifications = [],
     const transportId = String(item.transport || "").trim();
     if (!transportId) continue;
     const scope = String(item.certificationScope || "").trim();
+    // Bootstrap certification is a one-execution proof scope. It must never
+    // become a generic irreversible-submit fallback when a caller omits the
+    // exact execution binding.
+    if (scope === "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT" && !executionBinding) continue;
     if (executionBinding && scope === "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT") {
+      if (item.bootstrap !== true) continue;
       if (!matchesExecutionBinding(item, executionBinding)) continue;
     } else if (executionBinding && scope !== "IRREVERSIBLE_LINKEDIN_SUBMIT") continue;
     const policyIdentity = JSON.stringify({
@@ -227,7 +232,9 @@ export function selectedTransportCertification({ transport, certifications = [],
   const identity = chosen.runtimeIdentity?.() || {};
   return certifications.find((item) => item?.certified === true && item.transport === identity.transport &&
     item.provider === identity.provider && item.providerVersion === identity.providerVersion &&
-    (!executionBinding || item.certificationScope === "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT")) || null;
+    (item.certificationScope === "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT"
+      ? item.bootstrap === true && !!executionBinding && matchesExecutionBinding(item, executionBinding)
+      : !executionBinding || item.certificationScope === "IRREVERSIBLE_LINKEDIN_SUBMIT")) || null;
 }
 
 function matchesExecutionBinding(record, binding) {

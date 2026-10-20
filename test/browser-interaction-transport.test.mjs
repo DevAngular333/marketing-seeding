@@ -192,11 +192,29 @@ test("bootstrap certification requires an exact live execution binding and evide
     mediaSha256: [], visibility: "PUBLIC"
   };
   const cert = { transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.230", certified: true,
-    irreversibleSubmit: true, certificationScope: "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT", expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    irreversibleSubmit: true, bootstrap: true, certificationScope: "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT", expiresAt: new Date(Date.now() + 60_000).toISOString(),
     evidenceReference: "plans/bootstrap-cert.json", executionBinding: { ...binding } };
   assert.equal(selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: binding, certifications: [cert] }), transport);
   assert.throws(() => selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: { ...binding, contentSha256: "b".repeat(64) }, certifications: [cert] }), /No certified browser interaction transport/);
   assert.throws(() => selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: binding, certifications: [{ ...cert, expiresAt: new Date(Date.now() - 1).toISOString() }] }), /No certified browser interaction transport/);
+});
+
+test("bootstrap certification cannot be used without exact execution scope", () => {
+  const transport = { runtimeIdentity: () => ({ transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.230" }) };
+  const cert = {
+    transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.230", platform: "linkedin",
+    certified: true, irreversibleSubmit: true, bootstrap: true,
+    certificationScope: "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT",
+    expiresAt: new Date(Date.now() + 60_000).toISOString(), evidenceReference: "bootstrap-proof"
+  };
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" },
+    requireIrreversibleSubmit: true, certifications: [cert]
+  }), /No certified browser interaction transport/);
+  assert.throws(() => selectCertifiedTransport({
+    transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" },
+    requireIrreversibleSubmit: true, executionBinding: { platform: "linkedin", executionId: "exec" }, certifications: [cert]
+  }), /No certified browser interaction transport/);
 });
 
 test("transport certification requires exact provider identity, not only version", () => {
