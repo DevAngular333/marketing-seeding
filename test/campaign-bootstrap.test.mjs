@@ -198,6 +198,42 @@ test("expired bootstrap schedule renews exact authority without mutating histori
   assert.equal(after.executionRequests.filter((item) => item.jobId === renewed.postId && item.request?.dryRun !== true).length, 2);
 });
 
+test("bootstrap surfaces immutable historical UNKNOWN as a content identity blocker", async (t) => {
+  const { service, productRepo, now } = await fixture(t);
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(first.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  await service.store.mutate("test", "mark_bootstrap_content_unknown", (state) => {
+    const post = state.posts.find((item) => item.id === first.postId);
+    post.status = "blocked";
+    post.executionState = "SUBMIT_RESULT_UNKNOWN";
+    const execution = state.executionRequests.find((item) => item.executionId === first.executionId);
+    execution.state = "SUBMIT_RESULT_UNKNOWN";
+    execution.submitState = "UNKNOWN";
+    state.submissionUncertainties.push({
+      id: "bootstrap-immutable-unknown",
+      status: "UNKNOWN",
+      jobId: post.id,
+      campaignId: post.campaignId,
+      executionId: first.executionId,
+      platform: "linkedin",
+      accountId: "linkedin-bootstrap-0",
+      targetId: post.targetId,
+      idempotencyKeys: [post.idempotencyKey],
+      contentSha256: post.contentHash,
+      detectedAt: now.toISOString(),
+      reasonCode: "transport_ambiguous"
+    });
+  });
+  const result = await service.bootstrapAutonomousCampaign(brief(productRepo, new Date(now.getTime() + 60_000)));
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.blockers[0].code, "HISTORICAL_SUBMISSION_UNCERTAIN");
+  assert.equal(result.blockers[0].classification, "STATE_BLOCKER");
+  assert.equal(result.blockers[0].historicalExecutionId, first.executionId);
+  const after = await service.snapshot();
+  assert.equal(after.submissionUncertainties.filter((item) => item.status === "UNKNOWN").length, 1);
+  assert.equal(after.executionRequests.filter((item) => item.executionId === first.executionId).length, 1);
+});
+
 test("bootstrap never reuses a cancelled request or its terminal controls", async (t) => {
   const { service, productRepo, now } = await fixture(t);
   const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));

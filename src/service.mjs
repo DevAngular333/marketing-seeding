@@ -3045,6 +3045,10 @@ export class SeedingService {
       targetId: currentTarget.id
     };
     let currentReadinessFresh = isReadinessFresh(currentTarget.readiness, currentBinding, new Date(), this.readinessTtlMs);
+    // An unresolved historical submission is an immutable safety fence. Keep
+    // bootstrap read-only for this content identity and report the precise
+    // blocker instead of presenting a generic readiness/control failure.
+    const historicalSubmissionUncertainty = unresolvedSubmission(state, currentPost);
     let request = null;
     const latestLiveRequest = () => state.executionRequests
       .filter((item) => {
@@ -3135,7 +3139,17 @@ export class SeedingService {
       executionId: request?.executionId || null,
       oneTimeWindowId: window?.windowId || null,
       liveGrantId: grant?.grantId || null,
-      blockers: request && grantActive && windowActive ? [] : [{ code: currentPost.readinessReasonCode || "EXECUTION_CONTROLS_NOT_DERIVED", classification: "RUNTIME_BLOCKER", message: "Fresh readiness did not produce the complete execution controls" }],
+      blockers: request && grantActive && windowActive ? [] : [historicalSubmissionUncertainty ? {
+        code: "HISTORICAL_SUBMISSION_UNCERTAIN",
+        classification: "STATE_BLOCKER",
+        message: "This exact content/publication identity is quarantined by an immutable historical SUBMIT_RESULT_UNKNOWN execution; derive a separately authorized content identity before creating new execution controls",
+        uncertaintyId: historicalSubmissionUncertainty.id,
+        historicalExecutionId: historicalSubmissionUncertainty.executionId || null
+      } : {
+        code: currentPost.readinessReasonCode || "EXECUTION_CONTROLS_NOT_DERIVED",
+        classification: "RUNTIME_BLOCKER",
+        message: "Fresh readiness did not produce the complete execution controls"
+      }],
       externalSideEffects: false,
       authoritySideEffects: true
     };

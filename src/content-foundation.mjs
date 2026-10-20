@@ -237,7 +237,12 @@ export function deriveContentCandidates({ productIntelligence, story, targets = 
     const channel = bounded(target?.channel, "target channel", 80).toLowerCase();
     const policy = CHANNELS[channel];
     if (!policy) throw new Error(`Unsupported channel: ${channel}`);
-    const content = `${storyTitle} — ${selected.map((claim) => claim.text).join(" ")} ${storyCta}`.trim();
+    // The story title is itself the WHAT_IS_IT claim in the product
+    // intelligence path. Do not repeat the same claim byte-for-byte in the
+    // body; keeping one canonical occurrence makes the generated channel
+    // copy readable while preserving the exact evidence/claim lineage.
+    const bodyClaims = selected[0]?.text === storyTitle ? selected.slice(1) : selected;
+    const content = `${storyTitle}${bodyClaims.length ? ` — ${bodyClaims.map((claim) => claim.text).join(" ")}` : ""} ${storyCta}`.trim();
     if (content.length > MAX_CONTENT) throw new Error(`Content exceeds ${MAX_CONTENT} characters`);
     if (policy.maxContentChars && content.length > policy.maxContentChars) throw new Error(`Content exceeds ${policy.maxContentChars} characters for ${channel}`);
     const claimIds = selected.map((claim) => claim.id);

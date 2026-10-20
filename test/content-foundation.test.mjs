@@ -12,6 +12,24 @@ test("content candidates are deterministic and draft-only", () => {
   assert.deepEqual(a, b); assert.equal(a[0].status, "draft"); assert.match(a[0].contentIdentity, /^[a-f0-9]{64}$/);
   assert.deepEqual(a[0].claimIds, ["what"]); assert.deepEqual(a[0].evidenceRefs, ["a".repeat(64)]);
 });
+test("content candidates do not duplicate the story title claim", () => {
+  const candidate = deriveContentCandidates({
+    productIntelligence: {
+      handoff: { readinessStatus: "READY" },
+      document: {
+        evidence,
+        CLAIMS_WE_CAN_PROVE: [
+          { id: "what", text: "A bounded product runtime.", evidenceRefs: ["a".repeat(64)] },
+          { id: "why", text: "It keeps evidence local.", evidenceRefs: ["a".repeat(64)] }
+        ]
+      }
+    },
+    story: { id: "s-title", title: "A bounded product runtime.", callToAction: "Inspect the evidence.", claimIds: ["what", "why"] },
+    targets: [target]
+  })[0];
+  assert.equal(candidate.content, "A bounded product runtime. — It keeps evidence local. Inspect the evidence.");
+  assert.equal(candidate.content.includes("A bounded product runtime. — A bounded product runtime."), false);
+});
 test("missing readiness or evidence fails closed", () => {
   assert.throws(() => deriveContentCandidates({ productIntelligence: { ...pi, handoff: { readinessStatus: "INCOMPLETE" } }, story, targets: [target] }), /READY/);
   assert.throws(() => deriveContentCandidates({ productIntelligence: { handoff: { readinessStatus: "READY" }, document: { evidence, CLAIMS_WE_CAN_PROVE: [{ id: "x", text: "x", evidenceRefs: ["b".repeat(64)] }] } }, story: { ...story, claimIds: ["x"] }, targets: [target] }), /supported claims/);
