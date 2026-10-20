@@ -19,7 +19,7 @@ import { buildProductIntelligence, normalizeEvidenceRecords, productIntelligence
 import { createProductIntelligenceHandoff, validateProductIntelligenceHandoff } from "./product-intelligence-runtime.mjs";
 import { processDiscoveries } from "./discovery.mjs";
 import { observePublicUrls } from "./discovery-observer.mjs";
-import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe, probeFactorySandboxCapability, projectFactoryRunEvidence } from "./product-factory.mjs";
+import { classifyRepository, createFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, executeStagedFactoryProbe, probeFactorySandboxCapability, probeSystemAgenticSeatbeltCapability, projectFactoryRunEvidence } from "./product-factory.mjs";
 import { inspectRepositoryEvidence, summarizeRepositoryInspection } from "./product-repository-inspection.mjs";
 import { appendStrategyDecision, deriveStrategyDecision } from "./strategy.mjs";
 import { canonicalTemplateSourceRefs, contentCandidateIdentity, deriveContentCandidates, deriveProductIntelligenceStory, deriveTemplateContentCandidates, renderApprovedTemplate, templateCandidateBinding, templateClaimIds, TEMPLATE_CANDIDATE_CONTRACT_VERSION } from "./content-foundation.mjs";
@@ -1773,7 +1773,9 @@ export class SeedingService {
     this.readinessInFlight = new Set();
     this.productFactorySandboxProbe = typeof options.productFactorySandboxProbe === "function"
       ? options.productFactorySandboxProbe
-      : probeFactorySandboxCapability;
+      : (typeof options.systemAgenticSandboxProbe === "function"
+        ? options.systemAgenticSandboxProbe
+        : probeSystemAgenticSeatbeltCapability);
     this.productFactorySandboxProbeTtlMs = Math.min(60_000, Math.max(1_000, Number(options.productFactorySandboxProbeTtlMs) || 15_000));
     this.productFactorySandboxProbeCache = null;
     const explicitProductRoots = options.productRepoRoots !== undefined || Boolean(String(process.env.SEEDING_PRODUCT_REPO_ROOTS || "").trim());

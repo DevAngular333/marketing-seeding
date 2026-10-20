@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT = 32_000;
@@ -31,6 +32,14 @@ const SANDBOX_CHECKS = Object.freeze([
   'resourceLimits'
 ]);
 const SANDBOX_CHECK_STATUS = new Set(['PASS', 'FAIL', 'UNSUPPORTED', 'UNAVAILABLE']);
+
+// System-Agentic_AI owns the audited Seatbelt executor.  Marketing-seeding
+// may inspect that backend through this adapter, but it must never promote
+// backend presence into execution eligibility.  The individual policy checks
+// remain an explicit attestation boundary owned by the host runtime.
+const DEFAULT_SYSTEM_AGENTIC_RUNTIME_ROOT = path.resolve(
+  process.env.SYSTEM_AGENTIC_RUNTIME_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'System-Agentic_AI'),
+);
 
 /**
  * Project bounded, secret-safe Product Factory evidence for read-only views.
@@ -184,6 +193,30 @@ export async function probeFactorySandboxCapability(options = {}) {
     checks.backendInvocation = invocation?.ok === true ? 'PASS' : sandboxCheckStatus(invocation?.status, 'FAIL');
   }
   return evaluateSandboxCapability({ backend, present, checks });
+}
+
+/**
+ * Read-only bridge to the shared System-Agentic_AI Seatbelt executor.
+ *
+ * The bridge only attests that the frozen executor exists and is importable;
+ * policy checks intentionally stay UNSUPPORTED until the host supplies an
+ * audited profile attestation.  This prevents a marketing domain adapter
+ * from silently enabling arbitrary repository execution.
+ */
+export async function probeSystemAgenticSeatbeltCapability(options = {}) {
+  const runtimeRoot = path.resolve(String(options.runtimeRoot || DEFAULT_SYSTEM_AGENTIC_RUNTIME_ROOT));
+  const executorPath = path.join(runtimeRoot, 'products', 'agent-runtime', 'tool_executor.py');
+  let present = options.backendPresent === true;
+  if (options.backendPresent === undefined) {
+    try { await fs.access(executorPath); present = true; } catch { present = false; }
+  }
+  const checks = Object.fromEntries(SANDBOX_CHECKS.map((key) => [key, 'UNSUPPORTED']));
+  checks.backendInvocation = present ? 'PASS' : 'UNAVAILABLE';
+  return evaluateSandboxCapability({
+    backend: 'system-agentic-seatbelt',
+    present,
+    checks
+  });
 }
 
 export async function classifyRepository(repositoryPath) {

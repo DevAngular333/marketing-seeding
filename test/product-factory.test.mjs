@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
-import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, deriveProjectEvidencePlan, executeStagedFactoryProbe, evaluateFactorySandboxCapability, probeFactorySandboxCapability, projectFactoryRunEvidence, redact } from '../src/product-factory.mjs';
+import { classifyRepository, createFactoryPlan, executeFactoryPlan, collectArtifactEvidence, discoverArtifactCandidates, deriveProjectEvidencePlan, executeStagedFactoryProbe, evaluateFactorySandboxCapability, probeFactorySandboxCapability, probeSystemAgenticSeatbeltCapability, projectFactoryRunEvidence, redact } from '../src/product-factory.mjs';
 
 async function fixture(files = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'product-factory-'));
@@ -19,6 +19,18 @@ test('classifies node, python, static and unknown deterministically', async () =
   assert.equal((await classifyRepository(await fixture({ 'pyproject.toml': '' }))).kind, 'python');
   assert.equal((await classifyRepository(await fixture({ 'index.html': '<h1>x</h1>' }))).kind, 'static');
   assert.equal((await classifyRepository(await fixture({ 'README.md': 'x' }))).kind, 'unknown');
+});
+
+test('System-Agentic Seatbelt adapter is read-only and remains fail-closed without attestation', async () => {
+  const root = await fixture();
+  const result = await probeSystemAgenticSeatbeltCapability({ runtimeRoot: root });
+  assert.equal(result.backend, 'system-agentic-seatbelt');
+  assert.equal(result.status, 'UNAVAILABLE');
+  assert.equal(result.executionEligible, false);
+  assert.equal(result.unsafeCommandDisposition, 'NOT_EXECUTED_UNSAFE');
+  const available = await probeSystemAgenticSeatbeltCapability({ runtimeRoot: root, backendPresent: true });
+  assert.equal(available.status, 'UNSUPPORTED');
+  assert.equal(available.executionEligible, false);
 });
 
 test('plan is deterministic and runner executes without shell', async () => {
