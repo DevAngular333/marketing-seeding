@@ -198,6 +198,56 @@ test("expired bootstrap schedule renews exact authority without mutating histori
   assert.equal(after.executionRequests.filter((item) => item.jobId === renewed.postId && item.request?.dryRun !== true).length, 2);
 });
 
+test("terminal bootstrap authorization renews from high-level input when the candidate never crossed dispatch", async (t) => {
+  const { service, productRepo, now } = await fixture(t);
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(first.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  await service.store.mutate("test", "terminalize_bootstrap_authorization_without_submission", (state) => {
+    const authorization = state.campaignAuthorizations.find((item) => item.id === first.authorizationId);
+    authorization.status = "expired";
+    authorization.expiredAt = now.toISOString();
+    const post = state.posts.find((item) => item.id === first.postId);
+    post.status = "blocked";
+    post.executionState = null;
+    post.authorizationDecision = { evaluatedAt: now.toISOString(), allowed: false, reasons: ["campaign_authorization_expired"] };
+    state.executionRequests = state.executionRequests.filter((item) => item.jobId !== post.id);
+    state.executionLeases = state.executionLeases.filter((item) => item.jobId !== post.id);
+    state.oneTimeExecutionWindows = state.oneTimeExecutionWindows.filter((item) => item.jobId !== post.id);
+    state.liveExecutionGrants = state.liveExecutionGrants.filter((item) => item.jobId !== post.id);
+    state.executionReceipts = state.executionReceipts.filter((item) => item.jobId !== post.id);
+    state.publicationAttempts = state.publicationAttempts.filter((item) => item.postId !== post.id);
+  });
+
+  const renewed = await service.bootstrapAutonomousCampaign(brief(productRepo, new Date()));
+  assert.equal(renewed.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  assert.notEqual(renewed.authorizationId, first.authorizationId);
+  assert.notEqual(renewed.executionId, first.executionId);
+  const after = await service.snapshot();
+  const historical = after.campaignAuthorizations.find((item) => item.id === first.authorizationId);
+  assert.equal(historical.status, "expired");
+  const post = after.posts.find((item) => item.id === first.postId);
+  assert.equal(post.campaignAuthorizationId, renewed.authorizationId);
+  assert.equal(after.executionRequests.filter((item) => item.jobId === post.id && item.request?.dryRun !== true).length, 1);
+});
+
+test("terminal bootstrap authorization cannot renew a candidate with durable execution history", async (t) => {
+  const { service, productRepo, now } = await fixture(t);
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(first.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  await service.store.mutate("test", "terminalize_bootstrap_authorization_with_request_history", (state) => {
+    const authorization = state.campaignAuthorizations.find((item) => item.id === first.authorizationId);
+    authorization.status = "expired";
+    const post = state.posts.find((item) => item.id === first.postId);
+    post.status = "blocked";
+  });
+  const result = await service.bootstrapAutonomousCampaign(brief(productRepo, new Date(now.getTime() + 60_000)));
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.code, "HISTORICAL_AUTHORIZATION_NOT_REUSED");
+  const after = await service.snapshot();
+  assert.equal(after.campaignAuthorizations.filter((item) => item.campaignId === first.campaignId).length, 1);
+  assert.equal(after.executionRequests.filter((item) => item.executionId === first.executionId).length, 1);
+});
+
 test("bootstrap surfaces immutable historical UNKNOWN as a content identity blocker", async (t) => {
   const { service, productRepo, now } = await fixture(t);
   const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));

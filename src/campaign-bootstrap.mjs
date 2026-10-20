@@ -135,8 +135,9 @@ export function deriveBootstrapSchedule({ now = new Date(), validFrom, validUnti
   };
 }
 
-export function deriveBootstrapAuthorizationId({ campaignId, contentIdentity, scheduleIdentity, authorizationReference } = {}) {
-  return `campaign-auth-bootstrap-${digest({ campaignId, contentIdentity, scheduleIdentity, authorizationReference }).slice(0, 32)}`;
+export function deriveBootstrapAuthorizationId({ campaignId, contentIdentity, scheduleIdentity, authorizationReference, renewalSequence = 0 } = {}) {
+  const sequence = Number.isInteger(Number(renewalSequence)) && Number(renewalSequence) > 0 ? Number(renewalSequence) : 0;
+  return `campaign-auth-bootstrap-${digest({ campaignId, contentIdentity, scheduleIdentity, authorizationReference, renewalSequence: sequence }).slice(0, 32)}`;
 }
 
 export function deriveBootstrapTemplateId({ campaignId, productIntelligenceHash, platform = "linkedin" } = {}) {

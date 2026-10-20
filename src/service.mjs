@@ -2962,7 +2962,7 @@ export class SeedingService {
     const contentCandidate = candidatesForContent[0];
     if (!contentCandidate) throw new Error("Autonomous bootstrap could not derive a LinkedIn content candidate");
     const contentHash = campaignContentHash(contentCandidate.content);
-    const authorizationId = deriveBootstrapAuthorizationId({
+    let authorizationId = deriveBootstrapAuthorizationId({
       campaignId: identity.campaignId,
       contentIdentity: contentCandidate.contentIdentity,
       scheduleIdentity: schedule.identity,
@@ -2971,24 +2971,103 @@ export class SeedingService {
     let authorization = (state.campaignAuthorizations || []).find((item) => item.id === authorizationId) || null;
     if (authorization) {
       if (authorization.status !== "active") {
-        return {
-          status: "BLOCKED",
-          code: "HISTORICAL_AUTHORIZATION_NOT_REUSED",
-          campaignId: identity.campaignId,
-          authorizationId,
-          blockers: [{ code: "HISTORICAL_AUTHORIZATION_NOT_REUSED", classification: "STATE_BLOCKER", message: "A prior authorization with this identity is terminal and cannot be revived" }],
-          externalSideEffects: false,
-          authoritySideEffects: false
-        };
+        // A terminal authorization is immutable.  A bounded bootstrap may
+        // derive a new authorization only when the exact candidate post has
+        // never crossed the dispatch/publication boundary.  This lets a
+        // standing campaign recover after an operator or scheduler terminal
+        // event without reviving the old authority or replaying an uncertain
+        // submission.
+        const candidatePosts = (state.posts || []).filter((item) =>
+          item.campaignId === identity.campaignId &&
+          item.contentIdentity === contentCandidate.contentIdentity &&
+          item.targetId === target.id
+        );
+        const unsafeCandidate = candidatePosts.find((candidatePost) => {
+          if (unresolvedSubmission(state, candidatePost)) return true;
+          if (["publishing", "processing", UNKNOWN_POST_STATUS, "published"].includes(candidatePost.status)) return true;
+          if ((state.executionRequests || []).some((item) => item.jobId === candidatePost.id && (
+            ["REQUEST_READY", "EXECUTING", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state) ||
+            ["SUBMIT_SENT", "UNKNOWN", "CONFIRMED"].includes(item.submitState)
+          ))) return true;
+          if ((state.executionReceipts || []).some((item) => item.jobId === candidatePost.id &&
+            ["SUBMIT_SENT", "UNKNOWN", "CONFIRMED"].includes(item.receipt?.submitState))) return true;
+          return (state.publicationAttempts || []).some((item) => item.postId === candidatePost.id);
+        });
+        if (unsafeCandidate) {
+          return {
+            status: "BLOCKED",
+            code: "HISTORICAL_AUTHORIZATION_NOT_REUSED",
+            campaignId: identity.campaignId,
+            authorizationId,
+            blockers: [{
+              code: "HISTORICAL_AUTHORIZATION_NOT_REUSED",
+              classification: "STATE_BLOCKER",
+              message: "A prior authorization is terminal and the exact candidate has submission or publication history; derive a separately authorized content identity",
+              postId: unsafeCandidate.id
+            }],
+            externalSideEffects: false,
+            authoritySideEffects: false
+          };
+        }
+        const renewalObservedAt = input.now || new Date();
+        const renewedSchedule = deriveBootstrapSchedule({
+          now: renewalObservedAt,
+          validFrom: input.validFrom,
+          validUntil: input.validUntil,
+          validityHours: input.validityHours === undefined ? 24 : input.validityHours,
+          timezone: input.timezone || "UTC",
+          quota: input.quota === undefined ? 1 : input.quota,
+          concurrency: input.concurrency === undefined ? 1 : input.concurrency
+        });
+        const scheduleResult = await this.store.mutate(actor, "autonomous_campaign_schedule_renewed", (nextState) => {
+          const currentCampaign = requireItem(nextState.campaigns, identity.campaignId, "Campaign");
+          const currentSchedule = currentCampaign.autonomousBootstrap?.schedule;
+          // Preserve a concurrent renewal if another bootstrap committed it
+          // first; never roll the campaign schedule backwards.
+          if (currentSchedule?.identity && currentSchedule.identity !== schedule.identity) {
+            const currentUntil = Date.parse(currentSchedule.validUntil || "");
+            const requestedUntil = Date.parse(renewedSchedule.validUntil || "");
+            if (Number.isFinite(currentUntil) && currentUntil >= requestedUntil) return currentSchedule;
+          }
+          currentCampaign.autonomousBootstrap ||= {};
+          currentCampaign.autonomousBootstrap.schedule = structuredClone(renewedSchedule);
+          currentCampaign.updatedAt = nowIso();
+          return currentCampaign.autonomousBootstrap.schedule;
+        });
+        schedule = structuredClone(scheduleResult.result || renewedSchedule);
+        state = await this.store.read();
+        const activeReplacement = (state.campaignAuthorizations || []).find((item) =>
+          item.status === "active" && item.campaignId === identity.campaignId &&
+          item.standingAuthorizationReference === identity.authorizationReference &&
+          item.validFrom === schedule.validFrom && item.validUntil === schedule.validUntil &&
+          item.contentBoundary?.contentHashes?.length === 1 && item.contentBoundary.contentHashes[0] === contentHash &&
+          item.destinations?.length === 1 && item.destinations[0].targetId === target.id &&
+          item.destinations[0].accountId === account.accountId && item.destinations[0].profileId === account.profileId
+        );
+        if (activeReplacement) {
+          authorizationId = activeReplacement.id;
+          authorization = activeReplacement;
+        } else {
+          authorizationId = deriveBootstrapAuthorizationId({
+            campaignId: identity.campaignId,
+            contentIdentity: contentCandidate.contentIdentity,
+            scheduleIdentity: schedule.identity,
+            authorizationReference: identity.authorizationReference,
+            renewalSequence: (state.campaignAuthorizations || []).filter((item) => item.campaignId === identity.campaignId).length
+          });
+          authorization = (state.campaignAuthorizations || []).find((item) => item.id === authorizationId) || null;
+          if (authorization?.status !== "active") authorization = null;
+        }
       }
-      if (authorization.binding !== campaignAuthorizationFingerprint(authorization) ||
+      if (authorization && (authorization.binding !== campaignAuthorizationFingerprint(authorization) ||
         authorization.campaignBinding !== campaignScopeFingerprint(campaign) ||
         authorization.contentBoundary?.contentHashes?.length !== 1 || authorization.contentBoundary.contentHashes[0] !== contentHash ||
         authorization.destinations?.length !== 1 || authorization.destinations[0].targetId !== target.id ||
-        authorization.destinations[0].accountId !== account.accountId || authorization.destinations[0].profileId !== account.profileId) {
+        authorization.destinations[0].accountId !== account.accountId || authorization.destinations[0].profileId !== account.profileId)) {
         throw new Error("Existing bootstrap authorization conflicts with the derived exact scope");
       }
-    } else {
+    }
+    if (!authorization) {
       authorization = await this.authorizeCampaign(identity.campaignId, {
         id: authorizationId,
         validFrom: schedule.validFrom,
