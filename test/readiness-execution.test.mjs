@@ -143,6 +143,31 @@ test("queued request refreshes stale readiness without changing execution identi
   assert.equal((await service.readyExecutionRequests()).length, 0); // Readiness does not mint live permission.
 });
 
+test("successful readiness resets the consecutive retry budget before the next freshness epoch", async () => {
+  let calls = 0;
+  const { service, post } = await fixture({
+    readinessAgeMs: 10_000,
+    readinessTtlMs: 5_000,
+    maxReadinessAttempts: 1,
+    provider: { async checkReadiness() { calls += 1; return ready(); } }
+  });
+  let state = await service.snapshot();
+  assert.equal(calls, 1);
+  assert.equal(state.posts.find((item) => item.id === post.id).readinessAttempts, 0);
+
+  await service.store.mutate("test", "expire_readiness_after_successful_epoch", (current) => {
+    const target = current.targets.find((item) => item.id === post.targetId);
+    target.readiness.checkedAt = new Date(Date.now() - 10_000).toISOString();
+    target.readiness.expiresAt = new Date(Date.now() - 1_000).toISOString();
+  });
+  await service.queueDueCampaignJobs("test-scheduler");
+  state = await service.snapshot();
+  assert.equal(calls, 2);
+  assert.equal(state.posts.find((item) => item.id === post.id).readinessState, "READY");
+  assert.equal(state.posts.find((item) => item.id === post.id).readinessAttempts, 0);
+  assert.equal(state.posts.find((item) => item.id === post.id).readinessReasonCode, "test_ready");
+});
+
 test("retryable readiness failure is bounded and scheduler reevaluates automatically", async () => {
   let calls = 0;
   const { service, post } = await fixture({ provider: { async checkReadiness() {

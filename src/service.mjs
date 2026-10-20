@@ -4528,7 +4528,13 @@ export class SeedingService {
       }
       post.readinessState = stateName;
       post.readinessReasonCode = readiness.reasonCode;
-      post.readinessAttempts = Math.max(Number(post.readinessAttempts || 0), attempt);
+      // Readiness attempts are a bounded retry budget for consecutive
+      // provider failures.  A successful observation starts a new freshness
+      // epoch; carrying failures from older READY epochs eventually blocks a
+      // healthy target even though the provider is currently available.
+      post.readinessAttempts = stateName === "READY"
+        ? 0
+        : Math.max(Number(post.readinessAttempts || 0), attempt);
       post.readinessRetryAt = null;
       if (stateName !== "READY") {
         const retryAllowed = readiness.retryable === true && post.readinessAttempts < this.maxReadinessAttempts;
