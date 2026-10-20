@@ -30,12 +30,17 @@ function normalizeDuplicateContent(value) {
  * a duplicate fence and fails closed.
  */
 function hasPossibleExternalSubmission(item, state) {
-  if (!item || item.executionState !== "CANCELLED_PRE_SUBMIT") return true;
+  if (!item) return true;
   if (item.publicationUrl || ["published", "publishing", "processing", "submit_result_unknown"].includes(String(item.status || "").toLowerCase())) return true;
   const requests = (state.executionRequests || []).filter((request) => request.jobId === item.id);
   if (requests.some((request) => ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(request.state) || ["SUBMIT_SENT", "UNKNOWN", "CONFIRMED"].includes(request.submitState))) return true;
   if ((state.submissionUncertainties || []).some((uncertainty) => uncertainty.status === "UNKNOWN" && (uncertainty.jobId === item.id || uncertainty.idempotencyKeys?.includes(item.idempotencyKey)))) return true;
-  return false;
+  // A draft/blocked/approved item with no request, receipt, or uncertainty has
+  // never crossed the dispatch boundary. It is safe to leave it out of the
+  // account duplicate fence; queued/request-ready work remains fenced below.
+  if (["draft", "blocked", "needs_review", "approved"].includes(String(item.status || "").toLowerCase()) && requests.length === 0 && item.executionState !== "CANCELLED_PRE_SUBMIT") return false;
+  if (item.executionState === "CANCELLED_PRE_SUBMIT") return false;
+  return true;
 }
 
 function normalizeStoryPolicy(input, mode) {

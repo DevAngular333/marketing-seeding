@@ -181,6 +181,42 @@ test("pre-submit cancellation does not block a new exact authorization for the s
   assert.equal(decision.reasons.includes("duplicate_content_for_account"), false);
 });
 
+test("blocked pre-dispatch draft without an execution request does not block a new exact authorization", async () => {
+  const { service, campaign, targets, authorization } = await campaignFixture({ channels: ["linkedin"] });
+  const copy = "A harmless bootstrap copy that never reached dispatch.";
+  await authorization([copy], {
+    id: "blocked-bootstrap-auth",
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "blocked-bootstrap-regression"
+  });
+  const first = await service.createPost({ campaignId: campaign.id, targetId: targets[0].id, content: copy, audience: "public" }, "producer");
+  await service.store.mutate("fixture", "mark_blocked_pre_dispatch_without_request", (state) => {
+    const post = state.posts.find((item) => item.id === first.id);
+    post.status = "blocked";
+    post.executionState = undefined;
+    state.executionRequests = (state.executionRequests || []).filter((item) => item.jobId !== post.id);
+  });
+
+  const secondAuth = await authorization([copy], {
+    id: "blocked-bootstrap-fresh-auth",
+    executionMode: "standing_autonomous",
+    standingAuthorizationReference: "blocked-bootstrap-fresh-regression"
+  });
+  await service.store.mutate("fixture", "bind_blocked_pre_dispatch_fresh_authorization", (state) => {
+    const post = state.posts.find((item) => item.id === first.id);
+    post.id = "blocked-bootstrap-fresh-post";
+    post.campaignAuthorizationId = secondAuth.id;
+    post.campaignAuthorizationBinding = secondAuth.binding;
+    post.idempotencyKey = "blocked-bootstrap-fresh-idempotency";
+    post.status = "draft";
+    delete post.executionState;
+  });
+  const state = await service.snapshot();
+  const fresh = state.posts.find((item) => item.id === "blocked-bootstrap-fresh-post");
+  const decision = evaluateCampaignAuthorization(fresh, state);
+  assert.equal(decision.reasons.includes("duplicate_content_for_account"), false);
+});
+
 test("same-platform/account copy duplicates are blocked across different targets", async () => {
   const { service, campaign, targets, authorization } = await campaignFixture();
   const secondTarget = await service.createTarget({
