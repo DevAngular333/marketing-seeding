@@ -1095,6 +1095,34 @@ export function buildMetricCollectionPlan(state = {}, { now = new Date(), dueOnl
     });
 }
 
+/**
+ * Build a bounded Mission Control projection of post-relative metric
+ * checkpoints. This is deliberately read-only: it does not schedule a
+ * collector, create authority, or mutate canonical state.
+ */
+export function projectMetricCheckpointSummary(posts = [], snapshots = [], collectorRuns = [], now = new Date()) {
+  const publishedPosts = (Array.isArray(posts) ? posts : []).filter((post) => post?.status === "published");
+  const requestedNow = now instanceof Date ? now.getTime() : Date.parse(String(now || ""));
+  const observedNow = Number.isFinite(requestedNow) ? new Date(requestedNow) : new Date();
+  const summary = {
+    generatedAt: observedNow.toISOString(),
+    totalPublishedPosts: publishedPosts.length,
+    checkpoints: Object.fromEntries(METRIC_CHECKPOINTS.map(({ key }) => [key, {
+      counts: { pending: 0, due: 0, missing: 0, observed: 0, unknown: 0, unsupported: 0 },
+      postIds: { pending: [], due: [], missing: [], observed: [], unknown: [], unsupported: [] }
+    }]))
+  };
+  for (const post of publishedPosts) {
+    for (const checkpoint of buildMetricCheckpoints(post, snapshots, collectorRuns, observedNow)) {
+      const bucket = summary.checkpoints[checkpoint.key];
+      if (!bucket || !Object.prototype.hasOwnProperty.call(bucket.counts, checkpoint.status)) continue;
+      bucket.counts[checkpoint.status] += 1;
+      if (bucket.postIds[checkpoint.status].length < 100) bucket.postIds[checkpoint.status].push(String(post.id));
+    }
+  }
+  return summary;
+}
+
 function metricReadingsMatchSnapshot(snapshot, readings) {
   if (!snapshot) return false;
   return METRIC_FIELDS.every((field) => {
@@ -6334,6 +6362,7 @@ export class SeedingService {
     const trafficPulse = state.posts
       .filter((post) => post.status === "published")
       .map((post) => buildTrafficPulse(post, state.metricSnapshots, state.interactions, new Date(), state.collectorRuns));
+    const metricCheckpointSummary = projectMetricCheckpointSummary(state.posts, state.metricSnapshots, state.collectorRuns, new Date());
     const browserWindowMinutes = 24 * 60;
     const browserWindowStartedAt = Date.now() - browserWindowMinutes * 60 * 1000;
     const publishedPosts = state.posts.filter((post) => post.status === "published" && post.publicationUrl);
@@ -6431,6 +6460,7 @@ export class SeedingService {
       latestMetrics: Object.fromEntries(latestMetrics),
       latestMetricSnapshots: newest([...latestMetrics.values()], "capturedAt"),
       trafficPulse,
+      metricCheckpointSummary,
       browserCoverage,
       keywordPerformance,
       recentInteractions: newest(state.interactions, "capturedAt"),

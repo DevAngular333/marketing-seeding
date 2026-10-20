@@ -1,0 +1,3 @@
+- No official provider credential or live metric acceptance evidence was available in this local lane.
+- Exact 1h/24h/72h provider collection cadence still requires elapsed runtime proof.
+- The projection remains read-only and advisory by design.

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import path from "node:path";
 import os from "node:os";
 import { JsonStore } from "../src/store.mjs";
-import { SeedingService, buildMetricCheckpoints, buildMetricCollectionPlan, buildTrafficPulse, normalizeKeywords, projectExecutionRuntime } from "../src/service.mjs";
+import { SeedingService, buildMetricCheckpoints, buildMetricCollectionPlan, buildTrafficPulse, normalizeKeywords, projectExecutionRuntime, projectMetricCheckpointSummary } from "../src/service.mjs";
 import { campaignContentHash } from "../src/campaign-authorization.mjs";
 import { readinessBinding } from "../src/readiness.mjs";
 import { buildProductIntelligence } from "../src/product-intelligence.mjs";
@@ -2062,6 +2062,21 @@ test("metric collection plan does not retry unsupported manual-only checkpoints"
   assert.equal(plan.reason, "checkpoint_not_due");
   assert.deepEqual(plan.dueCheckpoints, []);
   assert.equal(plan.checkpoints[0].status, "unsupported");
+});
+
+test("mission control checkpoint summary aggregates bounded statuses without mutating inputs", () => {
+  const posts = [
+    { id: "published", status: "published", publishedAt: "2026-10-06T00:00:00.000Z" },
+    { id: "draft", status: "draft", publishedAt: "2026-10-06T00:00:00.000Z" }
+  ];
+  const runs = [{ id: "unknown", postId: "published", status: "unknown", at: "2026-10-06T01:05:00.000Z", reason: "not_authenticated" }];
+  const summary = projectMetricCheckpointSummary(posts, [], runs, new Date("2026-10-06T02:00:00.000Z"));
+  assert.equal(summary.totalPublishedPosts, 1);
+  assert.deepEqual(summary.checkpoints["1h"].counts, { pending: 0, due: 0, missing: 0, observed: 0, unknown: 1, unsupported: 0 });
+  assert.deepEqual(summary.checkpoints["1h"].postIds.unknown, ["published"]);
+  assert.equal(summary.checkpoints["24h"].counts.pending, 1);
+  assert.equal(summary.checkpoints["72h"].counts.pending, 1);
+  assert.equal(posts[0].status, "published");
 });
 
 test("metric collection plan remains backward compatible when dueOnly is disabled", () => {

@@ -1,0 +1,3 @@
+- Exported `projectMetricCheckpointSummary` from `src/service.mjs`.
+- Exposed `dashboard().metricCheckpointSummary` using the existing checkpoint projection.
+- Added focused regression coverage in `test/service.test.mjs`.
