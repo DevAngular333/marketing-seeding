@@ -167,6 +167,74 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
   }
 }
 
+/**
+ * Mint the deliberately narrow certification used for the first controlled
+ * LinkedIn execution.  This is not a promotion of reversible evidence to a
+ * general irreversible certification: the result is bound to one execution
+ * and expires shortly after it is created.  Callers must opt in explicitly;
+ * production configuration should keep this disabled unless the campaign is
+ * the reviewed bootstrap lane.
+ */
+export function createBootstrapTransportCertification({
+  sourceCertification,
+  executionBinding,
+  evidenceReference,
+  expiresAt,
+  allowBootstrap = false,
+  now = Date.now(),
+  maxTtlMs = 24 * 60 * 60 * 1000
+} = {}) {
+  if (allowBootstrap !== true) {
+    throw Object.assign(new Error("Bootstrap transport certification is disabled"), { code: "BOOTSTRAP_CERTIFICATION_DISABLED" });
+  }
+  const source = sourceCertification && typeof sourceCertification === "object" ? sourceCertification : null;
+  if (!source || source.certified !== true || String(source.provider || "") !== "orca" ||
+      !String(source.transport || "").trim() || !String(source.providerVersion || "").trim() ||
+      !String(source.evidenceReference || "").trim()) {
+    throw Object.assign(new Error("A certified ORCA reversible transport record is required"), { code: "BOOTSTRAP_SOURCE_NOT_CERTIFIED" });
+  }
+  const sourceScope = String(source.certificationScope || "");
+  if (!sourceScope || sourceScope === "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT" || sourceScope === "IRREVERSIBLE_LINKEDIN_SUBMIT" ||
+      !/(REVERSIBLE|CONTROL_ACTIVATION)/i.test(sourceScope)) {
+    throw Object.assign(new Error("Bootstrap source must be reversible control-activation evidence"), { code: "BOOTSTRAP_SOURCE_SCOPE_INVALID" });
+  }
+  const binding = executionBinding && typeof executionBinding === "object" ? { ...executionBinding } : null;
+  if (!binding || String(binding.platform || "") !== "linkedin") {
+    throw Object.assign(new Error("Bootstrap certification requires a LinkedIn execution binding"), { code: "BOOTSTRAP_BINDING_INVALID" });
+  }
+  const required = ["executionId", "campaignId", "jobId", "accountId", "profileId", "targetId", "targetUrl", "authorizationId", "authorizationBinding", "contentSha256"];
+  if (required.some((key) => !String(binding[key] || "").trim())) {
+    throw Object.assign(new Error("Bootstrap certification execution binding is incomplete"), { code: "BOOTSTRAP_BINDING_INCOMPLETE" });
+  }
+  binding.visibility = String(binding.visibility || "PUBLIC").toUpperCase();
+  binding.mediaSha256 = Array.isArray(binding.mediaSha256) ? [...binding.mediaSha256].map(String).sort() : [];
+  const expiry = Date.parse(String(expiresAt || ""));
+  const current = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+  if (!Number.isFinite(expiry) || expiry <= current || expiry - current > Math.max(1, Number(maxTtlMs) || 0)) {
+    throw Object.assign(new Error("Bootstrap transport certification expiry is invalid"), { code: "BOOTSTRAP_CERTIFICATION_EXPIRY_INVALID" });
+  }
+  const reference = String(evidenceReference || source.evidenceReference || "").trim();
+  if (!reference || /[\r\n]/.test(reference)) {
+    throw Object.assign(new Error("Bootstrap transport certification evidence reference is required"), { code: "BOOTSTRAP_EVIDENCE_REFERENCE_REQUIRED" });
+  }
+  return {
+    transport: String(source.transport),
+    provider: "orca",
+    providerVersion: String(source.providerVersion),
+    platform: "linkedin",
+    certified: true,
+    irreversibleSubmit: true,
+    bootstrap: true,
+    certificationScope: "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT",
+    evidenceReference: reference.slice(0, 240),
+    expiresAt: new Date(expiry).toISOString(),
+    executionBinding: binding
+  };
+}
+
+// Naming used by bootstrap orchestration callers; keep one implementation.
+export const deriveBootstrapTransportCertification = createBootstrapTransportCertification;
+
 export function selectCertifiedTransport({ transports = [], certifications = [], platform = "linkedin", runtime = {}, requireIrreversibleSubmit = false, executionBinding = null } = {}) {
   // A transport identity must have one unambiguous certification policy. Do
   // not let array ordering silently select the last record when configuration

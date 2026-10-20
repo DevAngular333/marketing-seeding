@@ -8,6 +8,7 @@ import {
   OrcaPointerTransport,
   assertValidatedTransport,
   assertTransportCannotChangeAfterIntent,
+  createBootstrapTransportCertification,
   selectCertifiedTransport,
   transportReceipt
 } from "../src/browser-interaction-transport.mjs";
@@ -197,6 +198,34 @@ test("bootstrap certification requires an exact live execution binding and evide
   assert.equal(selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: binding, certifications: [cert] }), transport);
   assert.throws(() => selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: { ...binding, contentSha256: "b".repeat(64) }, certifications: [cert] }), /No certified browser interaction transport/);
   assert.throws(() => selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: binding, certifications: [{ ...cert, expiresAt: new Date(Date.now() - 1).toISOString() }] }), /No certified browser interaction transport/);
+});
+
+test("bootstrap certification is derived only when explicitly enabled and stays execution-scoped", () => {
+  const binding = {
+    platform: "linkedin", executionId: "exec-derive", campaignId: "campaign-1", jobId: "job-1",
+    accountId: "linkedin_primary", profileId: "profile-1", targetId: "target-1", targetUrl: "https://www.linkedin.com/feed/",
+    authorizationId: "auth-1", authorizationBinding: "auth-binding", contentSha256: "a".repeat(64), mediaSha256: [], visibility: "public"
+  };
+  const source = { transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.230", certified: true,
+    certificationScope: "LIVE_REAL_WEBSITE_REVERSIBLE_CONTROL_ACTIVATION", evidenceReference: "reversible-proof" };
+  assert.throws(() => createBootstrapTransportCertification({ sourceCertification: source, executionBinding: binding,
+    evidenceReference: "bootstrap-proof", expiresAt: new Date(Date.now() + 60_000).toISOString() }), /disabled/);
+  const cert = createBootstrapTransportCertification({ sourceCertification: source, executionBinding: binding,
+    evidenceReference: "bootstrap-proof", expiresAt: new Date(Date.now() + 60_000).toISOString(), allowBootstrap: true });
+  assert.equal(cert.certificationScope, "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT");
+  assert.equal(cert.bootstrap, true);
+  assert.equal(cert.irreversibleSubmit, true);
+  assert.equal(cert.executionBinding.executionId, "exec-derive");
+  assert.equal(cert.executionBinding.visibility, "PUBLIC");
+  assert.deepEqual(cert.executionBinding.mediaSha256, []);
+});
+
+test("bootstrap certification derivation rejects stale expiry, incomplete binding, and irreversible source", () => {
+  const binding = { platform: "linkedin", executionId: "e", campaignId: "c", jobId: "j", accountId: "a", profileId: "p", targetId: "t", targetUrl: "https://www.linkedin.com/feed/", authorizationId: "auth", authorizationBinding: "bind", contentSha256: "a".repeat(64) };
+  const source = { transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.230", certified: true, certificationScope: "LOCAL_REAL_BROWSER_FIXTURE_CONTROL_ACTIVATION_ONLY", evidenceReference: "reversible-proof" };
+  assert.throws(() => createBootstrapTransportCertification({ allowBootstrap: true, sourceCertification: source, executionBinding: { ...binding, targetId: "" }, expiresAt: new Date(Date.now() + 1000).toISOString() }), /incomplete/);
+  assert.throws(() => createBootstrapTransportCertification({ allowBootstrap: true, sourceCertification: source, executionBinding: binding, expiresAt: new Date(Date.now() - 1).toISOString() }), /expiry/);
+  assert.throws(() => createBootstrapTransportCertification({ allowBootstrap: true, sourceCertification: { ...source, certificationScope: "IRREVERSIBLE_LINKEDIN_SUBMIT" }, executionBinding: binding, expiresAt: new Date(Date.now() + 1000).toISOString() }), /reversible/);
 });
 
 test("bootstrap certification cannot be used without exact execution scope", () => {
