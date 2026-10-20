@@ -1,4 +1,36 @@
-# Current State (latest verified 2026-10-20; 4f71083 continuation audit)
+# Current State (latest verified 2026-10-20; bc49a72 continuation release gate)
+
+## Continuation release gate — 2026-10-20g
+
+- HEAD is `bc49a72` on `integration/autonomous-build`, pushed to
+  `origin/integration/autonomous-build`; this commit contains journal-only
+  reconciliation after the fresh authority intake.
+- Fresh `npm test`: **538 total, 536 passed, 0 failed, 2 skipped**. The two
+  skips are existing host ACL/evidence-environment checks. `git diff --check`
+  and blocker/milestone JSON parsing pass.
+- Read-only Design OS Studio intake remains insufficient for exact execution:
+  the scope supplies campaign intent, public LinkedIn action, audience intent,
+  one-post quota, single cadence, concurrency one, 24-hour intent and a
+  standing reference, but no exact campaign/productRepo, target ID+URL,
+  account ID/profile UUID, approved LinkedIn bytes/content hash, media
+  declaration, canonical audience serialization, UTC bounds or schedule
+  fields. No values were inferred from historical campaigns or unrelated
+  channel drafts.
+- Canonical runtime remains schema 8/revision 194 with SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`;
+  active authorization/window/grant/lease counts remain `0/0/0/0`;
+  four historical `UNKNOWN` executions and zero published posts remain
+  unchanged.
+- ORCA remains pinned and connected at `1.4.229`. Accessibility and pointer
+  transports remain certified only for reversible control activation (10/10
+  local fixture trials each, plus reversible LinkedIn Cancel evidence).
+  Irreversible LinkedIn Post activation, acceptance and independent
+  publication remain unproven; no browser command was issued in this gate.
+- Result remains `FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS` and
+  `LIVE_PROOF_BLOCKED`. No authority, execution ID, window, grant, lease,
+  submit intent, browser input, social mutation, credential/session mutation
+  or historical UNKNOWN mutation occurred.
+- Evidence: `plans/autonomous-build/reports/master-continuation-release-gate-20261020g.md`.
 
 ## Fresh authority intake recheck (2026-10-20f)
 

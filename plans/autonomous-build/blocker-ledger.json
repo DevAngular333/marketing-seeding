@@ -99,12 +99,12 @@
     }
   ],
   "last_audit": {
-    "at": "2026-10-19T22:57:34Z",
-    "head": "4f71083",
+    "at": "2026-10-20T00:00:00Z",
+    "head": "bc49a72",
     "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
     "externalSideEffects": false,
     "canonicalRuntimeMutated": false,
     "historicalUnknownMutated": false,
-    "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020e.md"
+    "report": "plans/autonomous-build/reports/master-continuation-release-gate-20261020g.md"
   }
 }

@@ -1,5 +1,29 @@
 # Autonomous Build — Current Release Report
 
+## Continuation release gate — 2026-10-20g
+
+- HEAD is `bc49a72` on `integration/autonomous-build`, pushed to
+  `origin/integration/autonomous-build`.
+- Fresh full gate: `npm test` **538 total, 536 passed, 0 failed, 2 skipped**;
+  `git diff --check` and journal JSON parsing pass.
+- The Design OS Studio scope still lacks exact campaign/productRepo, target
+  ID+URL, account ID/profile UUID, approved LinkedIn payload bytes/content
+  hash, media declaration, canonical audience, UTC bounds and schedule
+  fields. Historical identity/content bindings and unrelated channel drafts
+  were not reused.
+- Canonical state remains schema 8/revision 194, SHA-256
+  `5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6`;
+  active authorization/window/grant/lease counts are `0/0/0/0`; four
+  historical UNKNOWN executions and published/social mutation counts remain
+  unchanged at 4 and 0.
+- ORCA `1.4.229` remains connected. Reversible accessibility/pointer
+  activation is locally certified; irreversible LinkedIn submit remains
+  uncertified. No browser command, authority creation or external side
+  effect occurred.
+- Current disposition: `FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS`;
+  live proof: `LIVE_PROOF_BLOCKED`.
+- Release evidence: `plans/autonomous-build/reports/master-continuation-release-gate-20261020g.md`.
+
 ## Fresh continuation overlay — 2026-10-20f
 
 - Current HEAD is `d354b5f` on `integration/autonomous-build`, pushed to
