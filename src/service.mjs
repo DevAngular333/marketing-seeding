@@ -2208,7 +2208,7 @@ export class SeedingService {
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
     if (!account || account.status !== "enabled" || account.profileId !== target.profileId) throw new Error("Standing delegation requires an exact enabled account/profile binding");
     const now = new Date();
-    const existing = (snapshot.oneTimeExecutionWindows || []).filter((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, now)));
+    const existing = (snapshot.oneTimeExecutionWindows || []).filter((item) => item.jobId === post.id && item.campaignAuthorizationId === authorization.id && item.authorizationFingerprint === authorization.binding && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, now)));
     if (existing.length > 1) throw new Error("Multiple active standing execution windows match this job");
     if (existing.length === 1) {
       const current = existing[0];
@@ -2256,7 +2256,7 @@ export class SeedingService {
       });
       const current = currentBinding.post;
       if (unresolvedSubmission(state, current)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
-      const active = (state.oneTimeExecutionWindows || []).find((item) => item.jobId === postId && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
+      const active = (state.oneTimeExecutionWindows || []).find((item) => item.jobId === postId && item.campaignAuthorizationId === currentBinding.authorization.id && item.authorizationFingerprint === currentBinding.authorization.binding && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
       if (active) {
         if (active.campaignId !== current.campaignId || active.campaignAuthorizationId !== currentBinding.authorization.id ||
             active.authorizationFingerprint !== currentBinding.authorization.binding || active.binding !== oneTimeExecutionWindowFingerprint(active) ||
@@ -2293,7 +2293,7 @@ export class SeedingService {
     }
     const target = requireItem(snapshot.targets, post.targetId, "Target");
     const account = (snapshot.executionAccounts || []).find((item) => item.id === executionAccountKey(target.channel, target.accountId));
-    const window = (snapshot.oneTimeExecutionWindows || []).find((item) => item.jobId === post.id && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
+    const window = (snapshot.oneTimeExecutionWindows || []).find((item) => item.jobId === post.id && item.campaignAuthorizationId === authorization.id && item.authorizationFingerprint === authorization.binding && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(item, new Date())));
     if (!window) throw new Error("Standing execution grant requires an active one-time window");
     if (window.campaignId !== post.campaignId || window.campaignAuthorizationId !== authorization.id ||
         window.jobId !== post.id || window.authorizationFingerprint !== authorization.binding ||
@@ -2301,7 +2301,7 @@ export class SeedingService {
         !oneTimeExecutionWindowInBounds(window, new Date())) {
       throw new Error("Standing execution grant window binding is stale");
     }
-    const pending = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
+    const pending = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id && item.request?.authorization?.authorizationId === authorization.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
     if (pending.length > 1) throw new Error("Multiple live executions are pending for standing delegation");
     if (!account || account.status !== "enabled" || account.profileId !== target.profileId) throw new Error("Standing execution grant requires an exact enabled account/profile binding");
     const now = new Date();
@@ -2347,7 +2347,7 @@ export class SeedingService {
         throw new Error("Standing execution grant requires a fresh healthy account/profile binding");
       }
       if (unresolvedSubmission(state, currentPost)) throw new Error("SUBMISSION_UNCERTAIN: standing delegation cannot cross an unresolved submission");
-      const currentRequest = (state.executionRequests || []).find((item) => item.jobId === postId && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
+      const currentRequest = (state.executionRequests || []).find((item) => item.jobId === postId && item.request?.authorization?.authorizationId === currentAuthorization.id && item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED" && item.request?.dryRun !== true);
       if (!currentRequest) throw new Error("Standing execution grant requires a pending live execution request");
       const requestMatches = currentRequest.executionId === expectedRequest?.executionId &&
         currentRequest.jobId === currentPost.id && currentRequest.campaignId === currentPost.campaignId &&
@@ -2374,7 +2374,7 @@ export class SeedingService {
           (currentWindow.status === "RESERVED" && currentWindow.reservedExecutionId !== currentRequest.executionId)) {
         throw new Error("Standing execution grant window binding is stale");
       }
-      const currentExisting = (state.liveExecutionGrants || []).find((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE");
+      const currentExisting = (state.liveExecutionGrants || []).find((item) => item.jobId === postId && item.campaignAuthorizationId === currentAuthorization.id && liveGrantEffectiveStatus(item) === "ACTIVE");
       if (currentExisting) {
         try {
           assertLiveGrantMatchesExecution(currentExisting, currentRequest.request, currentAuthorization, new Date(), { checkWindow: false });
@@ -2747,11 +2747,28 @@ export class SeedingService {
     const requestedProfileId = String(input.profileId || "").trim() || null;
     const snapshot = bootstrapState;
     const existingCampaign = snapshot.campaigns?.find((item) => item.id === identity.campaignId) || null;
-    // Once a deterministic campaign exists, its bounded schedule is part of
-    // the campaign's immutable bootstrap scope. Repeated calls reuse that
-    // schedule instead of sliding the window when the current minute changes.
-    if (existingCampaign?.autonomousBootstrap?.schedule?.identity) {
-      schedule = structuredClone(existingCampaign.autonomousBootstrap.schedule);
+    // Repeated calls within a valid bounded schedule are idempotent. Once that
+    // schedule has ended, renew only the campaign bootstrap schedule; all
+    // historical authorizations, windows, grants, and executions remain
+    // untouched and a new exact authorization identity is derived below.
+    const existingSchedule = existingCampaign?.autonomousBootstrap?.schedule;
+    const scheduleExpired = existingSchedule?.identity && Number.isFinite(Date.parse(existingSchedule.validUntil)) &&
+      Date.parse(existingSchedule.validUntil) <= new Date(input.now || new Date()).getTime();
+    if (existingSchedule?.identity && !scheduleExpired) {
+      schedule = structuredClone(existingSchedule);
+    } else if (existingCampaign && scheduleExpired) {
+      const renewed = await this.store.mutate(actor, "autonomous_campaign_schedule_renewed", (state) => {
+        const campaign = requireItem(state.campaigns, identity.campaignId, "Campaign");
+        const current = campaign.autonomousBootstrap?.schedule;
+        if (!current?.identity || (Number.isFinite(Date.parse(current.validUntil)) && Date.parse(current.validUntil) > new Date(input.now || new Date()).getTime())) {
+          return current || schedule;
+        }
+        campaign.autonomousBootstrap ||= {};
+        campaign.autonomousBootstrap.schedule = structuredClone(schedule);
+        campaign.updatedAt = nowIso();
+        return campaign.autonomousBootstrap.schedule;
+      });
+      schedule = structuredClone(renewed.result || schedule);
     }
     const configuredAccounts = (snapshot.executionAccounts || []).filter((account) => account?.platform === platform && account.status === "enabled")
       .filter((account) => !requestedAccountId || account.accountId === requestedAccountId)
@@ -2974,7 +2991,9 @@ export class SeedingService {
       profileId: account.profileId,
       targetId: currentTarget.id
     }, new Date(), this.readinessTtlMs);
-    const request = state.executionRequests.find((item) => item.jobId === currentPost.id && item.request?.dryRun !== true) || null;
+    const request = state.executionRequests
+      .filter((item) => item.jobId === currentPost.id && item.request?.dryRun !== true)
+      .sort((left, right) => (Number(right.attempt) || 0) - (Number(left.attempt) || 0) || String(right.createdAt || right.request?.createdAt || "").localeCompare(String(left.createdAt || left.request?.createdAt || "")))[0] || null;
     const window = request?.request?.oneTimeWindow?.windowId
       ? state.oneTimeExecutionWindows.find((item) => item.windowId === request.request.oneTimeWindow.windowId)
       : null;
@@ -4463,7 +4482,7 @@ export class SeedingService {
     }
     const eligibility = evaluateQueue(post, snapshot, new Date(), { mode: dryRun ? "dry_run" : "live", executionId: previous?.executionId || null });
     if (!eligibility.allowed) throw new Error(`Execution request blocked: ${eligibility.reasons.join(", ")}`);
-    if (!dryRun && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && eligibility.oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
+    if (!dryRun && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && previous?.request?.authorization?.authorizationId === authorization?.id && eligibility.oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
       throw new Error("Execution request's reserved one-time window is no longer valid");
     }
     if (!authorization) throw new Error("Execution request requires a campaign authorization");
@@ -4487,7 +4506,7 @@ export class SeedingService {
         if (previous.state !== "REQUEST_READY" && !(dryRun && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state))) throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
         if (Boolean(previous.request?.dryRun) !== dryRun) throw new Error("Execution request mode cannot be changed after creation");
       }
-      const reusePrevious = previous?.state === "REQUEST_READY" && Boolean(previous.request?.dryRun) === dryRun;
+      const reusePrevious = previous?.state === "REQUEST_READY" && Boolean(previous.request?.dryRun) === dryRun && (dryRun || previous.request?.authorization?.authorizationId === authorization.id);
       const executionId = reusePrevious ? previous.executionId : randomUUID();
       const attempt = reusePrevious ? previous.attempt : (previous?.attempt || 0) + 1;
       const currentAuthorization = requireItem(state.campaignAuthorizations || [], authorization.id, "Campaign authorization");
@@ -4495,7 +4514,7 @@ export class SeedingService {
       const currentEligibility = evaluateQueue(currentPost, state, new Date(), { mode: dryRun ? "dry_run" : "live", executionId });
       if (!currentEligibility.allowed) throw new Error(`Execution request blocked: ${currentEligibility.reasons.join(", ")}`);
       const oneTimeWindow = dryRun ? null : currentEligibility.oneTimeWindow;
-      if (!dryRun && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
+      if (!dryRun && previous?.state !== "CANCELLED_PRE_SUBMIT" && previous?.request?.oneTimeWindow?.windowId && previous?.request?.authorization?.authorizationId === currentAuthorization.id && oneTimeWindow?.windowId !== previous.request.oneTimeWindow.windowId) {
         throw new Error("Execution request's reserved one-time window is no longer valid");
       }
       const matchingGrants = dryRun ? [] : (state.liveExecutionGrants || []).filter((item) => item.jobId === postId && liveGrantEffectiveStatus(item) === "ACTIVE" && (!item.boundExecutionId || item.boundExecutionId === executionId));

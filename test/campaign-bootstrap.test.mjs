@@ -148,3 +148,28 @@ test("stale readiness never produces live execution controls", async (t) => {
   assert.equal(state.liveExecutionGrants.length, 0);
   assert.equal(state.submissionUncertainties.length, 0);
 });
+
+test("expired bootstrap schedule renews exact authority without mutating historical execution", async (t) => {
+  const { service, productRepo, now } = await fixture(t);
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(first.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  const before = await service.snapshot();
+  const oldAuthorization = before.campaignAuthorizations.find((item) => item.id === first.authorizationId);
+  const oldRequest = before.executionRequests.find((item) => item.executionId === first.executionId);
+  await service.store.mutate("test", "test_expire_bootstrap_schedule", (state) => {
+    const campaign = state.campaigns.find((item) => item.id === first.campaignId);
+    campaign.autonomousBootstrap.schedule.validUntil = new Date(now.getTime() - 60_000).toISOString();
+  });
+  const renewed = await service.bootstrapAutonomousCampaign(brief(productRepo, now, { validityHours: 1 }));
+  assert.equal(renewed.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  assert.notEqual(renewed.authorizationId, first.authorizationId);
+  assert.notEqual(renewed.executionId, first.executionId);
+  const after = await service.snapshot();
+  assert.deepEqual(after.campaignAuthorizations.find((item) => item.id === first.authorizationId), oldAuthorization);
+  assert.deepEqual(after.executionRequests.find((item) => item.executionId === first.executionId), oldRequest);
+  assert.equal(after.campaignAuthorizations.filter((item) => item.campaignId === first.campaignId).length, 2);
+  const campaign = after.campaigns.find((item) => item.id === first.campaignId);
+  assert.equal(campaign.autonomousBootstrap.schedule.identity, renewed.schedule.identity);
+  assert.ok(Date.parse(campaign.autonomousBootstrap.schedule.validUntil) > now.getTime());
+  assert.equal(after.executionRequests.filter((item) => item.jobId === renewed.postId && item.request?.dryRun !== true).length, 2);
+});
