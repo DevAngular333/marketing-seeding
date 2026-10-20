@@ -290,6 +290,7 @@ export class JevExecutionWorker {
               verifiedGates,
               requireTransportCertification: adapter.requiresCertifiedTransport === true,
               transportIdentity: submitBoundaryEvidence.transportIdentity,
+              transportCertification: submitBoundaryEvidence.transportCertification,
               preSubmitControlEvidence: submitBoundaryEvidence.preSubmitControlEvidence
             });
           } catch (error) {

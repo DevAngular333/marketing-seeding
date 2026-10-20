@@ -222,6 +222,14 @@ export function selectCertifiedTransport({ transports = [], certifications = [],
   return candidates[0];
 }
 
+export function selectedTransportCertification({ transport, certifications = [], platform = "linkedin", runtime = {}, requireIrreversibleSubmit = false, executionBinding = null } = {}) {
+  const chosen = selectCertifiedTransport({ transports: [transport], certifications, platform, runtime, requireIrreversibleSubmit, executionBinding });
+  const identity = chosen.runtimeIdentity?.() || {};
+  return certifications.find((item) => item?.certified === true && item.transport === identity.transport &&
+    item.provider === identity.provider && item.providerVersion === identity.providerVersion &&
+    (!executionBinding || item.certificationScope === "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT")) || null;
+}
+
 function matchesExecutionBinding(record, binding) {
   if (!binding || String(binding.platform || "") !== "linkedin") return false;
   const expires = Date.parse(record.expiresAt || "");

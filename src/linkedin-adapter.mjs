@@ -9,7 +9,7 @@ import { attachLinkedInMedia, cleanupLinkedInComposer } from "./linkedin-media.m
 import { isPreSubmitMediaIntegrityProven, PUBLICATION_CANDIDATE_MAX_AGE_MS, validateSubmitAcceptanceEvidence } from "./execution-contracts.mjs";
 import { publicationVisibilityMatchesLabels, normalizePublicationVisibility } from "./publication-visibility.mjs";
 import { assertClickPreflight, clickCommandEvidence, controlActivationEvidence as buildControlActivationEvidence } from "./click-transport.mjs";
-import { OrcaAccessibilityTransport, OrcaPointerTransport, assertTransportCannotChangeAfterIntent, assertValidatedTransport, selectCertifiedTransport } from "./browser-interaction-transport.mjs";
+import { OrcaAccessibilityTransport, OrcaPointerTransport, assertTransportCannotChangeAfterIntent, assertValidatedTransport, selectCertifiedTransport, selectedTransportCertification } from "./browser-interaction-transport.mjs";
 
 
 function refOf(line) {
@@ -455,6 +455,7 @@ export class LinkedInAdapter {
     this.requiresCertifiedTransport = this.requireCertifiedTransport;
     this.selectedTransport = this.transport.runtimeIdentity?.().transport || "browser-interaction";
     this.selectedTransportIdentity = this.transport.runtimeIdentity?.() || { transport: this.selectedTransport };
+    this.selectedTransportCertification = null;
   }
 
   #selectSubmitTransport(executionBinding = null) {
@@ -470,6 +471,7 @@ export class LinkedInAdapter {
     this.transport = selected;
     this.selectedTransportIdentity = selected.runtimeIdentity?.() || { transport: this.selectedTransport };
     this.selectedTransport = this.selectedTransportIdentity.transport || "browser-interaction";
+    this.selectedTransportCertification = selectedTransportCertification({ transport: selected, certifications: this.transportCertifications, platform: this.platform, runtime: this.transportRuntime, requireIrreversibleSubmit: true, executionBinding });
     return selected;
   }
 
@@ -774,6 +776,12 @@ export class LinkedInAdapter {
     }
     const persistedIntent = await beforeSubmitIntent(context.gates, {
       transportIdentity: { ...this.selectedTransportIdentity },
+      transportCertification: this.selectedTransportCertification ? {
+        certificationScope: this.selectedTransportCertification.certificationScope,
+        evidenceReference: this.selectedTransportCertification.evidenceReference,
+        expiresAt: this.selectedTransportCertification.expiresAt,
+        executionBinding: this.selectedTransportCertification.executionBinding
+      } : null,
       preSubmitControlEvidence: { ...context.preClickControlEvidence }
     });
     context.intentPersisted = true;

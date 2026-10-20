@@ -91,6 +91,15 @@ function normalizeSubmitTransportIdentity(value) {
   return { transport, provider, providerVersion };
 }
 
+function normalizeTransportCertification(value) {
+  if (!value || typeof value !== "object") return null;
+  const scope = String(value.certificationScope || "").trim();
+  const evidenceReference = String(value.evidenceReference || "").trim();
+  const expiresAt = String(value.expiresAt || "").trim();
+  if (!scope || !evidenceReference || !Number.isFinite(Date.parse(expiresAt))) return null;
+  return { certificationScope: scope.slice(0, 80), evidenceReference: evidenceReference.slice(0, 240), expiresAt, executionBinding: value.executionBinding && typeof value.executionBinding === "object" ? { ...value.executionBinding } : null };
+}
+
 function normalizeSubmitIntentEvidence(value) {
   if (!value || typeof value !== "object") return null;
   const boundingBox = value.boundingBox && typeof value.boundingBox === "object" ? {
@@ -4791,7 +4800,7 @@ export class SeedingService {
     return result.result;
   }
 
-  async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, exactLiveDispatchEnabled = false, verifiedGates = {}, requireTransportCertification = false, transportIdentity = null, preSubmitControlEvidence = null } = {}) {
+  async beginExecutionSubmitIntent(executionId, lease, { liveEnabled = false, liveExecutionId = null, autonomousLiveEnabled = false, exactLiveDispatchEnabled = false, verifiedGates = {}, requireTransportCertification = false, transportIdentity = null, transportCertification = null, preSubmitControlEvidence = null } = {}) {
     const reject = (reasonCode, gate, message) => {
       const error = Object.assign(new Error(message), { code: reasonCode });
       error.preSubmitFailure = { reasonCode, stage: "submit_boundary", gate, gateStatus: false };
@@ -4800,8 +4809,10 @@ export class SeedingService {
     const snapshot = await this.executionContext(executionId);
     const { request, post, target, account, authorization, artifact, liveGrant } = snapshot;
     const normalizedTransportIdentity = normalizeSubmitTransportIdentity(transportIdentity);
+    const normalizedTransportCertification = normalizeTransportCertification(transportCertification);
     const normalizedPreSubmitControlEvidence = normalizeSubmitIntentEvidence(preSubmitControlEvidence);
     if (requireTransportCertification === true && !normalizedTransportIdentity) reject("TRANSPORT_NOT_CERTIFIED", "browserTransport", "A certified browser transport identity is required before live submit intent");
+    if (requireTransportCertification === true && !normalizedTransportCertification) reject("TRANSPORT_NOT_CERTIFIED", "browserTransport", "Certified transport provenance is required before live submit intent");
     if (requireTransportCertification === true && !hasSubmitControlEvidence(normalizedPreSubmitControlEvidence)) {
       reject("SUBMIT_CONTROL_EVIDENCE_INVALID", "finalSubmitControl", "Durable submit intent requires actionable owned submit-control evidence");
     }
@@ -4925,6 +4936,12 @@ export class SeedingService {
       requestRow.submitIntentAt = at;
       requestRow.idempotencyKey = request.idempotencyKey;
       if (normalizedTransportIdentity) requestRow.submitTransport = normalizedTransportIdentity;
+      if (normalizedTransportCertification) {
+        if (requestRow.submitTransportCertification && JSON.stringify(requestRow.submitTransportCertification) !== JSON.stringify(normalizedTransportCertification)) {
+          reject("TRANSPORT_CERTIFICATION_CHANGED", "browserTransport", "Transport certification provenance cannot change after durable submit intent");
+        }
+        requestRow.submitTransportCertification = normalizedTransportCertification;
+      }
       if (normalizedPreSubmitControlEvidence) requestRow.submitIntentEvidence = normalizedPreSubmitControlEvidence;
       currentGrant.status = "CONSUMED";
       currentGrant.consumedAt = at;
