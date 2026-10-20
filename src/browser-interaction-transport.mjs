@@ -167,7 +167,7 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
   }
 }
 
-export function selectCertifiedTransport({ transports = [], certifications = [], platform = "linkedin", runtime = {}, requireIrreversibleSubmit = false } = {}) {
+export function selectCertifiedTransport({ transports = [], certifications = [], platform = "linkedin", runtime = {}, requireIrreversibleSubmit = false, executionBinding = null } = {}) {
   // A transport identity must have one unambiguous certification policy. Do
   // not let array ordering silently select the last record when configuration
   // accidentally contains conflicting scopes (for example a local fixture
@@ -176,6 +176,10 @@ export function selectCertifiedTransport({ transports = [], certifications = [],
   for (const item of certifications.filter((candidate) => candidate?.certified === true)) {
     const transportId = String(item.transport || "").trim();
     if (!transportId) continue;
+    const scope = String(item.certificationScope || "").trim();
+    if (executionBinding && scope === "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT") {
+      if (!matchesExecutionBinding(item, executionBinding)) continue;
+    } else if (executionBinding && scope !== "IRREVERSIBLE_LINKEDIN_SUBMIT") continue;
     const policyIdentity = JSON.stringify({
       provider: String(item.provider || "").trim(),
       providerVersion: String(item.providerVersion || "").trim(),
@@ -199,7 +203,8 @@ export function selectCertifiedTransport({ transports = [], certifications = [],
     // irreversible final submit. Production callers opt into this stricter
     // scope and require an explicit live LinkedIn certification record.
     if (requireIrreversibleSubmit &&
-        (platform !== "linkedin" || record.irreversibleSubmit !== true || record.certificationScope !== "IRREVERSIBLE_LINKEDIN_SUBMIT")) return false;
+        (platform !== "linkedin" || record.irreversibleSubmit !== true ||
+         (record.certificationScope !== "IRREVERSIBLE_LINKEDIN_SUBMIT" && record.certificationScope !== "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT"))) return false;
     const runtimeProvider = String(runtime.provider || "").trim();
     const recordProvider = String(record.provider || "").trim();
     const transportProvider = String(identity.provider || "").trim();
@@ -215,6 +220,31 @@ export function selectCertifiedTransport({ transports = [], certifications = [],
   }).sort((a, b) => String(a.runtimeIdentity?.().transport || "").localeCompare(String(b.runtimeIdentity?.().transport || "")));
   if (candidates.length === 0) throw Object.assign(new Error("No certified browser interaction transport is available"), { code: "TRANSPORT_NOT_CERTIFIED" });
   return candidates[0];
+}
+
+function matchesExecutionBinding(record, binding) {
+  if (!binding || String(binding.platform || "") !== "linkedin") return false;
+  const expires = Date.parse(record.expiresAt || "");
+  if (!Number.isFinite(expires) || expires <= Date.now()) return false;
+  if (!record.evidenceReference || typeof record.evidenceReference !== "string") return false;
+  const expected = {
+    executionId: binding.executionId, campaignId: binding.campaignId, jobId: binding.jobId,
+    accountId: binding.accountId, profileId: binding.profileId, targetId: binding.targetId,
+    targetUrl: binding.targetUrl, authorizationId: binding.authorizationId,
+    authorizationBinding: binding.authorizationBinding, contentSha256: binding.contentSha256,
+    visibility: String(binding.visibility || "PUBLIC").toUpperCase(),
+    mediaSha256: Array.isArray(binding.mediaSha256) ? [...binding.mediaSha256].map(String).sort() : []
+  };
+  const required = ["executionId", "campaignId", "jobId", "accountId", "profileId", "targetId", "targetUrl", "authorizationId", "authorizationBinding", "contentSha256"];
+  if (required.some((key) => !String(expected[key] || "").trim())) return false;
+  const actual = record.executionBinding || {};
+  if (actual.executionId !== expected.executionId || actual.campaignId !== expected.campaignId ||
+      actual.jobId !== expected.jobId || actual.accountId !== expected.accountId || actual.profileId !== expected.profileId ||
+      actual.targetId !== expected.targetId || actual.targetUrl !== expected.targetUrl ||
+      actual.authorizationId !== expected.authorizationId || actual.authorizationBinding !== expected.authorizationBinding ||
+      actual.contentSha256 !== expected.contentSha256 || String(actual.visibility || "").toUpperCase() !== expected.visibility) return false;
+  const media = Array.isArray(actual.mediaSha256) ? [...actual.mediaSha256].map(String).sort() : [];
+  return JSON.stringify(media) === JSON.stringify(expected.mediaSha256);
 }
 
 function transportIdentity(value) {

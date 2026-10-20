@@ -457,14 +457,15 @@ export class LinkedInAdapter {
     this.selectedTransportIdentity = this.transport.runtimeIdentity?.() || { transport: this.selectedTransport };
   }
 
-  #selectSubmitTransport() {
+  #selectSubmitTransport(executionBinding = null) {
     if (!this.requireCertifiedTransport) return this.transport;
     const selected = selectCertifiedTransport({
       transports: this.transportCandidates,
       certifications: this.transportCertifications,
       platform: this.platform,
       runtime: this.transportRuntime,
-      requireIrreversibleSubmit: true
+      requireIrreversibleSubmit: true,
+      executionBinding
     });
     this.transport = selected;
     this.selectedTransportIdentity = selected.runtimeIdentity?.() || { transport: this.selectedTransport };
@@ -736,7 +737,23 @@ export class LinkedInAdapter {
     context.preClickControlEvidence = currentControl.preClickControlEvidence;
     context.urlBeforeSubmit = context.urlBeforeSubmit || currentControl.preClickControlEvidence.url;
     try {
-      this.#selectSubmitTransport();
+      const request = context.request || {};
+      const executionBinding = {
+        platform: this.platform,
+        executionId: request.executionId,
+        campaignId: request.campaignId,
+        jobId: request.jobId,
+        accountId: request.accountId,
+        profileId: request.profileId,
+        targetId: request.target?.targetId,
+        targetUrl: request.target?.url,
+        authorizationId: request.authorization?.authorizationId,
+        authorizationBinding: request.authorization?.binding,
+        contentSha256: request.content?.sha256,
+        mediaSha256: (request.media || []).map((item) => item.sha256),
+        visibility: request.publicationVisibility || "PUBLIC"
+      };
+      this.#selectSubmitTransport(executionBinding);
       assertValidatedTransport(this.transport);
     } catch (error) {
       throw Object.assign(error, { preSubmitFailure: { reasonCode: "TRANSPORT_NOT_CERTIFIED", stage: "submit_boundary", gate: "browserTransport", gateStatus: false } });

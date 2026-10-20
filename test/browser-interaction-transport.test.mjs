@@ -183,6 +183,22 @@ test("certified transport selection requires an exact non-empty runtime version 
   }), transport);
 });
 
+test("bootstrap certification requires an exact live execution binding and evidence reference", () => {
+  const transport = { runtimeIdentity: () => ({ transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.230" }) };
+  const binding = {
+    platform: "linkedin", executionId: "exec-1", campaignId: "campaign-1", jobId: "job-1",
+    accountId: "linkedin_primary", profileId: "profile-1", targetId: "target-1", targetUrl: "https://www.linkedin.com/feed/",
+    authorizationId: "auth-1", authorizationBinding: "auth-binding", contentSha256: "a".repeat(64),
+    mediaSha256: [], visibility: "PUBLIC"
+  };
+  const cert = { transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.230", certified: true,
+    irreversibleSubmit: true, certificationScope: "BOOTSTRAP_LIVE_LINKEDIN_SUBMIT", expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    evidenceReference: "plans/bootstrap-cert.json", executionBinding: { ...binding } };
+  assert.equal(selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: binding, certifications: [cert] }), transport);
+  assert.throws(() => selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: { ...binding, contentSha256: "b".repeat(64) }, certifications: [cert] }), /No certified browser interaction transport/);
+  assert.throws(() => selectCertifiedTransport({ transports: [transport], platform: "linkedin", runtime: { provider: "orca", providerVersion: "1.4.230" }, requireIrreversibleSubmit: true, executionBinding: binding, certifications: [{ ...cert, expiresAt: new Date(Date.now() - 1).toISOString() }] }), /No certified browser interaction transport/);
+});
+
 test("transport certification requires exact provider identity, not only version", () => {
   const transport = { runtimeIdentity: () => ({ transport: "orca-accessibility", provider: "orca", providerVersion: "1.4.229" }) };
   assert.throws(() => selectCertifiedTransport({
