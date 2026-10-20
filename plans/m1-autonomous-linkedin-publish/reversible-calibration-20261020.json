@@ -1,0 +1,390 @@
+{
+  "milestone": "M1 LinkedIn reversible activation calibration",
+  "result": "CERTIFIED_FOR_CONTROL_ACTIVATION",
+  "evidenceClass": "LIVE_REAL_WEBSITE_REVERSIBLE_CONTROL",
+  "orcaRuntime": {
+    "executable": "/Applications/Orca 2.app/Contents/Resources/bin/orca",
+    "version": "1.4.230",
+    "profileId": "b27a3bcc-b139-4353-a15b-10e10824291e",
+    "profileLabel": "marketing-linkedin-mac-primary",
+    "pageId": "60d8af59-de60-4e6a-a356-17fa7927518d",
+    "startingUrl": "https://www.linkedin.com/feed/"
+  },
+  "policy": {
+    "minimumAttempts": 10,
+    "minimumActivationRate": 0.95,
+    "maximumWrongTargetActivations": 0,
+    "maximumSilentFallbacks": 0
+  },
+  "startedAt": "2026-10-20T16:51:28.247Z",
+  "finishedAt": "2026-10-20T16:52:24.201Z",
+  "metrics": {
+    "attempts": 10,
+    "positiveSemanticActivations": 10,
+    "noTransition": 0,
+    "wrongTargetActivations": 0,
+    "silentFallbacks": 0,
+    "contentEntered": false,
+    "postControlsObserved": 0,
+    "postControlsTouched": 0,
+    "irreversibleSubmitAttempted": false,
+    "socialMutationCount": 0,
+    "activationSuccessRate": 1
+  },
+  "trials": [
+    {
+      "index": 1,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:51:33.580Z"
+    },
+    {
+      "index": 2,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:51:38.885Z"
+    },
+    {
+      "index": 3,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:51:44.393Z"
+    },
+    {
+      "index": 4,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:51:50.411Z"
+    },
+    {
+      "index": 5,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:51:55.513Z"
+    },
+    {
+      "index": 6,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:52:00.993Z"
+    },
+    {
+      "index": 7,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:52:06.577Z"
+    },
+    {
+      "index": 8,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:52:12.631Z"
+    },
+    {
+      "index": 9,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:52:18.588Z"
+    },
+    {
+      "index": 10,
+      "identity": {
+        "sessionAuthenticated": true,
+        "identityVerified": true,
+        "feedReachable": true,
+        "securityChallenge": false,
+        "loginRequired": false
+      },
+      "before": {
+        "state": "NOT_COMPOSER",
+        "dialogCount": 0,
+        "editorCount": 0,
+        "url": "https://www.linkedin.com/feed/"
+      },
+      "after": {
+        "state": "CONFIRMED",
+        "dialogCount": 1,
+        "editorCount": 1,
+        "route": true,
+        "confirmed": true
+      },
+      "activationMethod": "owned_react_handler",
+      "domFallbackUsed": true,
+      "close": {
+        "closed": true
+      },
+      "reset": {
+        "feedReachable": true,
+        "sessionAuthenticated": true,
+        "identityVerified": true
+      },
+      "status": "CONTROL_ACTIVATED",
+      "finishedAt": "2026-10-20T16:52:24.200Z"
+    }
+  ],
+  "limitations": [
+    "Reversible composer activation only; no content entered and no Post/Publish control touched.",
+    "This evidence does not itself prove platform acceptance or publication."
+  ]
+}

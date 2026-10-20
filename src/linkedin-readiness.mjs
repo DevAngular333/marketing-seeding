@@ -110,15 +110,34 @@ const COMPOSER_TRIGGER_DOM_CLICK = `(() => {
     return { clicked: false, reason: 'composer_trigger_fallback_precondition_failed' };
   }
   // LinkedIn's current trigger is a role=button wrapper around a labelled
-  // child. ORCA 1.4.230 acknowledges the wrapper click without dispatching the
-  // framework event; dispatch exactly one click on the owned labelled child.
+  // child. ORCA 1.4.230 acknowledges the wrapper click without dispatching
+  // the framework event. Prefer the exact React handler owned by that wrapper
+  // when it is present; this is still one activation of the one resolved
+  // control, and avoids a second provider click or a broad DOM event.
   const activationTarget = labelledCandidates[0];
+  const wrapper = wrapperCandidates[0];
+  const fiberKey = Object.keys(wrapper).find((key) => key.startsWith('__reactFiber$'));
+  const handler = fiberKey ? wrapper[fiberKey]?.memoizedProps?.onClick : null;
+  if (typeof handler === 'function') {
+    const event = {
+      detail: 1,
+      target: wrapper,
+      currentTarget: wrapper,
+      nativeEvent: { detail: 1, target: wrapper, currentTarget: wrapper },
+      preventDefault() {},
+      stopPropagation() {}
+    };
+    handler(event);
+    return { clicked: true, activationMethod: 'owned_react_handler' };
+  }
   if (activationTarget !== candidates[0]) {
+    // Compatibility fallback for a future LinkedIn surface that has the same
+    // strict wrapper/label structure but no inspectable framework handler.
     activationTarget.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
   } else {
     candidates[0].click();
   }
-  return { clicked: true };
+  return { clicked: true, activationMethod: 'owned_dom_event' };
 })()`;
 
 const CLOSE_EMPTY_COMPOSER_EXPRESSION = `(() => {

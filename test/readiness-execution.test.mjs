@@ -891,6 +891,38 @@ test("LinkedIn readiness uses the bound ORCA profile and stops before content or
   assert.equal(calls.some((call) => call === "fill" || call === "submit"), false);
 });
 
+test("LinkedIn readiness uses the owned React trigger handler when ORCA DOM click is acknowledged without activation", async () => {
+  let phase = "feed";
+  let handlerActivations = 0;
+  const browser = {
+    async listProfiles() { return [{ id: "linkedin-profile-1" }]; },
+    async listTabs() { return [{ id: "page-1", profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }]; },
+    async showTab(id) { return { pageId: id, profileId: "linkedin-profile-1", url: "https://www.linkedin.com/feed/" }; },
+    async evaluate(_id, expression) {
+      if (expression.includes("const expectedPath")) return {
+        linkedinDomain: true, loginRequired: false, securityChallenge: false,
+        sessionAuthenticated: true, identityVerified: true, feedReachable: true
+      };
+      if (expression.includes("const fiberKey") && expression.includes("owned_react_handler")) {
+        handlerActivations += 1;
+        phase = "composer";
+        return { clicked: true, activationMethod: "owned_react_handler" };
+      }
+      if (expression.includes("const cancelButtons")) { phase = "feed"; return { closed: true }; }
+      return phase === "composer"
+        ? { linkedinDomain: true, route: false, routeCompatible: true, dialogCount: 1, editorCount: 1, audience: true, postButton: true, mediaControl: true, closeControl: true, advertisingControls: 0, confirmed: true }
+        : { linkedinDomain: true, route: false, routeCompatible: false, dialogCount: 0, editorCount: 0, audience: false, postButton: false, mediaControl: false, closeControl: false, advertisingControls: 0, confirmed: false };
+    },
+    async snapshot() { return phase === "feed" ? '- button "Start a post" [ref=e10]' : '- textbox "Post editor" [ref=e11]'; },
+    async navigate() {}, async waitForFeed() {}, async pressEscape() { assert.fail("verified readiness must close through the owned empty-composer control"); }
+  };
+  const result = await new LinkedInReadinessProvider(browser).checkReadiness({
+    platform: "linkedin", profileId: "linkedin-profile-1", expectedIdentityUrl: "https://www.linkedin.com/in/test-owner"
+  });
+  assert.equal(result.state, "READY");
+  assert.equal(handlerActivations, 1);
+});
+
 test("LinkedIn readiness verifies composer close with a bounded feed-state wait", async () => {
   let escaped = false;
   let closeChecks = 0;
