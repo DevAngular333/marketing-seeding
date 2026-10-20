@@ -191,12 +191,18 @@ export class OrcaCliClient {
     return raw;
   }
 
-  async click(pageId, element, { validate } = {}) {
+  async click(pageId, element, { validate, onProviderCallStarted } = {}) {
     // The optional validator runs immediately before the single transport
     // command. It proves only that the target is still safe to address; the
     // command receipt remains separate from control activation.
     const preflight = typeof validate === "function" ? await validate() : null;
-    const startedAt = new Date().toISOString();
+    // This callback is deliberately emitted only after the final validation
+    // has passed and immediately before the provider command is sent. A
+    // validation failure therefore remains distinguishable from a provider
+    // command whose outcome is unknown after it started.
+    const providerCallStartedAt = new Date().toISOString();
+    onProviderCallStarted?.(providerCallStartedAt);
+    const startedAt = providerCallStartedAt;
     const result = await this.#run(["click", "--element", element, "--page", pageId, "--worktree", this.worktree]);
     const completedAt = new Date().toISOString();
     return {
@@ -205,6 +211,8 @@ export class OrcaCliClient {
       elementRef: String(element),
       startedAt,
       completedAt,
+      providerCallStarted: true,
+      providerCallStartedAt,
       preflight,
       providerResult: result && typeof result === "object" ? {
         clicked: result.clicked ? String(result.clicked).slice(0, 100) : null

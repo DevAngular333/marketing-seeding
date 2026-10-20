@@ -147,5 +147,22 @@ test("Orca click receipt reports transport completion separately from activation
   assert.equal(result.transport, "orca-cli-browser-click");
   assert.equal(result.providerResult.clicked, "e13");
   assert.equal(result.preflight.status, "PASSED");
+  assert.equal(result.providerCallStarted, true);
+  assert.ok(result.providerCallStartedAt);
+});
+
+test("Orca client does not mark provider call started when final validation aborts", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "orca-click-abort-"));
+  const executable = path.join(directory, "orca-fixture");
+  await writeFile(executable, "#!/bin/sh\nprintf '%s' '{\"ok\":true}'\n", "utf8");
+  await chmod(executable, 0o755);
+  const client = new OrcaCliClient({ executable, worktree: "current" });
+  let providerStarted = null;
+  await assert.rejects(() => client.click("page-1", "e13", {
+    validate: async () => { throw Object.assign(new Error("wrong composer"), { code: "SUBMIT_CONTROL_WRONG_COMPOSER" }); },
+    onProviderCallStarted: (at) => { providerStarted = at; }
+  }), /wrong composer/);
+  assert.equal(providerStarted, null);
+  assert.equal(client.browserCommandCount(), 0);
 });
 

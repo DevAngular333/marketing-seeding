@@ -91,6 +91,8 @@ export function validateSubmitAcceptanceEvidence(input) {
     elementRef: clickCommandInput.elementRef ? String(clickCommandInput.elementRef).slice(0, 100) : null,
     commandStartedAt: timestamp(clickCommandInput.commandStartedAt, "clickCommandEvidence.commandStartedAt"),
     commandCompletedAt: timestamp(clickCommandInput.commandCompletedAt, "clickCommandEvidence.commandCompletedAt"),
+    providerCallStarted: clickCommandInput.providerCallStarted === true ? true : clickCommandInput.providerCallStarted === false ? false : null,
+    providerCallStartedAt: timestamp(clickCommandInput.providerCallStartedAt, "clickCommandEvidence.providerCallStartedAt"),
     providerResult: clickCommandInput.providerResult && typeof clickCommandInput.providerResult === "object" ? {
       clicked: clickCommandInput.providerResult.clicked ? String(clickCommandInput.providerResult.clicked).slice(0, 100) : null
     } : null,

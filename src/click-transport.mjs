@@ -99,6 +99,8 @@ export function clickCommandEvidence(result, { elementRef, preflight, startedAt,
     targetIdentity: command.targetIdentity ? String(command.targetIdentity).slice(0, 160) : null,
     commandStartedAt,
     commandCompletedAt,
+    providerCallStarted: command.providerCallStarted === true ? true : command.providerCallStarted === false ? false : null,
+    providerCallStartedAt: timestamp(command.providerCallStartedAt),
     providerResult: command.providerResult && typeof command.providerResult === "object" ? {
       clicked: command.providerResult.clicked ? String(command.providerResult.clicked).slice(0, 100) : null
     } : null,

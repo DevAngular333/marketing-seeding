@@ -105,12 +105,12 @@ export class OrcaAccessibilityTransport extends BrowserInteractionTransport {
     return this.browser.assertRuntimeVersion({ expectedVersion: this.providerVersion });
   }
 
-  async click({ pageId, targetRef, targetIdentity = targetRef }, { validate, diagnostics } = {}) {
+  async click({ pageId, targetRef, targetIdentity = targetRef }, { validate, diagnostics, onProviderCallStarted } = {}) {
     if (!pageId || !targetRef) throw Object.assign(new Error("Browser transport target is incomplete"), { code: "TRANSPORT_TARGET_INVALID" });
     if (typeof this.browser.click !== "function") throw Object.assign(new Error("ORCA accessibility click transport is unavailable"), { code: "TRANSPORT_UNAVAILABLE" });
     this.assertPreClickValidation({ validate });
     const startedAt = new Date().toISOString();
-    const result = await this.browser.click(pageId, targetRef, { validate });
+    const result = await this.browser.click(pageId, targetRef, { validate, onProviderCallStarted });
     const completedAt = new Date().toISOString();
     const receipt = transportReceipt(result, {
       transport: this.id,
@@ -145,7 +145,7 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
     return this.browser.assertRuntimeVersion({ expectedVersion: this.providerVersion });
   }
 
-  async click({ pageId, targetRef, targetIdentity = targetRef, boundingBox }, { validate, diagnostics } = {}) {
+  async click({ pageId, targetRef, targetIdentity = targetRef, boundingBox }, { validate, diagnostics, onProviderCallStarted } = {}) {
     if (!pageId || !targetRef || !boundingBox) throw Object.assign(new Error("ORCA pointer target is incomplete"), { code: "TRANSPORT_TARGET_INVALID" });
     if (typeof this.browser.mouseMove !== "function" || typeof this.browser.mouseDown !== "function" || typeof this.browser.mouseUp !== "function") {
       throw Object.assign(new Error("ORCA pointer click transport is unavailable"), { code: "TRANSPORT_UNAVAILABLE" });
@@ -153,6 +153,7 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
     this.assertPreClickValidation({ validate });
     const preflight = typeof validate === "function" ? await validate() : null;
     const startedAt = new Date().toISOString();
+    onProviderCallStarted?.(startedAt);
     const x = Math.round(Number(boundingBox.x) + Number(boundingBox.width) / 2);
     const y = Math.round(Number(boundingBox.y) + Number(boundingBox.height) / 2);
     await this.browser.mouseMove(pageId, x, y);
@@ -161,7 +162,7 @@ export class OrcaPointerTransport extends BrowserInteractionTransport {
     const completedAt = new Date().toISOString();
     return {
       ...transportReceipt({ status: "COMMAND_COMPLETED", providerResult }, { transport: this.id, targetIdentity, startedAt, completedAt, diagnostics }),
-      status: "COMMAND_COMPLETED", commandStatus: "COMMAND_COMPLETED", elementRef: String(targetRef), preflight,
+      status: "COMMAND_COMPLETED", commandStatus: "COMMAND_COMPLETED", elementRef: String(targetRef), providerCallStarted: true, providerCallStartedAt: startedAt, preflight,
       startedAt, completedAt, providerResult: providerResult && typeof providerResult === "object" ? providerResult : null
     };
   }

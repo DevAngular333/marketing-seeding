@@ -564,6 +564,60 @@ test("transport identity mutation after durable intent is quarantined without a 
   assert.equal(clicks, 0);
 });
 
+test("post-intent validation abort records a pre-provider outcome and never emits a provider click", async () => {
+  let observations = 0;
+  let transportInvocations = 0;
+  let providerCalls = 0;
+  const browser = {
+    async snapshot() { return '- textbox "Post editor" [ref=editor]\n- button "Post" [ref=post]'; },
+    async evaluate(_page, expression) {
+      if (expression !== linkedinAdapterExpressions.submitControl) return {};
+      observations += 1;
+      return observations >= 3
+        ? { ...submitControlObservation(), composerCount: 2 }
+        : submitControlObservation();
+    },
+    async showTab() { return { url: "https://www.linkedin.com/feed/" }; }
+  };
+  const transport = {
+    transportContractVersion: 1, requiresPreClickValidation: true,
+    runtimeIdentity: () => ({ transport: "fixture-certified", provider: "fixture", providerVersion: "1" }),
+    assertPreClickValidation() { return true; },
+    async assertReadyForFinalSubmit() { return true; },
+    async click(_target, { validate, onProviderCallStarted } = {}) {
+      transportInvocations += 1;
+      await validate?.();
+      onProviderCallStarted?.(new Date().toISOString());
+      providerCalls += 1;
+      return { status: "COMMAND_COMPLETED" };
+    }
+  };
+  const adapter = new LinkedInAdapter(browser, { verifier: {}, transport });
+  adapter.prepareExecution = async (requestValue) => ({ request: requestValue, pageId: "page-1", expectedIdentityUrl });
+  adapter.navigate = async (context) => context;
+  adapter.verifyTarget = async (context) => ({ ...context, targetVerified: true });
+  adapter.openComposer = async (context) => context;
+  adapter.fillContent = async (context) => context;
+  adapter.attachMedia = async (context) => ({ ...context, media: { mediaHashMatched: true, mediaPreviewConfirmed: true, audienceMatch: true } });
+  adapter.verifyPreSubmit = async (context) => ({ ...context, gates: { passed: true } });
+
+  const result = await adapter.execute(request({ withMedia: false }), {
+    dryRun: false, liveEnabled: true,
+    async beforeSubmitIntent() { return {}; },
+    async onSubmitSent() { assert.fail("submit state must not be marked sent"); }
+  });
+
+  assert.equal(result.submitState, "UNKNOWN");
+  assert.equal(result.preSubmitFailure.reasonCode, "SUBMIT_CONTROL_WRONG_COMPOSER");
+  assert.equal(result.submitAcceptanceEvidence.clickStatus, "UNKNOWN");
+  assert.equal(result.submitAcceptanceEvidence.clickCommandEvidence.providerCallStarted, false);
+  assert.equal(result.submitAcceptanceEvidence.clickCommandEvidence.providerCallStartedAt, null);
+  assert.equal(result.submitAcceptanceEvidence.clickCommandEvidence.errorReasonCode, undefined);
+  assert.equal(result.submitAcceptanceEvidence.errorReasonCode, "submit_control_wrong_composer");
+  assert.equal(transportInvocations, 1);
+  assert.equal(providerCalls, 0);
+});
+
 test("immediate click preflight rejects a moved or covered control before durable intent", async (t) => {
   for (const [name, override] of [["moved", { controlId: "moved-control" }], ["covered", { hitTargetMatched: false }], ["detached", { connected: false }]]) {
     await t.test(name, async () => {

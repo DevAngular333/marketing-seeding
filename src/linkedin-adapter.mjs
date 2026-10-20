@@ -798,6 +798,7 @@ export class LinkedInAdapter {
       preClickControlEvidence: context.preClickControlEvidence
     };
     let commandResult;
+    let providerCallStartedAt = null;
     const preflight = clickPreflight;
     try {
       assertTransportCannotChangeAfterIntent({ selectedTransport: this.selectedTransportIdentity, requestedTransport: this.selectedTransportIdentity, intentPersisted: context.intentPersisted === true });
@@ -810,15 +811,20 @@ export class LinkedInAdapter {
           const safe = assertClickPreflight(latest.preClickControlEvidence);
           await beforeProviderSend?.();
           return safe;
-        }
+        },
+        onProviderCallStarted: (at) => { if (!providerCallStartedAt) providerCallStartedAt = at || new Date().toISOString(); }
       });
     } catch (error) {
       const observedAt = new Date().toISOString();
       context.submitAcceptanceEvidence = validateSubmitAcceptanceEvidence({
         ...context.submitAcceptanceEvidence, observedAt,
-        clickCommandEvidence: { status: "OUTCOME_UNKNOWN", observedAt, transport: this.selectedTransport, elementRef: context.submitRef, preflight },
+        clickCommandEvidence: {
+          status: "OUTCOME_UNKNOWN", observedAt, transport: this.selectedTransport, elementRef: context.submitRef, preflight,
+          providerCallStarted: providerCallStartedAt ? true : false,
+          providerCallStartedAt
+        },
         controlActivationEvidence: { status: "CONTROL_ACTIVATION_UNKNOWN", observedAt, signals: [] },
-        errorReasonCode: "orca_click_outcome_unknown"
+        errorReasonCode: String(error?.code || "orca_click_outcome_unknown").toLowerCase()
       });
       throw error;
     }

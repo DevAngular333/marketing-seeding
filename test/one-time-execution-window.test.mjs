@@ -350,7 +350,8 @@ test("abandoned REQUEST_READY execution with a revoked window cannot resume", as
   });
   const worker = new JevExecutionWorker({ service, adapterRegistry: registry, workerId: "fixture-worker", env: {} });
   const result = await worker.run(abandonedExecutionId, { dryRun: false });
-  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.status, "PRE_SUBMIT_STOPPED");
+  assert.equal(result.reasonCode, "campaign_authorization_not_active");
   assert.equal(adapterCalls, 0);
   const finalState = await service.snapshot();
   assert.equal(finalState.oneTimeExecutionWindows.find((item) => item.windowId === window.windowId).status, "REVOKED");
