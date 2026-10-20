@@ -644,6 +644,30 @@ test("exact dispatch stops safely for expired readiness and an invalid one-time 
   assert.ok(badWindow.calls.some(([name]) => name === "release"));
 });
 
+test("exact dispatch maps pre-submit readiness UNKNOWN/BLOCKED to PRE_SUBMIT_STOPPED", async () => {
+  for (const readinessState of ["UNKNOWN", "BLOCKED"]) {
+    const fixture = executionFixture({ service: {
+      async refreshCampaignJobReadiness() {
+        return { status: "blocked", readinessState, reasons: [readinessState === "UNKNOWN" ? "provider_timeout" : "account_session_expired"] };
+      }
+    } });
+    fixture.context.authorization.allowLiveExecution = true;
+    attachFixtureGrant(fixture);
+    let adapterCalls = 0;
+    const worker = new JevExecutionWorker({
+      service: fixture.service,
+      adapterRegistry: adapterRegistry({ linkedin: { async execute() { adapterCalls += 1; } } }),
+      env: exactLiveEnv()
+    });
+    const result = await worker.dispatchExactExecution("exec-1");
+    assert.equal(result.status, "PRE_SUBMIT_STOPPED", readinessState);
+    assert.equal(result.reasonCode, readinessState === "UNKNOWN" ? "provider_timeout" : "account_session_expired");
+    assert.equal(adapterCalls, 0);
+    assert.equal(fixture.calls.some(([name]) => name === "intent"), false);
+    assert.ok(fixture.calls.some(([name]) => name === "release"));
+  }
+});
+
 test("exact dispatch maps lease conflicts to ALREADY_IN_PROGRESS", async () => {
   const fixture = executionFixture({ service: { async acquireExecutionLease() { return { acquired: false, reason: "execution_lease_held" }; } } });
   fixture.context.authorization.allowLiveExecution = true;

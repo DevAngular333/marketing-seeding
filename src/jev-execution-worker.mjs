@@ -207,7 +207,18 @@ export class JevExecutionWorker {
       const readinessRefreshMs = Date.now() - readinessStarted;
       const dryRunRequest = initial.request?.dryRun === true;
       if ((dryRunRequest ? readiness.readinessState !== "READY" : readiness.status !== "queued" || readiness.readinessState !== "READY")) {
-        return { status: readiness.readinessState || "BLOCKED", executionId, reasonCodes: readiness.reasons || [] };
+        // A readiness gate is evaluated before the adapter and before the
+        // durable submit boundary.  Its UNKNOWN/BLOCKED result is therefore
+        // a safe pre-submit stop, never submission uncertainty.  Keep the
+        // provider reason explicit so exact dispatch cannot normalize this
+        // gate result into SUBMIT_RESULT_UNKNOWN.
+        const reasonCode = readiness.reasons?.[0] || String(readiness.readinessState || readiness.status || "READINESS_NOT_READY").toLowerCase();
+        return {
+          status: "PRE_SUBMIT_STOPPED",
+          executionId,
+          reasonCode,
+          reasonCodes: readiness.reasons || [reasonCode]
+        };
       }
       const refreshed = await this.service.prepareExecutionRequest(initial.post.id, `jev-worker:${this.workerId}`, { dryRun: dryRunRequest });
       if (refreshed.executionId !== executionId || refreshed.state !== "REQUEST_READY") {
