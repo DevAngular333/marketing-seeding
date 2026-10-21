@@ -1,10 +1,11 @@
-# Current release overlay — 2026-10-21 (HEAD e94957d; canonical state observed 2026-10-21T10:03:28Z; smoke observed 2026-10-21T10:56:46Z)
+# Current release overlay — 2026-10-21 (HEAD f992f50; canonical state observed 2026-10-21T10:03:28Z; smoke observed 2026-10-21T11:49:00Z)
 
 - `npm test`: **574 total, 572 passed, 0 failed, 2 skipped**.
 - Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, `5994c15`; focused gate **20/20**. UI build passed after dependency installation.
 - Bounded local-real Seatbelt smoke passed at `2026-10-21T10:56:46.101Z` for one staged `node --check` through the shared typed executor with `externalSideEffects=false`; arbitrary build/render/package-manager execution remains fail-closed pending independent `factory-sandbox-v1` attestation.
 - ORCA `1.4.232` read-only `ready`/`connected`; no click. Canonical state schema 8 revision 5673 (SHA-256 `80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72`), six immutable UNKNOWN and zero published. Raw status counts are 5 active authorizations, 1 ACTIVE grant, 0 active/reserved windows and 0 leases; at observation only one authorization was time-valid and the grant was expired, leaving zero effective live execution controls.
 - Current release report: `plans/autonomous-build/reports/release-gate-20261021.md`.
+- Isolated local release/restart smoke: `plans/autonomous-build/reports/local-release-smoke-20261021.md`.
 
 ---
 

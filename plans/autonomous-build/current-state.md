@@ -1,4 +1,4 @@
-# Current release gate — 2026-10-21T10:56:46Z (source HEAD e94957d)
+# Current release gate — 2026-10-21T11:49:00Z (source HEAD f992f50)
 
 - Full `npm test`: **574 total, 572 passed, 0 failed, 2 skipped**.
 - Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` are locally integrated; focused Product Factory gate is **20/20**. The adapter reuses the existing typed Seatbelt backend and remains fail-closed.
@@ -8,6 +8,8 @@
 - Release observation at `2026-10-21T10:03:28Z` uses source HEAD `1073caf` and canonical state SHA-256 `80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72`; raw status counts are 5 active authorizations and 1 ACTIVE grant, while effective time-valid live controls are zero (one authorization remains time-valid, the grant is expired, and no active/reserved window or lease exists).
 - Canonical state remains read-only schema 8/revision 5673 with six immutable UNKNOWN submissions, zero published posts and zero active authorization/window/grant/lease controls.
 - Current gate report: `plans/autonomous-build/reports/release-gate-20261021.md`.
+- Isolated local release/restart smoke passed for `f992f50`; evidence:
+  `plans/autonomous-build/reports/local-release-smoke-20261021.md`.
 
 # Fresh M1 live execution reconciliation — 2026-10-21T07:14:12Z
 
