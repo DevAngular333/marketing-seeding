@@ -100,7 +100,7 @@
   ],
   "last_audit": {
     "at": "2026-10-21T10:56:46Z",
-    "head": "e94957d",
+    "head": "5affd1e",
     "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
     "externalSideEffects": false,
     "canonicalRuntimeMutated": false,

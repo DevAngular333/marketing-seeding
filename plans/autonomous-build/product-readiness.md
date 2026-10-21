@@ -1,4 +1,4 @@
-# Product readiness current gate — 2026-10-21 (HEAD f992f50; canonical state observed 2026-10-21T10:03:28Z; smoke observed 2026-10-21T11:49:00Z)
+# Product readiness current gate — 2026-10-21 (HEAD 5affd1e; canonical state observed 2026-10-21T10:03:28Z; smoke source f992f50 observed 2026-10-21T11:49:00Z)
 
 `FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS`. Full `npm test` is **574/572/0/2**; focused Product Factory Seatbelt adapter gate is **20/20**; UI `npm run build` passed after dependency installation. The adapter work (`ac741e7`, `ebffb7e`, `154de1b`, `5994c15`) reuses the existing typed Seatbelt backend and preserves fail-closed Product Factory policy. A bounded local-real staged `node --check` smoke passed at `2026-10-21T10:56:46.101Z`, and an isolated service release/restart smoke passed at `2026-10-21T11:49:00Z`; arbitrary project execution/rendering remains unproven because independent `factory-sandbox-v1` profile attestation is absent.
 

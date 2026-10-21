@@ -5,7 +5,7 @@
 `FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS`; no live publication was attempted in
 this gate. Canonical runtime observation was `2026-10-21T10:03:28Z`; the
 bounded Product Factory smoke was run at `2026-10-21T10:56:46.101Z`. Current
-source HEAD is `e94957d` (`fix: certify bounded seatbelt factory smoke`). The Product Factory
+source HEAD is `5affd1e` (`docs: record isolated release restart smoke`). The Product Factory
 Seatbelt adapter work is present in commits
 `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` and reuses the existing typed
 System-Agentic execution backend without changing frozen Core semantics.
