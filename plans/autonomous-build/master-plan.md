@@ -1,4 +1,4 @@
-# Current gate overlay — 2026-10-21 (HEAD 1073caf; observed 2026-10-21T10:03:28Z)
+# Current gate overlay — 2026-10-21 (HEAD e94957d; canonical state observed 2026-10-21T10:03:28Z; smoke observed 2026-10-21T10:56:46Z)
 
 The latest local release gate is **574 total, 572 passed, 0 failed, 2 skipped**. Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` reuse the existing typed backend; focused Product Factory verification is **20/20**. UI build passed after dependency installation. A bounded local-real staged `node --check` smoke passed at `2026-10-21T10:56:46.101Z`; arbitrary build/render/package-manager execution stays fail-closed until an independent `factory-sandbox-v1` attestation exists.
 

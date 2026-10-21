@@ -3,8 +3,9 @@
 ## Result
 
 `FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS`; no live publication was attempted in
-this gate. Observation timestamp is `2026-10-21T10:03:28Z`; current source HEAD
-is `1073caf` (`docs: record 2026-10-21 release gate`). The Product Factory
+this gate. Canonical runtime observation was `2026-10-21T10:03:28Z`; the
+bounded Product Factory smoke was run at `2026-10-21T10:56:46.101Z`. Current
+source HEAD is `e94957d` (`fix: certify bounded seatbelt factory smoke`). The Product Factory
 Seatbelt adapter work is present in commits
 `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` and reuses the existing typed
 System-Agentic execution backend without changing frozen Core semantics.
@@ -25,7 +26,7 @@ System-Agentic execution backend without changing frozen Core semantics.
   runtime and `/usr/local/bin` staging path. This does not certify arbitrary
   build/render/package-manager execution; production profile attestation is
   still absent and the adapter remains fail-closed for those commands.
-- Canonical state was read-only: schema 8, revision 5673, SHA-256
+- Canonical state was read-only at `2026-10-21T10:03:28Z`: schema 8, revision 5673, SHA-256
   `80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72`;
   six immutable `UNKNOWN` submissions and zero published posts. Raw control
   rows were `5` authorizations with `status=active`, `1` grant with

@@ -1,4 +1,4 @@
-# Current release gate — 2026-10-21T10:56:46Z (source baseline 1073caf)
+# Current release gate — 2026-10-21T10:56:46Z (source HEAD e94957d)
 
 - Full `npm test`: **574 total, 572 passed, 0 failed, 2 skipped**.
 - Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` are locally integrated; focused Product Factory gate is **20/20**. The adapter reuses the existing typed Seatbelt backend and remains fail-closed.
