@@ -179,6 +179,25 @@ function hasSubmitControlEvidence(value) {
     ownership.structuralEvidenceVersion >= 1);
 }
 
+// A failed request may be renewed only when durable state proves the browser
+// never crossed the submit boundary. This is intentionally narrower than a
+// generic recoverable failure: no submit intent, click evidence, publication
+// attempt, or uncertainty may exist for the historical execution.
+function isSafePreSubmitFailureForRenewal(state, postId, request) {
+  if (!request || request.state !== "FAILED" || request.submitState !== "FAILED" ||
+      request.submitIntentAt || request.dispatchedAt || request.clickEmittedAt) return false;
+  if ((state.publicationAttempts || []).some((item) => item.executionId === request.executionId)) return false;
+  if ((state.submissionUncertainties || []).some((item) => item.executionId === request.executionId)) return false;
+  const receipts = (state.executionReceipts || [])
+    .filter((item) => item.executionId === request.executionId && item.attempt === request.attempt && item.receipt?.dryRun !== true)
+    .sort((left, right) => Date.parse(right.receivedAt || "") - Date.parse(left.receivedAt || ""));
+  const receipt = receipts[0]?.receipt;
+  const failure = receipt?.preSubmitFailure;
+  return request.jobId === postId && receipt?.submitState === "FAILED" &&
+    failure && ["readiness_refresh", "submit_boundary"].includes(String(failure.stage || "")) &&
+    receipt.submitAcceptanceEvidence == null;
+}
+
 const EXECUTION_RUNTIME_MAX_RECENT = 12;
 const EXECUTION_RUNTIME_MAX_BLOCKERS = 8;
 const EXECUTION_RUNTIME_MAX_TIMELINE = 32;
@@ -4825,7 +4844,7 @@ export class SeedingService {
       if (previous && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state) && (!dryRun || previous.submitState !== "NOT_STARTED")) {
         // A completed no-submit record may be followed by a separately requested
         // live attempt only through normal live eligibility; it is never reused.
-      } else if (previous && !["CANCELLED_PRE_SUBMIT", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state) && !provenFailedPrevious && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
+      } else if (previous && !["CANCELLED_PRE_SUBMIT", "DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state) && !provenFailedPrevious && !isSafePreSubmitFailureForRenewal(state, postId, previous) && !(previous.state === "FAILED" && previous.recoveryClassification === "RECOVERABLE" && previous.submitState === "FAILED" && previous.attempt < 3)) {
         if (previous.state !== "REQUEST_READY" && !(dryRun && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state))) throw new Error("Execution cannot be redispatched after SUBMIT_SENT or an unresolved result");
         if (Boolean(previous.request?.dryRun) !== dryRun) throw new Error("Execution request mode cannot be changed after creation");
       }

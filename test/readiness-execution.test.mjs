@@ -862,6 +862,72 @@ test("recoverable pre-submit adapter failures get bounded automatic retries unde
   assert.equal((await service.snapshot()).executionRequests.length, 3);
 });
 
+test("only a durably proven pre-submit failure can renew a failed execution", async (t) => {
+  async function failedPreSubmitFixture() {
+    const fixtureState = await fixture({ provider: { async checkReadiness() { return ready(); } } });
+    const { service, post } = fixtureState;
+    const previous = (await service.snapshot()).executionRequests[0];
+    const at = new Date().toISOString();
+    await service.recordExecutionReceipt(previous.executionId, {
+      schemaVersion: 1,
+      executionId: previous.executionId,
+      jobId: post.id,
+      attempt: previous.attempt,
+      startedAt: at,
+      finishedAt: at,
+      readinessResult: { state: "READY", checkedAt: at },
+      submitState: "FAILED",
+      errorClassification: "TIMEOUT",
+      recoveryClassification: "NONE",
+      preSubmitFailure: {
+        reasonCode: "READINESS_REFRESH_FAILED",
+        stage: "readiness_refresh",
+        gate: "readinessFresh",
+        gateStatus: false
+      },
+      telemetry: { durationMs: 100, browserCommands: 1, computerUseCalls: 0, retries: 0 }
+    });
+    // A failed receipt blocks the post projection. Requeue through the normal
+    // review boundary before asking the router for a fresh execution.
+    await service.transitionPost(post.id, { status: "needs_review" }, "operator");
+    await service.approvePost(post.id, "operator");
+    await service.transitionPost(post.id, { status: "queued" }, "operator");
+    await service.refreshCampaignJobReadiness(post.id, "operator", { force: true });
+    return { ...fixtureState, previous };
+  }
+
+  const renewed = await failedPreSubmitFixture();
+  t.after(() => rm(renewed.directory, { recursive: true, force: true }));
+  const fresh = await renewed.service.prepareExecutionRequest(renewed.post.id, "operator");
+  assert.equal(fresh.attempt, renewed.previous.attempt + 1);
+  assert.notEqual(fresh.executionId, renewed.previous.executionId);
+  assert.equal((await renewed.service.snapshot()).executionRequests.length, 2);
+
+  for (const [label, mutate] of [
+    ["durable submit intent", (state, request) => { request.submitIntentAt = new Date().toISOString(); }],
+    ["click evidence", (state, request) => { request.clickEmittedAt = new Date().toISOString(); }],
+    ["publication attempt", (state, request) => { state.publicationAttempts.push({ executionId: request.executionId }); }],
+    ["submission uncertainty", (state, request) => { state.submissionUncertainties.push({ executionId: request.executionId, status: "UNKNOWN" }); }],
+    ["acceptance evidence", (state, request) => {
+      const receipt = state.executionReceipts.find((item) => item.executionId === request.executionId);
+      receipt.receipt.submitAcceptanceEvidence = {};
+    }]
+  ]) {
+    const blocked = await failedPreSubmitFixture();
+    t.after(() => rm(blocked.directory, { recursive: true, force: true }));
+    await blocked.service.store.mutate("test", `mark_${label.replaceAll(" ", "_")}`, (state) => {
+      const request = state.executionRequests.find((item) => item.executionId === blocked.previous.executionId);
+      mutate(state, request);
+    });
+    await assert.rejects(
+      blocked.service.prepareExecutionRequest(blocked.post.id, "operator"),
+      /Execution cannot be redispatched after SUBMIT_SENT or an unresolved result/
+    );
+    const after = await blocked.service.snapshot();
+    assert.equal(after.executionRequests.length, 1, `${label} must not create a replacement execution`);
+  }
+});
+
 test("human-required pre-submit adapter failures pause only the affected job and account", async () => {
   const { service, post, accountId } = await fixture({ provider: { async checkReadiness() { return ready(); } } });
   const request = (await service.snapshot()).executionRequests[0];
