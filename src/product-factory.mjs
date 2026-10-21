@@ -349,8 +349,12 @@ export async function deriveProjectEvidencePlan(repositoryPath) {
   return { version: 1, repositoryPath: root, kind: metadata ? 'node' : 'unknown', status: steps.length ? 'ELIGIBLE' : 'NOT_EXECUTED_UNSAFE', steps, rejected };
 }
 
-async function copyToStaging(root, artifactPaths = []) {
-  const staging = await fs.mkdtemp(path.join('/tmp', `product-factory-${randomUUID()}-`));
+async function copyToStaging(root, artifactPaths = [], { stagingRoot = '/tmp' } = {}) {
+  const parent = path.resolve(String(stagingRoot || '/tmp'));
+  let parentInfo;
+  try { parentInfo = await fs.stat(parent); } catch { throw new Error('product factory staging root does not exist'); }
+  if (!parentInfo.isDirectory()) throw new Error('product factory staging root is not a directory');
+  const staging = await fs.mkdtemp(path.join(parent, `product-factory-${randomUUID()}-`));
   const preserved = new Set((artifactPaths || [])
     .filter((value) => typeof value === 'string' && !path.isAbsolute(value))
     .map((value) => path.resolve(root, value))
@@ -376,7 +380,18 @@ export async function executeStagedFactoryProbe(repositoryPath, options = {}) {
   const plan = await deriveProjectEvidencePlan(root);
   if (plan.status !== 'ELIGIBLE') return { plan, execution: { version: 1, repositoryPath: root, status: 'NOT_EXECUTED_UNSAFE', results: [], externalSideEffects: false }, artifacts: { version: 1, repositoryPath: root, artifacts: [], externalSideEffects: false } };
   const paths = Array.isArray(options.artifactPaths) ? options.artifactPaths.slice(0, 32) : [];
-  const staging = await copyToStaging(root, paths);
+  // macOS Seatbelt resolves the source path through its real parent chain.
+  // The shared executor already grants `/usr` read access, while `/tmp` is
+  // exposed through `/private` and native Node then fails before syntax
+  // checking. Keep ordinary/injected runs in `/tmp`; only the explicitly
+  // selected shared Seatbelt lane uses the caller-configurable `/usr/local/bin`
+  // staging root. Failure to create that root remains fail-closed.
+  const stagingRoot = options.stagingRoot || (
+    options.seatbeltCapability?.backend === 'system-agentic-seatbelt' && process.platform === 'darwin'
+      ? (process.env.SEEDING_PRODUCT_FACTORY_SEATBELT_STAGING_ROOT || '/usr/local/bin')
+      : '/tmp'
+  );
+  const staging = await copyToStaging(root, paths, { stagingRoot });
   try {
     const stagedPlan = { ...plan, repositoryPath: staging, steps: plan.steps.map((step) => ({ ...step, cwd: staging })) };
     const execution = await executeFactoryPlan(stagedPlan, options);
@@ -427,18 +442,21 @@ export async function executeFactoryPlan(plan, options = {}) {
       if (!isSeatbeltCapabilityUsable(options.seatbeltCapability)) {
         return { version: 1, repositoryPath: root, status: 'NOT_EXECUTED_UNSAFE', results, externalSideEffects: false, sandbox: options.seatbeltCapability };
       }
+      const sandboxArgv = options.seatbeltCapability.backend === 'system-agentic-seatbelt' && binary === 'node'
+        ? ['/usr/bin/env', 'node', ...args]
+        : [binary, ...args];
       let sandboxResult;
       try {
         sandboxResult = await invokeSystemAgenticSeatbelt({
           tool: 'workspace_exec', workspace: cwd, execution_policy: 'READ_ONLY',
-          arguments: { argv: [binary, ...args], timeout_seconds: Math.min(120, Math.max(1, Math.ceil(timeoutMs / 1000))) }
+          arguments: { argv: sandboxArgv, timeout_seconds: Math.min(120, Math.max(1, Math.ceil(timeoutMs / 1000))) }
         }, options);
       } catch (error) {
         sandboxResult = { execution_status: 'FAILED', stderr: redact(error?.message || error) };
       }
       const status = sandboxResult?.execution_status === 'COMPLETED' && sandboxResult?.exit_code === 0 ? 'SUCCEEDED'
         : sandboxResult?.execution_status === 'TIMED_OUT' ? 'TIMEOUT' : 'FAILED';
-      results.push({ argv: [binary, ...args], cwd, purpose: step.purpose, status, exitCode: sandboxResult?.exit_code ?? null, stdout: redact(sandboxResult?.stdout), stderr: redact(sandboxResult?.stderr), sandbox: 'system-agentic-seatbelt' });
+      results.push({ argv: sandboxArgv, cwd, purpose: step.purpose, status, exitCode: sandboxResult?.exit_code ?? null, stdout: redact(sandboxResult?.stdout), stderr: redact(sandboxResult?.stderr), sandbox: 'system-agentic-seatbelt' });
       if (status !== 'SUCCEEDED') break;
       continue;
     }

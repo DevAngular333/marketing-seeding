@@ -3,34 +3,46 @@
 ## Result
 
 `FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS`; no live publication was attempted in
-this gate. Current source HEAD is `5994c15` (`refactor: keep seatbelt bridge
-internal`). The Product Factory Seatbelt adapter work is present in commits
+this gate. Observation timestamp is `2026-10-21T10:03:28Z`; current source HEAD
+is `1073caf` (`docs: record 2026-10-21 release gate`). The Product Factory
+Seatbelt adapter work is present in commits
 `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` and reuses the existing typed
 System-Agentic execution backend without changing frozen Core semantics.
 
 ## Verification
 
-- `npm test`: **573 total, 571 passed, 0 failed, 2 skipped**.
+- `npm test`: **574 total, 572 passed, 0 failed, 2 skipped**.
 - Focused Product Factory Seatbelt gate: **20/20 passed**.
 - `npm run build` in `ui/`: **passed** after dependency installation. The
   generated `ui/package-lock.json` is not release evidence and is not included
   in this journal update.
 - ORCA read-only probe: version `1.4.232`, state `ready`, connection
   `connected`; no browser command or click was issued.
-- Product Factory real Seatbelt smoke remains **BLOCKED**: Node reports a
-  `LowLevelAlloc` arithmetic overflow while invoking the bounded smoke path.
-  The adapter fails closed; no arbitrary project command ran.
-- Canonical state was read-only: schema 8, revision 5673; six immutable
-  `UNKNOWN` submissions; zero published posts; zero active authorizations,
-  windows, grants and leases. No historical UNKNOWN record was mutated.
+- Product Factory bounded local-real Seatbelt smoke **PASSED** at
+  `2026-10-21T10:56:46.101Z`: one staged `node --check` ran through the shared
+  typed executor with `externalSideEffects=false`, and staging was cleaned up.
+  The earlier `LowLevelAlloc` crash is avoided by the allowlisted Node 22
+  runtime and `/usr/local/bin` staging path. This does not certify arbitrary
+  build/render/package-manager execution; production profile attestation is
+  still absent and the adapter remains fail-closed for those commands.
+- Canonical state was read-only: schema 8, revision 5673, SHA-256
+  `80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72`;
+  six immutable `UNKNOWN` submissions and zero published posts. Raw control
+  rows were `5` authorizations with `status=active`, `1` grant with
+  `status=ACTIVE`, `0` active/reserved windows and `0` leases. At the
+  observation timestamp, only `1` authorization remained within its validity
+  interval; the `ACTIVE` grant was already outside its validity interval, so
+  effective live execution controls were `0`. No historical UNKNOWN record was
+  mutated.
 
 ## Remaining blockers
 
 - LinkedIn semantic activation/publication remains unproven after the prior
   quarantined execution `39e667ef-f564-4480-bdbb-0247f3213bd0`; no retry or
   second click is permitted.
-- Product Factory Seatbelt smoke needs diagnosis of the host Node
-  `LowLevelAlloc` arithmetic-overflow failure before real sandbox execution can
-  be certified.
+- Product Factory arbitrary build/render execution remains blocked by the
+  missing independent `factory-sandbox-v1` profile attestation. The narrow
+  syntax-probe smoke is proven locally; it is not a production arbitrary-code
+  execution certificate.
 - Live provider metrics, upstream live handoff and broader platform/runtime
   capabilities remain unverified.

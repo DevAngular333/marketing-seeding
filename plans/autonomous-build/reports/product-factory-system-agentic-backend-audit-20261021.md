@@ -4,6 +4,20 @@
 **Classification:** LOCAL_REAL (source inspection and synthetic local checks)  
 **External side effects:** none
 
+## Reconciliation — source baseline 1073caf
+
+The narrow adapter described by the earlier decision below is now present in
+`src/product-factory.mjs`: it reuses the frozen typed executor, stages the
+existing allowlisted syntax probe, routes Node through `/usr/bin/env node`,
+and preserves fail-closed behavior. A bounded local-real smoke passed on
+2026-10-21 at 10:56:46Z with no external side effect; see
+`plans/autonomous-build/product-factory-seatbelt-adapter/local-real-smoke-20261021.json`.
+
+The earlier conclusion that no adapter had been added is historical and is
+superseded by that narrow seam. The production boundary remains unchanged:
+the smoke does not establish arbitrary build/render/package-manager support,
+and no independent `factory-sandbox-v1` attestation is persisted or enabled.
+
 ## Decision
 
 The frozen `SYSTEM_AGENTIC_AI` workbench does contain a reusable, strict

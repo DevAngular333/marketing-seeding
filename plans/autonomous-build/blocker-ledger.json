@@ -27,7 +27,7 @@
       "status": "EXTERNAL_HARD_BLOCKER",
       "owner_worker": "master",
       "remediation": "Implemented and regression-tested standing bounded delegation; obtain fresh exact authority only in a separately authorized live lane.",
-      "verification": "Zero-touch bootstrap derived exact campaign/product/account/profile/target/content/window/grant/request controls and one fresh execution. Execution 39e667ef-f564-4480-bdbb-0247f3213bd0 used one durable submit intent and one autonomous final action; it is now SUBMIT_RESULT_UNKNOWN and quarantined. No retry or historical UNKNOWN mutation. Canonical observation after reconciliation: schema 8 revision 5673, active authorization/window/grant/lease 0/0/0/0.",
+      "verification": "Zero-touch bootstrap derived exact campaign/product/account/profile/target/content/window/grant/request controls and one fresh execution. Execution 39e667ef-f564-4480-bdbb-0247f3213bd0 used one durable submit intent and one autonomous final action; it is now SUBMIT_RESULT_UNKNOWN and quarantined. No retry or historical UNKNOWN mutation. Canonical observation after reconciliation: schema 8 revision 5673; effective time-valid authorization/window/grant/lease controls were 0/0/0/0 (raw rows included five active authorization records and one expired ACTIVE grant).",
       "resolved_at": null,
       "resume_point": "Fresh exact authorized LinkedIn campaign/account/profile/session input and policy permitting one harmless live test",
       "external_dependency": "Authorized campaign objective/content, account/profile, target and policy permitting one harmless live test",
@@ -69,17 +69,17 @@
       "blocker_id": "PRODUCT-FACTORY-SANDBOX-001",
       "classification": "ENVIRONMENT_BLOCKER",
       "milestone": "product-factory-sandbox-preflight",
-      "root_cause": "Existing typed Seatbelt adapter is integrated, but bounded real smoke invocation fails before execution with a Node LowLevelAlloc arithmetic overflow.",
+      "root_cause": "The existing typed Seatbelt backend can run the narrow staged Product Factory syntax probe, but no independently reviewed and persisted factory-sandbox-v1 attestation exists for arbitrary project build/render/package-manager execution.",
       "affected_scope": "arbitrary project build/run/render execution and automatic media generation",
       "detected_at": "2026-10-18T00:00:00Z",
       "status": "OPEN",
       "owner_worker": "master",
-      "remediation": "Integrated the existing System-Agentic Seatbelt backend through the narrow Product Factory adapter; retain fail-closed behavior while diagnosing host Node LowLevelAlloc overflow.",
-      "verification": "Focused Product Factory adapter gate 20/20 passed. Real Seatbelt smoke remains blocked by LowLevelAlloc arithmetic overflow; no arbitrary project command ran and no external side effect occurred.",
+      "remediation": "Integrated the existing System-Agentic Seatbelt backend through the narrow Product Factory adapter, routed Node through the allowlisted Node 22 runtime, and staged below /usr/local/bin on macOS. Keep arbitrary project execution fail-closed until all seven profile checks are independently attested.",
+      "verification": "Focused Product Factory adapter gate 20/20 passed. Local-real staged node --check smoke passed at 2026-10-21T10:56:46.101Z with externalSideEffects=false; the smoke did not execute arbitrary project commands. Production factory-sandbox-v1 attestation remains absent.",
       "resolved_at": null,
       "resume_point": "An independently reviewed sandbox with explicit network/filesystem/process/resource policy and descendant cleanup",
       "external_dependency": "Audited OS/container sandbox capability on the execution host",
-      "last_checked_at": "2026-10-21T00:00:00Z"
+      "last_checked_at": "2026-10-21T10:56:46.101Z"
     },
     {
       "blocker_id": "RELEASE-JOURNAL-DRIFT-001",
@@ -99,12 +99,26 @@
     }
   ],
   "last_audit": {
-    "at": "2026-10-21T00:00:00Z",
-    "head": "5994c15",
+    "at": "2026-10-21T10:56:46Z",
+    "head": "1073caf",
     "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
     "externalSideEffects": false,
     "canonicalRuntimeMutated": false,
     "historicalUnknownMutated": false,
-    "report": "plans/autonomous-build/reports/release-gate-20261021.md"
+    "report": "plans/autonomous-build/reports/release-gate-20261021.md",
+    "observed_at": "2026-10-21T10:03:28Z",
+    "canonical_state_sha256": "80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72",
+    "raw_control_counts": {
+      "authorizations_status_active": 5,
+      "grants_status_active": 1,
+      "windows_status_active_or_reserved": 0,
+      "leases": 0
+    },
+    "effective_live_control_counts": {
+      "authorizations_within_validity": 1,
+      "grants_within_validity": 0,
+      "windows_within_validity": 0,
+      "leases": 0
+    }
   }
 }

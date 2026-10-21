@@ -1,10 +1,11 @@
-# Current release gate — 2026-10-21T00:00:00Z (HEAD 5994c15)
+# Current release gate — 2026-10-21T10:56:46Z (source baseline 1073caf)
 
-- Full `npm test`: **573 total, 571 passed, 0 failed, 2 skipped**.
+- Full `npm test`: **574 total, 572 passed, 0 failed, 2 skipped**.
 - Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` are locally integrated; focused Product Factory gate is **20/20**. The adapter reuses the existing typed Seatbelt backend and remains fail-closed.
 - UI `npm run build` passed after dependency installation; generated package-lock is not release evidence and is intentionally excluded from this journal update.
-- Real Seatbelt smoke remains blocked by a Node `LowLevelAlloc` arithmetic overflow during bounded smoke invocation; no arbitrary project command ran.
+- Bounded local-real Seatbelt smoke passed at `2026-10-21T10:56:46.101Z` for one staged `node --check` through the shared typed executor with `externalSideEffects=false`; the earlier Node `LowLevelAlloc` crash is avoided by the allowlisted Node 22 runtime and `/usr/local/bin` staging. Arbitrary build/render/package-manager execution remains fail-closed pending independent `factory-sandbox-v1` attestation.
 - ORCA `1.4.232` is `ready`/`connected` by read-only probe; no browser command or click occurred.
+- Release observation at `2026-10-21T10:03:28Z` uses source HEAD `1073caf` and canonical state SHA-256 `80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72`; raw status counts are 5 active authorizations and 1 ACTIVE grant, while effective time-valid live controls are zero (one authorization remains time-valid, the grant is expired, and no active/reserved window or lease exists).
 - Canonical state remains read-only schema 8/revision 5673 with six immutable UNKNOWN submissions, zero published posts and zero active authorization/window/grant/lease controls.
 - Current gate report: `plans/autonomous-build/reports/release-gate-20261021.md`.
 

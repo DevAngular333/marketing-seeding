@@ -1,0 +1,53 @@
+{
+  "milestone": "Product Factory System-Agentic Seatbelt adapter",
+  "evidenceClass": "LOCAL_REAL",
+  "observedAt": "2026-10-21T10:56:46.101Z",
+  "externalSideEffects": false,
+  "sourceHead": "1073caf",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "outerNode": "v24.21.0"
+  },
+  "fixture": {
+    "type": "temporary-node-repository",
+    "command": [
+      "node",
+      "--check",
+      "src/server.mjs"
+    ],
+    "sourceBytes": "export const ok = true\\n"
+  },
+  "backend": {
+    "name": "system-agentic-seatbelt",
+    "status": "AVAILABLE",
+    "executionEligible": true,
+    "attestation": "explicit all-PASS capability supplied for this bounded smoke; production eligibility remains fail-closed until independently persisted/attested"
+  },
+  "staging": {
+    "policy": "macOS Seatbelt lane stages below /usr/local/bin; staging is removed in finally",
+    "sourceRootNotPersisted": true
+  },
+  "execution": {
+    "planStatus": "ELIGIBLE",
+    "status": "SUCCEEDED",
+    "externalSideEffects": false,
+    "result": [
+      {
+        "argv": [
+          "/usr/bin/env",
+          "node",
+          "--check",
+          "src/server.mjs"
+        ],
+        "purpose": "manifest:build",
+        "status": "SUCCEEDED",
+        "exitCode": 0,
+        "sandbox": "system-agentic-seatbelt",
+        "cwdParent": "/usr/local/bin"
+      }
+    ]
+  },
+  "conclusion": "BOUNDED_SMOKE_PASS",
+  "limitation": "This proves the existing narrow staged syntax probe through the shared typed executor. It does not certify arbitrary build/render/package-manager execution or production Product Factory profile attestation."
+}

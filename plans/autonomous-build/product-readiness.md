@@ -1,8 +1,8 @@
-# Product readiness current gate — 2026-10-21 (HEAD 5994c15)
+# Product readiness current gate — 2026-10-21 (HEAD 1073caf; observed 2026-10-21T10:03:28Z)
 
-`FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS`. Full `npm test` is **573/571/0/2**; focused Product Factory Seatbelt adapter gate is **20/20**; UI `npm run build` passed after dependency installation. The adapter work (`ac741e7`, `ebffb7e`, `154de1b`, `5994c15`) reuses the existing typed Seatbelt backend and preserves fail-closed Product Factory policy. Real Seatbelt smoke is still blocked by a Node `LowLevelAlloc` arithmetic overflow, so arbitrary project execution/rendering remains unproven.
+`FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS`. Full `npm test` is **574/572/0/2**; focused Product Factory Seatbelt adapter gate is **20/20**; UI `npm run build` passed after dependency installation. The adapter work (`ac741e7`, `ebffb7e`, `154de1b`, `5994c15`) reuses the existing typed Seatbelt backend and preserves fail-closed Product Factory policy. A bounded local-real staged `node --check` smoke passed at `2026-10-21T10:56:46.101Z`; arbitrary project execution/rendering remains unproven because independent `factory-sandbox-v1` profile attestation is absent.
 
-ORCA `1.4.232` is read-only `ready`/`connected`; no click occurred. Canonical state is read-only schema 8/revision 5673 with six immutable UNKNOWN submissions, zero published posts and zero active authorization/window/grant/lease controls. LinkedIn remains live-unproven after the quarantined execution `39e667ef…`.
+ORCA `1.4.232` is read-only `ready`/`connected`; no click occurred. Canonical state is read-only schema 8/revision 5673 with six immutable UNKNOWN submissions and zero published posts. Raw status counts are 5 active authorizations and 1 ACTIVE grant, with 0 active/reserved windows and 0 leases; at the observation timestamp only one authorization was time-valid and the grant was expired, leaving zero effective live execution controls. LinkedIn remains live-unproven after the quarantined execution `39e667ef…`.
 
 See `plans/autonomous-build/reports/release-gate-20261021.md`.
 

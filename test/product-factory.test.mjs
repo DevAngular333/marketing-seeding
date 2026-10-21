@@ -57,10 +57,37 @@ test('System-Agentic Seatbelt adapter executes only an all-pass attested typed c
   assert.equal(result.results[0].sandbox, 'system-agentic-seatbelt');
   assert.equal(request.tool, 'workspace_exec');
   assert.equal(request.execution_policy, 'READ_ONLY');
-  assert.deepEqual(request.arguments.argv.slice(0, 2), ['node', '--check']);
+  assert.deepEqual(request.arguments.argv.slice(0, 2), ['/usr/bin/env', 'node']);
+  assert.equal(request.arguments.argv[2], '--check');
   const blocked = await executeFactoryPlan(plan, { seatbeltCapability: { ...capability, executionEligible: false } });
   assert.equal(blocked.status, 'NOT_EXECUTED_UNSAFE');
   assert.equal(blocked.results.length, 0);
+});
+
+test('Seatbelt Product Factory Node probes use the allowlisted runtime and bounded staging root', async () => {
+  const root = await fixture({
+    'package.json': JSON.stringify({ scripts: { build: 'node --check src/server.mjs' } }),
+    'src/server.mjs': 'export const ok = true;'
+  });
+  const stagingRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'product-factory-seatbelt-stage-'));
+  const capability = await probeSystemAgenticSeatbeltCapability({ backendPresent: true, attestation: {
+    backendInvocation: 'PASS', profileIntegrity: 'PASS', networkDenied: 'PASS', filesystemScope: 'PASS',
+    childProcessPolicy: 'PASS', timeoutCleanup: 'PASS', resourceLimits: 'PASS'
+  } });
+  let request;
+  const result = await executeStagedFactoryProbe(root, {
+    stagingRoot,
+    seatbeltCapability: capability,
+    spawnImpl(input) {
+      request = input.request;
+      return { execution_status: 'COMPLETED', exit_code: 0, stdout: '', stderr: '' };
+    }
+  });
+  assert.equal(result.execution.status, 'SUCCEEDED');
+  assert.deepEqual(request.arguments.argv.slice(0, 3), ['/usr/bin/env', 'node', '--check']);
+  assert.equal(request.workspace.startsWith(await fs.realpath(stagingRoot)), true);
+  assert.equal(request.execution_policy, 'READ_ONLY');
+  assert.equal(result.execution.externalSideEffects, false);
 });
 
 test('plan is deterministic and runner executes without shell', async () => {

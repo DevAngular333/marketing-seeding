@@ -1,8 +1,8 @@
-# Current gate overlay — 2026-10-21 (HEAD 5994c15)
+# Current gate overlay — 2026-10-21 (HEAD 1073caf; observed 2026-10-21T10:03:28Z)
 
-The latest local release gate is **573 total, 571 passed, 0 failed, 2 skipped**. Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` reuse the existing typed backend; focused Product Factory verification is **20/20**. UI build passed after dependency installation. The real Seatbelt smoke remains blocked by Node `LowLevelAlloc` arithmetic overflow, and Product Factory stays fail-closed.
+The latest local release gate is **574 total, 572 passed, 0 failed, 2 skipped**. Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` reuse the existing typed backend; focused Product Factory verification is **20/20**. UI build passed after dependency installation. A bounded local-real staged `node --check` smoke passed at `2026-10-21T10:56:46.101Z`; arbitrary build/render/package-manager execution stays fail-closed until an independent `factory-sandbox-v1` attestation exists.
 
-Read-only runtime evidence: ORCA `1.4.232` ready/connected; canonical schema 8 revision 5673, six immutable UNKNOWN submissions, zero published posts and no active controls. No browser click or external side effect occurred in this gate.
+Read-only runtime evidence: ORCA `1.4.232` ready/connected; canonical schema 8 revision 5673, six immutable UNKNOWN submissions and zero published posts. Raw status counts are 5 active authorizations and 1 ACTIVE grant, with 0 active/reserved windows and 0 leases; at the observation timestamp only one authorization was time-valid and the grant was expired, leaving zero effective live execution controls. No browser click or external side effect occurred in this gate.
 
 Release report: `plans/autonomous-build/reports/release-gate-20261021.md`.
 
