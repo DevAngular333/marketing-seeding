@@ -248,18 +248,34 @@ export async function invokeSystemAgenticSeatbelt(request, options = {}) {
   if (typeof options.spawnImpl === 'function') {
     return options.spawnImpl({ python, executorPath, script: SEATBELT_EXECUTOR_SCRIPT, request });
   }
-  await fs.access(executorPath);
+  const resolvedExecutorPath = await fs.realpath(executorPath);
+  if (!within(runtimeRoot, resolvedExecutorPath)) throw new Error('Seatbelt executor escapes runtime root');
   return new Promise((resolve) => {
-    const child = spawn(python, ['-c', SEATBELT_EXECUTOR_SCRIPT, executorPath, JSON.stringify(request)], {
-      cwd: runtimeRoot, shell: false, stdio: ['ignore', 'pipe', 'pipe'], env: { PATH: process.env.PATH || '' }
+    const child = spawn(python, ['-c', SEATBELT_EXECUTOR_SCRIPT, resolvedExecutorPath, JSON.stringify(request)], {
+      cwd: runtimeRoot, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { PATH: process.env.PATH || '' }
     });
     let stdout = '', stderr = '', timedOut = false;
     const timeoutMs = Math.min(125_000, Math.max(1_000, Number(options.timeoutMs) || 130_000));
     const append = (target, chunk) => target.length < DEFAULT_MAX_OUTPUT ? (target + chunk.toString()).slice(0, DEFAULT_MAX_OUTPUT) : target;
     child.stdout.on('data', (chunk) => { stdout = append(stdout, chunk); });
     child.stderr.on('data', (chunk) => { stderr = append(stderr, chunk); });
-    const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGTERM'); } catch {} }, timeoutMs);
-    const finish = (value) => { clearTimeout(timer); resolve(value); };
+    const killTree = (signal) => {
+      try {
+        // The bridge owns a detached process group so a timeout cannot leave
+        // the Python executor or its Seatbelt child running in the background.
+        if (child.pid) process.kill(-child.pid, signal);
+        else child.kill(signal);
+      } catch {
+        try { child.kill(signal); } catch {}
+      }
+    };
+    let forceTimer;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killTree('SIGTERM');
+      forceTimer = setTimeout(() => killTree('SIGKILL'), 500);
+    }, timeoutMs);
+    const finish = (value) => { clearTimeout(timer); clearTimeout(forceTimer); resolve(value); };
     child.on('error', (error) => finish({ execution_status: 'FAILED', stderr: redact(error.message) }));
     child.on('close', (code) => {
       if (timedOut) return finish({ execution_status: 'TIMED_OUT', stderr: redact(stderr) });
