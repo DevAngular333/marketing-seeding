@@ -1,4 +1,4 @@
-# Current release overlay — 2026-10-21 (HEAD 5affd1e; canonical state observed 2026-10-21T10:03:28Z; smoke source f992f50 observed 2026-10-21T11:49:00Z)
+# Current release overlay — 2026-10-21 (HEAD a0cd61f; canonical state observed 2026-10-21T10:03:28Z; smoke source f992f50 observed 2026-10-21T11:49:00Z)
 
 - `npm test`: **574 total, 572 passed, 0 failed, 2 skipped**.
 - Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, `5994c15`; focused gate **20/20**. UI build passed after dependency installation.
