@@ -31,6 +31,36 @@ test('System-Agentic Seatbelt adapter is read-only and remains fail-closed witho
   const available = await probeSystemAgenticSeatbeltCapability({ runtimeRoot: root, backendPresent: true });
   assert.equal(available.status, 'UNSUPPORTED');
   assert.equal(available.executionEligible, false);
+  const attested = await probeSystemAgenticSeatbeltCapability({ runtimeRoot: root, backendPresent: true, attestation: {
+    backendInvocation: 'PASS', profileIntegrity: 'PASS', networkDenied: 'PASS', filesystemScope: 'PASS',
+    childProcessPolicy: 'PASS', timeoutCleanup: 'PASS', resourceLimits: 'PASS'
+  } });
+  assert.equal(attested.executionEligible, true);
+});
+
+test('System-Agentic Seatbelt adapter executes only an all-pass attested typed command', async () => {
+  const root = await fixture({ 'package.json': '{}', 'src/server.mjs': '' });
+  const plan = createFactoryPlan(await classifyRepository(root));
+  const capability = await probeSystemAgenticSeatbeltCapability({ backendPresent: true, attestation: {
+    backendInvocation: 'PASS', profileIntegrity: 'PASS', networkDenied: 'PASS', filesystemScope: 'PASS',
+    childProcessPolicy: 'PASS', timeoutCleanup: 'PASS', resourceLimits: 'PASS'
+  } });
+  let request;
+  const result = await executeFactoryPlan(plan, {
+    seatbeltCapability: capability,
+    spawnImpl(input) {
+      request = input.request;
+      return { execution_status: 'COMPLETED', exit_code: 0, stdout: 'ok', stderr: '' };
+    }
+  });
+  assert.equal(result.status, 'SUCCEEDED');
+  assert.equal(result.results[0].sandbox, 'system-agentic-seatbelt');
+  assert.equal(request.tool, 'workspace_exec');
+  assert.equal(request.execution_policy, 'READ_ONLY');
+  assert.deepEqual(request.arguments.argv.slice(0, 2), ['node', '--check']);
+  const blocked = await executeFactoryPlan(plan, { seatbeltCapability: { ...capability, executionEligible: false } });
+  assert.equal(blocked.status, 'NOT_EXECUTED_UNSAFE');
+  assert.equal(blocked.results.length, 0);
 });
 
 test('plan is deterministic and runner executes without shell', async () => {

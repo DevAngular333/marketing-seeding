@@ -1825,6 +1825,7 @@ export class SeedingService {
         : probeSystemAgenticSeatbeltCapability);
     this.productFactorySandboxProbeTtlMs = Math.min(60_000, Math.max(1_000, Number(options.productFactorySandboxProbeTtlMs) || 15_000));
     this.productFactorySandboxProbeCache = null;
+    this.productFactoryUseSeatbelt = options.productFactoryUseSeatbelt === true;
     const explicitProductRoots = options.productRepoRoots !== undefined || Boolean(String(process.env.SEEDING_PRODUCT_REPO_ROOTS || "").trim());
     this.productRepoRoots = (options.productRepoRoots || String(process.env.SEEDING_PRODUCT_REPO_ROOTS || "").split(path.delimiter))
       .map((value) => String(value || "").trim())
@@ -1939,7 +1940,8 @@ export class SeedingService {
       const probe = await executeStagedFactoryProbe(productRepo, {
         timeoutMs: Math.min(120_000, Math.max(100, Number(input.timeoutMs) || 30_000)),
         maxOutput: 32_000,
-        artifactPaths
+        artifactPaths,
+        ...(this.productFactoryUseSeatbelt ? { seatbeltCapability: await this.productFactorySandboxCapability() } : {})
       });
       const execution = probe.execution;
       const artifacts = probe.plan.status === "ELIGIBLE"

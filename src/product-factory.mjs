@@ -32,6 +32,13 @@ const SANDBOX_CHECKS = Object.freeze([
   'resourceLimits'
 ]);
 const SANDBOX_CHECK_STATUS = new Set(['PASS', 'FAIL', 'UNSUPPORTED', 'UNAVAILABLE']);
+const SEATBELT_PYTHON = 'python3';
+const SEATBELT_EXECUTOR_SCRIPT = String.raw`import json,sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
+from tool_executor import execute_command
+request=json.loads(sys.argv[2])
+print(json.dumps(execute_command(request), separators=(',', ':')))`;
 
 // System-Agentic_AI owns the audited Seatbelt executor.  Marketing-seeding
 // may inspect that backend through this adapter, but it must never promote
@@ -212,10 +219,54 @@ export async function probeSystemAgenticSeatbeltCapability(options = {}) {
   }
   const checks = Object.fromEntries(SANDBOX_CHECKS.map((key) => [key, 'UNSUPPORTED']));
   checks.backendInvocation = present ? 'PASS' : 'UNAVAILABLE';
+  // The host may provide an independently audited attestation. Backend
+  // presence alone never enables project execution.
+  const attestation = options.attestation && typeof options.attestation === 'object' ? options.attestation : null;
+  for (const key of SANDBOX_CHECKS) {
+    if (attestation && Object.hasOwn(attestation, key)) checks[key] = sandboxCheckStatus(attestation[key]);
+  }
   return evaluateSandboxCapability({
     backend: 'system-agentic-seatbelt',
     present,
     checks
+  });
+}
+
+function isSeatbeltCapabilityUsable(capability) {
+  return capability && capability.backend === 'system-agentic-seatbelt' &&
+    capability.executionEligible === true && capability.status === 'AVAILABLE' &&
+    capability.profile?.id === 'factory-sandbox-v1' && Number(capability.profile?.version) === 1 &&
+    SANDBOX_CHECKS.every((key) => capability.checks?.[key] === 'PASS');
+}
+
+/** Invoke the frozen System-Agentic_AI typed executor. No shell is involved. */
+export async function invokeSystemAgenticSeatbelt(request, options = {}) {
+  const runtimeRoot = path.resolve(String(options.runtimeRoot || DEFAULT_SYSTEM_AGENTIC_RUNTIME_ROOT));
+  const executorPath = path.join(runtimeRoot, 'products', 'agent-runtime', 'tool_executor.py');
+  const python = String(options.python || SEATBELT_PYTHON);
+  if (!request || typeof request !== 'object' || !request.workspace || !request.arguments?.argv) throw new Error('malformed Seatbelt request');
+  if (typeof options.spawnImpl === 'function') {
+    return options.spawnImpl({ python, executorPath, script: SEATBELT_EXECUTOR_SCRIPT, request });
+  }
+  await fs.access(executorPath);
+  return new Promise((resolve) => {
+    const child = spawn(python, ['-c', SEATBELT_EXECUTOR_SCRIPT, executorPath, JSON.stringify(request)], {
+      cwd: runtimeRoot, shell: false, stdio: ['ignore', 'pipe', 'pipe'], env: { PATH: process.env.PATH || '' }
+    });
+    let stdout = '', stderr = '', timedOut = false;
+    const timeoutMs = Math.min(125_000, Math.max(1_000, Number(options.timeoutMs) || 130_000));
+    const append = (target, chunk) => target.length < DEFAULT_MAX_OUTPUT ? (target + chunk.toString()).slice(0, DEFAULT_MAX_OUTPUT) : target;
+    child.stdout.on('data', (chunk) => { stdout = append(stdout, chunk); });
+    child.stderr.on('data', (chunk) => { stderr = append(stderr, chunk); });
+    const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGTERM'); } catch {} }, timeoutMs);
+    const finish = (value) => { clearTimeout(timer); resolve(value); };
+    child.on('error', (error) => finish({ execution_status: 'FAILED', stderr: redact(error.message) }));
+    child.on('close', (code) => {
+      if (timedOut) return finish({ execution_status: 'TIMED_OUT', stderr: redact(stderr) });
+      let parsed = null;
+      try { parsed = JSON.parse(stdout.trim()); } catch {}
+      finish(parsed && typeof parsed === 'object' ? parsed : { execution_status: 'FAILED', exit_code: code, stdout: redact(stdout), stderr: redact(stderr) });
+    });
   });
 }
 
@@ -356,6 +407,20 @@ export async function executeFactoryPlan(plan, options = {}) {
   const results = [];
   for (const step of plan.steps || []) {
     const { binary, args, cwd } = await validateCommand(step, root);
+    if (options.seatbeltCapability) {
+      if (!isSeatbeltCapabilityUsable(options.seatbeltCapability)) {
+        return { version: 1, repositoryPath: root, status: 'NOT_EXECUTED_UNSAFE', results, externalSideEffects: false, sandbox: options.seatbeltCapability };
+      }
+      const sandboxResult = await invokeSystemAgenticSeatbelt({
+        tool: 'workspace_exec', workspace: cwd, execution_policy: 'READ_ONLY',
+        arguments: { argv: [binary, ...args], timeout_seconds: Math.min(120, Math.max(1, Math.ceil(timeoutMs / 1000))) }
+      }, options);
+      const status = sandboxResult?.execution_status === 'COMPLETED' && sandboxResult?.exit_code === 0 ? 'SUCCEEDED'
+        : sandboxResult?.execution_status === 'TIMED_OUT' ? 'TIMEOUT' : 'FAILED';
+      results.push({ argv: [binary, ...args], cwd, purpose: step.purpose, status, exitCode: sandboxResult?.exit_code ?? null, stdout: redact(sandboxResult?.stdout), stderr: redact(sandboxResult?.stderr), sandbox: 'system-agentic-seatbelt' });
+      if (status !== 'SUCCEEDED') break;
+      continue;
+    }
     const result = await new Promise((resolve) => {
       const child = spawnProcess(binary, args, { cwd, shell: false, env: { PATH: process.env.PATH || '' } });
       let stdout = '', stderr = '', timedOut = false;
@@ -372,7 +437,7 @@ export async function executeFactoryPlan(plan, options = {}) {
     results.push(result);
     if (result.status !== 'SUCCEEDED') break;
   }
-  return { version: 1, repositoryPath: root, status: results.every((r) => r.status === 'SUCCEEDED') ? 'SUCCEEDED' : 'FAILED', results, externalSideEffects: false };
+  return { version: 1, repositoryPath: root, status: results.every((r) => r.status === 'SUCCEEDED') ? 'SUCCEEDED' : 'FAILED', results, externalSideEffects: false, ...(options.seatbeltCapability ? { sandbox: options.seatbeltCapability } : {}) };
 }
 
 export async function collectArtifactEvidence(repositoryPath, artifactPaths, commandRef = null) {
