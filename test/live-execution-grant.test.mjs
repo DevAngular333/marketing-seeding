@@ -168,6 +168,72 @@ test("durable submit intent consumes the exact grant in one state write and cann
   await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
 });
 
+test("stale pre-submit sibling without controls does not block the exact live submit", async () => {
+  const f = await fixture();
+  const grant = await f.createGrant();
+  const row = await f.service.prepareExecutionRequest(f.posts[0].id, "operator");
+  await f.store.mutate("test", "install_stale_request_sibling", (state) => {
+    const source = state.executionRequests.find((item) => item.executionId === row.executionId);
+    state.executionRequests.push({
+      ...structuredClone(source),
+      executionId: "stale-sibling-execution",
+      attempt: source.attempt + 1,
+      request: {
+        ...structuredClone(source.request),
+        executionId: "stale-sibling-execution",
+        liveGrant: null
+      },
+      liveGrantId: null
+    });
+  });
+  const acquired = await f.service.acquireExecutionLease(row.executionId, "stale-sibling-worker");
+  assert.equal(acquired.acquired, true);
+  await f.service.beginExecutionSubmitIntent(row.executionId, acquired.lease, {
+    liveEnabled: true, liveExecutionId: row.executionId, verifiedGates: gates
+  });
+  const state = await f.service.snapshot();
+  assert.equal(state.executionRequests.find((item) => item.executionId === row.executionId).state, "SUBMIT_SENT_INTENT");
+  assert.equal(state.executionRequests.find((item) => item.executionId === "stale-sibling-execution").state, "REQUEST_READY");
+  assert.equal(state.liveExecutionGrants.find((item) => item.grantId === grant.grantId).consumedExecutionId, row.executionId);
+  await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
+});
+
+test("a sibling that still owns an active grant remains an idempotency blocker", async () => {
+  const f = await fixture();
+  const grant = await f.createGrant();
+  const row = await f.service.prepareExecutionRequest(f.posts[0].id, "operator");
+  await f.store.mutate("test", "install_active_grant_sibling", (state) => {
+    const source = state.executionRequests.find((item) => item.executionId === row.executionId);
+    const siblingExecutionId = "active-sibling-execution";
+    const siblingGrant = {
+      ...structuredClone(state.liveExecutionGrants.find((item) => item.grantId === grant.grantId)),
+      grantId: "active-sibling-grant",
+      boundExecutionId: siblingExecutionId
+    };
+    state.liveExecutionGrants.push(siblingGrant);
+    state.executionRequests.push({
+      ...structuredClone(source),
+      executionId: siblingExecutionId,
+      attempt: source.attempt + 1,
+      request: {
+        ...structuredClone(source.request),
+        executionId: siblingExecutionId,
+        liveGrant: { grantId: siblingGrant.grantId }
+      },
+      liveGrantId: siblingGrant.grantId
+    });
+  });
+  const acquired = await f.service.acquireExecutionLease(row.executionId, "active-sibling-worker");
+  assert.equal(acquired.acquired, true);
+  await assert.rejects(f.service.beginExecutionSubmitIntent(row.executionId, acquired.lease, {
+    liveEnabled: true, liveExecutionId: row.executionId, verifiedGates: gates
+  }), (error) => error.code === "IDEMPOTENCY_BLOCKED");
+  const state = await f.service.snapshot();
+  assert.equal(state.executionRequests.find((item) => item.executionId === row.executionId).state, "REQUEST_READY");
+  assert.equal(state.liveExecutionGrants.find((item) => item.grantId === grant.grantId).status, "ACTIVE");
+  await f.service.releaseExecutionLease(acquired.lease.id, acquired.lease.token);
+});
+
 test("certified durable submit intent rejects malformed or non-actionable control evidence at the service boundary", async () => {
   const f = await fixture();
   await f.createGrant();

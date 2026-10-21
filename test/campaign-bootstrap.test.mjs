@@ -404,3 +404,35 @@ test("queue renews controls when the pending request window is stale", async (t)
   assert.notEqual(rows[1].executionId, first.executionId);
   assert.ok(rows[1].request.liveGrant?.grantId);
 });
+
+test("bootstrap reuses the exact active grant/window owner when a newer stale sibling exists", async (t) => {
+  const { service, productRepo, now } = await fixture(t, { readinessProvider: true });
+  const first = await service.bootstrapAutonomousCampaign(brief(productRepo, now));
+  assert.equal(first.status, "READY_FOR_AUTONOMOUS_EXECUTION");
+  const before = await service.snapshot();
+  const owner = before.executionRequests.find((item) => item.executionId === first.executionId);
+  assert.equal(owner.state, "REQUEST_READY");
+  assert.equal(owner.submitState, "NOT_STARTED");
+  const stale = structuredClone(owner);
+  stale.executionId = "stale-pre-submit-sibling";
+  stale.attempt = owner.attempt + 1;
+  stale.createdAt = new Date(now.getTime() + 1_000).toISOString();
+  stale.request.executionId = stale.executionId;
+  stale.request.createdAt = stale.createdAt;
+  stale.request.liveGrant = null;
+  stale.liveGrantId = null;
+  await service.store.mutate("test", "install_stale_pre_submit_sibling", (state) => {
+    state.executionRequests.push(stale);
+  });
+
+  const prepared = await service.prepareExecutionRequest(first.postId, "operator");
+  const after = await service.snapshot();
+  const savedOwner = after.executionRequests.find((item) => item.executionId === first.executionId);
+  const savedStale = after.executionRequests.find((item) => item.executionId === stale.executionId);
+  assert.equal(prepared.executionId, first.executionId);
+  assert.equal(savedOwner.executionId, first.executionId);
+  assert.equal(savedOwner.request.liveGrant.grantId, first.liveGrantId);
+  assert.equal(savedOwner.request.oneTimeWindow.windowId, first.oneTimeWindowId);
+  assert.deepEqual(savedStale, stale);
+  assert.equal(after.executionRequests.filter((item) => item.jobId === first.postId && item.request?.dryRun !== true).length, 2);
+});

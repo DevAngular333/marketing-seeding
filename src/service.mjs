@@ -4396,7 +4396,22 @@ export class SeedingService {
       if (post.status !== "queued") return false;
       const authorization = snapshot.campaignAuthorizations?.find((item) => item.id === post.campaignAuthorizationId);
       if (authorization?.executionMode === "standing_autonomous" && !post.executionState) return true;
-      const latestExecution = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id).sort((a, b) => b.attempt - a.attempt)[0];
+      const executions = (snapshot.executionRequests || []).filter((item) => item.jobId === post.id)
+        .sort((a, b) => (Number(b.attempt) || 0) - (Number(a.attempt) || 0));
+      const latestExecution = executions.find((item) => {
+        if (item.state !== "REQUEST_READY" || item.submitState !== "NOT_STARTED" || item.request?.dryRun === true) return false;
+        const request = item.request || {};
+        const windowId = request.oneTimeWindow?.windowId;
+        const window = windowId ? (snapshot.oneTimeExecutionWindows || []).find((candidate) => candidate.windowId === windowId) : null;
+        const grantId = request.liveGrant?.grantId;
+        const grant = grantId ? (snapshot.liveExecutionGrants || []).find((candidate) => candidate.grantId === grantId) : null;
+        if (!window || !grant || liveGrantEffectiveStatus(grant) !== "ACTIVE" || grant.boundExecutionId !== item.executionId) return false;
+        if (!['ACTIVE', 'RESERVED'].includes(oneTimeExecutionWindowStatus(window, new Date())) ||
+            !oneTimeExecutionWindowInBounds(window, new Date()) ||
+            (window.status === "RESERVED" && window.reservedExecutionId !== item.executionId)) return false;
+        try { return assertLiveGrantMatchesExecution(grant, request, authorization, new Date(), { checkWindow: false }); }
+        catch { return false; }
+      }) || executions[0];
       if (authorization?.executionMode === "standing_autonomous" && latestExecution?.state === "REQUEST_READY" && latestExecution.submitState === "NOT_STARTED" && latestExecution.request?.dryRun !== true) {
         const requestGrantId = latestExecution.request?.liveGrant?.grantId || null;
         const rowGrantId = latestExecution.liveGrantId || null;
@@ -4700,7 +4715,32 @@ export class SeedingService {
       snapshot = await this.store.read();
     }
     if (unresolvedSubmission(snapshot, post)) throw new Error("SUBMISSION_UNCERTAIN: job or publication identity is quarantined");
-    const previous = (snapshot.executionRequests || []).filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
+    const pendingRequests = (snapshot.executionRequests || [])
+      .filter((item) => item.jobId === postId && item.request?.dryRun !== true &&
+        item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED")
+      .sort((a, b) => (Number(b.attempt) || 0) - (Number(a.attempt) || 0));
+    // A scheduler tick may have left a newer pre-submit row behind while an
+    // earlier row still owns the only valid standing window/grant. Prefer the
+    // exact row with usable controls so a readiness refresh updates it in
+    // place. This preserves the execution identity and prevents a second
+    // request from shadowing the authorized one.
+    const usablePending = pendingRequests.find((item) => {
+      const request = item.request || {};
+      const grantId = request.liveGrant?.grantId;
+      const grant = grantId ? (snapshot.liveExecutionGrants || []).find((candidate) => candidate.grantId === grantId) : null;
+      if (!grant || liveGrantEffectiveStatus(grant) !== "ACTIVE" || grant.boundExecutionId !== item.executionId) return false;
+      const windowId = request.oneTimeWindow?.windowId;
+      if (windowId) {
+        const window = (snapshot.oneTimeExecutionWindows || []).find((candidate) => candidate.windowId === windowId);
+        if (!window || !['ACTIVE', 'RESERVED'].includes(oneTimeExecutionWindowStatus(window, new Date())) ||
+            !oneTimeExecutionWindowInBounds(window, new Date()) ||
+            (window.status === "RESERVED" && window.reservedExecutionId !== item.executionId)) return false;
+      }
+      try { assertLiveGrantMatchesExecution(grant, request, authorizationForDelegation, new Date(), { checkWindow: false }); return true; }
+      catch { return false; }
+    });
+    const previous = usablePending || (snapshot.executionRequests || []).filter((item) => item.jobId === postId)
+      .sort((a, b) => (Number(b.attempt) || 0) - (Number(a.attempt) || 0))[0];
     const operator = ["operator", "local-human-operator"].includes(actor);
     const resumingOwnedDryRun = String(actor).startsWith("jev-worker:") && previous?.request?.dryRun === true && previous.state === "REQUEST_READY";
     const rehearsalScheduler = actor === "dry-run-handoff-scheduler";
@@ -4730,7 +4770,6 @@ export class SeedingService {
       const currentWindow = eligibility.oneTimeWindow;
       const currentGrant = (snapshot.liveExecutionGrants || []).find((item) => item.grantId === previous.request?.liveGrant?.grantId);
       const previousControlsCurrent = previous.request?.executionId === previous.executionId &&
-        isExecutionRequestReadinessFresh(previous.request?.readiness, readinessContext, new Date(), this.readinessTtlMs) &&
         previous.request?.oneTimeWindow?.windowId === currentWindow?.windowId &&
         previous.request?.liveGrant?.grantId === currentGrant?.grantId &&
         currentGrant && liveGrantEffectiveStatus(currentGrant) === "ACTIVE" &&
@@ -4751,7 +4790,36 @@ export class SeedingService {
     const result = await this.store.mutate(actor, "execution_request_prepared", (state) => {
       if (unresolvedSubmission(state, requireItem(state.posts, postId, "Post"))) throw new Error("SUBMISSION_UNCERTAIN: job or publication identity is quarantined");
       state.executionRequests ||= [];
-      const previous = state.executionRequests.filter((item) => item.jobId === postId).sort((a, b) => b.attempt - a.attempt)[0];
+      const currentPost = requireItem(state.posts, postId, "Post");
+      const currentAuthorization = requireItem(state.campaignAuthorizations || [], currentPost.campaignAuthorizationId, "Campaign authorization");
+      const pendingRequests = state.executionRequests
+        .filter((item) => item.jobId === postId && item.request?.dryRun !== true &&
+          item.state === "REQUEST_READY" && item.submitState === "NOT_STARTED")
+        .sort((a, b) => (Number(b.attempt) || 0) - (Number(a.attempt) || 0));
+      const usablePending = pendingRequests.find((item) => {
+        const request = item.request || {};
+        const grantId = request.liveGrant?.grantId;
+        const grant = grantId ? (state.liveExecutionGrants || []).find((candidate) => candidate.grantId === grantId) : null;
+        if (!grant || liveGrantEffectiveStatus(grant) !== "ACTIVE" || grant.boundExecutionId !== item.executionId) return false;
+        const windowId = request.oneTimeWindow?.windowId;
+        if (windowId) {
+          const window = (state.oneTimeExecutionWindows || []).find((candidate) => candidate.windowId === windowId);
+          if (!window || !["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(window, new Date())) ||
+              !oneTimeExecutionWindowInBounds(window, new Date()) ||
+              (window.status === "RESERVED" && window.reservedExecutionId !== item.executionId)) return false;
+        }
+        try {
+          return assertLiveGrantMatchesExecution(grant, request, currentAuthorization, new Date(), { checkWindow: false });
+        } catch {
+          return false;
+        }
+      });
+      // A newer pre-submit row without usable standing controls must never
+      // shadow the exact row that owns the active one-time window and grant.
+      // Re-select from the transaction snapshot so concurrent scheduler ticks
+      // cannot create a second live execution identity.
+      const previous = usablePending || state.executionRequests.filter((item) => item.jobId === postId)
+        .sort((a, b) => (Number(b.attempt) || 0) - (Number(a.attempt) || 0))[0];
       const provenFailedPrevious = previous?.state === "PROVEN_FAILED" && (state.submissionUncertainties || []).some((item) => item.jobId === postId && item.executionId === previous.executionId && item.status === "PROVEN_FAILED");
       if (previous && ["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(previous.state)) return previous;
       if (previous && ["DRY_RUN_COMPLETE", "DRY_RUN_FAILED"].includes(previous.state) && (!dryRun || previous.submitState !== "NOT_STARTED")) {
@@ -4764,8 +4832,6 @@ export class SeedingService {
       const reusePrevious = !forceNewLiveExecution && previous?.state === "REQUEST_READY" && Boolean(previous.request?.dryRun) === dryRun && (dryRun || previous.request?.authorization?.authorizationId === authorization.id);
       const executionId = reusePrevious ? previous.executionId : randomUUID();
       const attempt = reusePrevious ? previous.attempt : (previous?.attempt || 0) + 1;
-      const currentAuthorization = requireItem(state.campaignAuthorizations || [], authorization.id, "Campaign authorization");
-      const currentPost = requireItem(state.posts, postId, "Post");
       const currentEligibility = evaluateQueue(currentPost, state, new Date(), { mode: dryRun ? "dry_run" : "live", executionId });
       if (!currentEligibility.allowed) throw new Error(`Execution request blocked: ${currentEligibility.reasons.join(", ")}`);
       const oneTimeWindow = dryRun ? null : currentEligibility.oneTimeWindow;
@@ -5181,7 +5247,28 @@ export class SeedingService {
           reject("WINDOW_INVALID", "oneTimeWindowValid", "One-time execution window is no longer valid for this submit");
         }
       }
-      if ((currentState.executionRequests || []).some((item) => item.executionId !== executionId && item.request?.idempotencyKey === request.idempotencyKey && ["REQUEST_READY", "SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state))) reject("IDEMPOTENCY_BLOCKED", "idempotencyClear", "Another execution already owns this publication identity");
+      const siblingOwnsPreSubmitControls = (item) => {
+        if (item.state !== "REQUEST_READY") return false;
+        // A stale scheduler row with no live controls is historical pre-submit
+        // bookkeeping, not an execution owner. It must not shadow the exact
+        // request that still owns the active grant/window. Any non-NOT_STARTED
+        // submit state remains a fail-closed blocker because the row is
+        // internally inconsistent or has already crossed the submit boundary.
+        if (item.submitState !== "NOT_STARTED") return true;
+        const grantId = item.request?.liveGrant?.grantId || item.liveGrantId;
+        const grant = grantId ? (currentState.liveExecutionGrants || []).find((candidate) => candidate.grantId === grantId) : null;
+        if (grant && liveGrantEffectiveStatus(grant) === "ACTIVE" && grant.boundExecutionId === item.executionId) return true;
+        const windowId = item.request?.oneTimeWindow?.windowId;
+        const window = windowId ? (currentState.oneTimeExecutionWindows || []).find((candidate) => candidate.windowId === windowId) : null;
+        return Boolean(window && ["ACTIVE", "RESERVED"].includes(oneTimeExecutionWindowStatus(window, new Date())) &&
+          oneTimeExecutionWindowInBounds(window, new Date()) &&
+          ((window.status === "ACTIVE" && !window.reservedExecutionId) ||
+            (window.status === "RESERVED" && window.reservedExecutionId === item.executionId)));
+      };
+      if ((currentState.executionRequests || []).some((item) => item.executionId !== executionId && item.request?.idempotencyKey === request.idempotencyKey &&
+        (["SUBMIT_SENT_INTENT", "SUBMIT_SENT", "SUBMIT_RESULT_UNKNOWN", "CONFIRMED"].includes(item.state) || siblingOwnsPreSubmitControls(item)))) {
+        reject("IDEMPOTENCY_BLOCKED", "idempotencyClear", "Another execution already owns this publication identity");
+      }
       if ((currentState.executionReceipts || []).some((item) => item.receipt?.submitState === "CONFIRMED" && item.executionId !== executionId && (currentState.executionRequests || []).find((row) => row.executionId === item.executionId)?.request?.idempotencyKey === request.idempotencyKey)) reject("IDEMPOTENCY_BLOCKED", "idempotencyClear", "A confirmed publication already exists for this idempotency key");
       if ((currentState.posts || []).some((item) => item.id !== currentPost.id && item.idempotencyKey === request.idempotencyKey && item.status === "published")) reject("IDEMPOTENCY_BLOCKED", "idempotencyClear", "A publication already exists for this idempotency key");
       if (currentPost.status !== "queued") reject("NOT_DISPATCHABLE", "jobQueued", "Job is no longer queued");
