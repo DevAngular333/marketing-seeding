@@ -1,3 +1,13 @@
+# Current release overlay — 2026-10-21 (HEAD 5994c15)
+
+- `npm test`: **573 total, 571 passed, 0 failed, 2 skipped**.
+- Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, `5994c15`; focused gate **20/20**. UI build passed after dependency installation.
+- Real Seatbelt smoke remains blocked by Node `LowLevelAlloc` arithmetic overflow; adapter remains fail-closed.
+- ORCA `1.4.232` read-only `ready`/`connected`; no click. Canonical state schema 8 revision 5673, six immutable UNKNOWN, zero published, no active controls.
+- Current release report: `plans/autonomous-build/reports/release-gate-20261021.md`.
+
+---
+
 # Autonomous Build — Current Release Report
 
 ## Continuation release gate — 2026-10-20g

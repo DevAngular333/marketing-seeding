@@ -1,3 +1,13 @@
+# Current gate overlay — 2026-10-21 (HEAD 5994c15)
+
+The latest local release gate is **573 total, 571 passed, 0 failed, 2 skipped**. Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` reuse the existing typed backend; focused Product Factory verification is **20/20**. UI build passed after dependency installation. The real Seatbelt smoke remains blocked by Node `LowLevelAlloc` arithmetic overflow, and Product Factory stays fail-closed.
+
+Read-only runtime evidence: ORCA `1.4.232` ready/connected; canonical schema 8 revision 5673, six immutable UNKNOWN submissions, zero published posts and no active controls. No browser click or external side effect occurred in this gate.
+
+Release report: `plans/autonomous-build/reports/release-gate-20261021.md`.
+
+---
+
 # Autonomous Product Distribution & Growth OS — Master Plan
 
 ## Objective

@@ -1,3 +1,13 @@
+# Current release gate — 2026-10-21T00:00:00Z (HEAD 5994c15)
+
+- Full `npm test`: **573 total, 571 passed, 0 failed, 2 skipped**.
+- Product Factory Seatbelt adapter commits `ac741e7`, `ebffb7e`, `154de1b`, and `5994c15` are locally integrated; focused Product Factory gate is **20/20**. The adapter reuses the existing typed Seatbelt backend and remains fail-closed.
+- UI `npm run build` passed after dependency installation; generated package-lock is not release evidence and is intentionally excluded from this journal update.
+- Real Seatbelt smoke remains blocked by a Node `LowLevelAlloc` arithmetic overflow during bounded smoke invocation; no arbitrary project command ran.
+- ORCA `1.4.232` is `ready`/`connected` by read-only probe; no browser command or click occurred.
+- Canonical state remains read-only schema 8/revision 5673 with six immutable UNKNOWN submissions, zero published posts and zero active authorization/window/grant/lease controls.
+- Current gate report: `plans/autonomous-build/reports/release-gate-20261021.md`.
+
 # Fresh M1 live execution reconciliation — 2026-10-21T07:14:12Z
 
 - Fresh exact zero-touch bootstrap execution `39e667ef-f564-4480-bdbb-0247f3213bd0` completed one autonomous ORCA accessibility action after durable submit intent. Pre-submit evidence matched the exact composer, payload and PUBLIC visibility.

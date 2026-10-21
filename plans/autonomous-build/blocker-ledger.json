@@ -69,17 +69,17 @@
       "blocker_id": "PRODUCT-FACTORY-SANDBOX-001",
       "classification": "ENVIRONMENT_BLOCKER",
       "milestone": "product-factory-sandbox-preflight",
-      "root_cause": "The host can invoke deprecated sandbox-exec, but no audited profile, network/filesystem/process policy, descendant cleanup or CPU/memory/resource limits are proven.",
+      "root_cause": "Existing typed Seatbelt adapter is integrated, but bounded real smoke invocation fails before execution with a Node LowLevelAlloc arithmetic overflow.",
       "affected_scope": "arbitrary project build/run/render execution and automatic media generation",
       "detected_at": "2026-10-18T00:00:00Z",
       "status": "OPEN",
       "owner_worker": "master",
-      "remediation": "Re-audited host capabilities and preserved fail-closed Product Factory; no safe backend available to enable.",
-      "verification": "Post-commit source/UI release gate unchanged: fail-closed sandbox capability remains without audited profile/resource policy; no unsafe project command executed.",
+      "remediation": "Integrated the existing System-Agentic Seatbelt backend through the narrow Product Factory adapter; retain fail-closed behavior while diagnosing host Node LowLevelAlloc overflow.",
+      "verification": "Focused Product Factory adapter gate 20/20 passed. Real Seatbelt smoke remains blocked by LowLevelAlloc arithmetic overflow; no arbitrary project command ran and no external side effect occurred.",
       "resolved_at": null,
       "resume_point": "An independently reviewed sandbox with explicit network/filesystem/process/resource policy and descendant cleanup",
       "external_dependency": "Audited OS/container sandbox capability on the execution host",
-      "last_checked_at": "2026-10-19T22:25:30Z"
+      "last_checked_at": "2026-10-21T00:00:00Z"
     },
     {
       "blocker_id": "RELEASE-JOURNAL-DRIFT-001",
@@ -99,13 +99,12 @@
     }
   ],
   "last_audit": {
-    "at": "2026-10-21T07:14:12Z",
-    "head": "f71228b",
-    "result": "NOT_PROVEN",
-    "externalSideEffects": true,
-    "canonicalRuntimeMutated": true,
+    "at": "2026-10-21T00:00:00Z",
+    "head": "5994c15",
+    "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
+    "externalSideEffects": false,
+    "canonicalRuntimeMutated": false,
     "historicalUnknownMutated": false,
-    "report": "plans/m1-autonomous-linkedin-publish/report.md",
-    "liveExecutionId": "39e667ef-f564-4480-bdbb-0247f3213bd0"
+    "report": "plans/autonomous-build/reports/release-gate-20261021.md"
   }
 }
