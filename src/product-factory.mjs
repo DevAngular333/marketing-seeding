@@ -411,10 +411,15 @@ export async function executeFactoryPlan(plan, options = {}) {
       if (!isSeatbeltCapabilityUsable(options.seatbeltCapability)) {
         return { version: 1, repositoryPath: root, status: 'NOT_EXECUTED_UNSAFE', results, externalSideEffects: false, sandbox: options.seatbeltCapability };
       }
-      const sandboxResult = await invokeSystemAgenticSeatbelt({
-        tool: 'workspace_exec', workspace: cwd, execution_policy: 'READ_ONLY',
-        arguments: { argv: [binary, ...args], timeout_seconds: Math.min(120, Math.max(1, Math.ceil(timeoutMs / 1000))) }
-      }, options);
+      let sandboxResult;
+      try {
+        sandboxResult = await invokeSystemAgenticSeatbelt({
+          tool: 'workspace_exec', workspace: cwd, execution_policy: 'READ_ONLY',
+          arguments: { argv: [binary, ...args], timeout_seconds: Math.min(120, Math.max(1, Math.ceil(timeoutMs / 1000))) }
+        }, options);
+      } catch (error) {
+        sandboxResult = { execution_status: 'FAILED', stderr: redact(error?.message || error) };
+      }
       const status = sandboxResult?.execution_status === 'COMPLETED' && sandboxResult?.exit_code === 0 ? 'SUCCEEDED'
         : sandboxResult?.execution_status === 'TIMED_OUT' ? 'TIMEOUT' : 'FAILED';
       results.push({ argv: [binary, ...args], cwd, purpose: step.purpose, status, exitCode: sandboxResult?.exit_code ?? null, stdout: redact(sandboxResult?.stdout), stderr: redact(sandboxResult?.stderr), sandbox: 'system-agentic-seatbelt' });
