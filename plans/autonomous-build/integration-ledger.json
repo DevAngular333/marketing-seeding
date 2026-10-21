@@ -1731,6 +1731,48 @@
       "canonicalRuntimeMutated": false,
       "historicalUnknownMutated": false,
       "report": "plans/autonomous-build/reports/master-continuation-final-audit-20261020.md"
+    },
+    {
+      "name": "m1_live_execution_20261021",
+      "result": "NOT_PROVEN_UNKNOWN_QUARANTINED",
+      "head": "f71228b",
+      "executionId": "39e667ef-f564-4480-bdbb-0247f3213bd0",
+      "fullSuite": {
+        "tests": 572,
+        "passed": 570,
+        "failed": 0,
+        "skipped": 2
+      },
+      "focusedTransportAuthorityReadiness": {
+        "tests": 154,
+        "passed": 154,
+        "failed": 0,
+        "skipped": 0
+      },
+      "focusedSelectorAuthorityReadinessLinkedIn": {
+        "tests": 75,
+        "passed": 75,
+        "failed": 0,
+        "skipped": 0
+      },
+      "autonomousFinalClickCount": 1,
+      "commandCompleted": true,
+      "controlActivated": false,
+      "publicationVerified": false,
+      "duplicateExecutions": 0,
+      "historicalUnknownMutated": false,
+      "canonicalObservation": {
+        "schemaVersion": 8,
+        "revision": 5673,
+        "sha256": "80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72",
+        "activeAuthorizations": 0,
+        "activeWindows": 0,
+        "activeGrants": 0,
+        "activeLeases": 0,
+        "immutableUnknownCount": 6,
+        "publishedPosts": 0
+      },
+      "artifact": "plans/m1-autonomous-linkedin-publish/"
     }
   ],
   "latestHead": "8082312",

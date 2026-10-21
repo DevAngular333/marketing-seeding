@@ -350,6 +350,11 @@
       "id": "zero-touch-authority-bootstrap-20261020",
       "status": "COMPLETE_LOCAL_VERIFIED_EXTERNAL_BLOCKERS_REMAIN",
       "evidence": "HEAD 8082312 adds exact bounded product-ID/name repository resolution to the existing autonomous bootstrap. Product-only and ambiguous-match tests pass (5/5); full npm test 543/541/0/2; syntax, diff and UI build pass. Isolated temporary run derived one exact campaign/content/window/grant/request/execution from product-only input. Canonical state, browser, social and historical UNKNOWN records unchanged. Live LinkedIn still requires fresh readiness and irreversible transport proof. Artifacts: plans/autonomous-build/zero-touch-authority-bootstrap/"
+    },
+    {
+      "id": "m1-autonomous-linkedin-publish-20261021",
+      "status": "NOT_PROVEN_UNKNOWN_QUARANTINED",
+      "evidence": "Fresh exact zero-touch Design OS Studio bootstrap created execution 39e667ef-f564-4480-bdbb-0247f3213bd0. One durable submit intent and exactly one autonomous ORCA accessibility action (control e13) were recorded. Transport returned COMMAND_COMPLETED, but LinkedIn semantic activation was CONTROL_NOT_OBSERVED; acceptance and independent publication discovery were absent. Execution/post remain SUBMIT_RESULT_UNKNOWN; no retry or second click; historical UNKNOWN records immutable. Full npm test 572/570/0/2; focused transport/JEV/LinkedIn/authority/recovery 154/154; selector/authority/readiness/LinkedIn 75/75; renewal regression passed. Artifact: plans/m1-autonomous-linkedin-publish/"
     }
   ]
 }

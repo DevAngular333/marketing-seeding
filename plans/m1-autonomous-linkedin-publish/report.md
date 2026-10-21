@@ -2,33 +2,52 @@
 
 ## Result
 
-`MILESTONE_RESULT = NOT_PROVEN`  
-`LIVE_PROOF_BLOCKED`
+`MILESTONE_RESULT = NOT_PROVEN`
 
-The repository and runtime were inspected and the complete existing Node test suite passed, but no live attempt was made. Current gate: **538 total, 536 passed, 0 failed, 2 skipped**; broader transport/JEV/LinkedIn/authority/recovery gate: **154/154**; selector/authority/readiness/LinkedIn gate: **75/75**. The blocker is governance and browser readiness, not a test failure: the canonical runtime has **zero active exact LIVE campaign authorizations**, **zero active one-time windows**, **zero active live grants** and **zero execution leases**. ORCA 1.4.229 has repeatable semantic activation calibration for reversible controls, but no irreversible LinkedIn Post activation/publication proof. Existing controls are terminal (expired, paused, superseded, consumed or revoked), so creating a new execution would require fresh explicit operator authorization/input. I did not invent authorization, edit `state.json`, retry an UNKNOWN execution, or ask the operator to click Publish.
+One fresh exact execution was created from the zero touch Design OS Studio
+bootstrap and dispatched through the authorized autonomous path. The execution
+performed exactly one autonomous final ORCA action, but LinkedIn did not expose a
+provable semantic activation or acceptance transition. Independent read only
+reconciliation found no resulting publication. The execution is therefore
+`SUBMIT_RESULT_UNKNOWN` and quarantined; it was not retried.
 
-## Inspection
+The fresh execution is `39e667ef-f564-4480-bdbb-0247f3213bd0` for campaign
+`campaign-bootstrap-5a1e2b2a9892ce9efe4c6692fb0e822c`, post
+`9cb6b059-5c51-4dee-bbd5-daed236883b3`, account `linkedin_primary`, and profile
+`b27a3bcc-b139-4353-a15b-10e10824291e`. It used one durable submit intent and
+one final control action (`e13`) with exact payload and PUBLIC visibility
+matches. Transport returned `COMMAND_COMPLETED`; this is transport evidence
+only.
 
-The existing architecture was reused and not redesigned: `SeedingService` + `JsonStore` own state and governance; `JevExecutionWorker` owns exact dispatch, leases, readiness refresh and durable submit intent; `LinkedInAdapter` owns composer/control/payload/visibility evidence and publication verification; `OrcaCliClient` is the ORCA browser transport; execution contracts, campaign authorization, one-time windows, live grants and UNKNOWN quarantine remain authoritative.
+## Evidence classification
 
-## Live gate
+| Gate | Result | Evidence |
+|---|---|---|
+| Exact standing authorization | PASS | Bootstrap authorization `campaign-auth-bootstrap-e08853f015035d85169261dbaa70a1db`; exact account/profile/target/content binding |
+| One-time window / live grant / lease | PASS then consumed | Window and grant were bound to execution `39e667ef…`; no lease remains after quarantine |
+| Durable submit intent | PASS | Persisted at `2026-10-21T07:07:25.436Z`; pre-submit URL, composer, editor, payload, visibility, control identity and ownership recorded |
+| Autonomous final submit | PASS (one) | ORCA accessibility control `e13`; `clickEmittedAt=2026-10-21T07:07:31.298Z` |
+| Transport | PASS | `COMMAND_COMPLETED`, ORCA provider version `1.4.232` |
+| Semantic activation | FAIL CLOSED / UNKNOWN | `CONTROL_NOT_OBSERVED`; composer remained OPEN, no structural transition or activation signal |
+| Platform acceptance | UNKNOWN | No confirmation, candidate ID or permalink; post button remained enabled |
+| Independent publication verification | FAIL CLOSED / NOT OBSERVED | Read only reconciliation at `2026-10-21T07:14:12.940Z` found no publication |
+| Canonical terminal state | QUARANTINED | Post and execution are `submit_result_unknown`; no `PUBLISHED` receipt exists |
 
-| Requirement | Result |
-|---|---|
-| Fresh LIVE authorization | BLOCKED — none active |
-| Fresh one-time window | NOT_CREATED |
-| Fresh live grant | NOT_CREATED |
-| Fresh execution | NOT_CREATED |
-| Autonomous final click | 0 |
-| Durable submit intent | NO new intent |
-| Activation/acceptance/verification | NOT_ATTEMPTED |
-| Historical UNKNOWN mutation | NO |
-| Duplicate execution | 0 |
-
-## Existing evidence
-
-The latest immutable execution `ce9cfc41-528b-425f-9dee-ab2563b50ed3` remains `SUBMIT_RESULT_UNKNOWN` with uncertainty `df39df1c-2f06-4c20-8e9a-4ed07f5df34c`; it was not reconciled or retried. Earlier rejected executions remain unchanged.
+No historical UNKNOWN execution was mutated and no second final click was
+issued. The total immutable UNKNOWN record count is now six, including this
+execution.
 
 ## Tests
 
-`npm test` → **538 total, 536 passed, 0 failed, 2 skipped**, normal process exit. Tests are synthetic/fixture/regression evidence, not live publication proof. The focused transport/LinkedIn/JEV/authority/recovery gate is **154/154**. The selector/authority/readiness/LinkedIn gate is **75/75**. Tests are synthetic/local or reversible-control evidence, not live publication proof.
+`npm test` → **572 total, 570 passed, 0 failed, 2 skipped**. The focused
+renewal/readiness regression passed. Existing focused transport/JEV/LinkedIn/
+authority/recovery and selector/readiness gates remain **154/154** and **75/75**
+respectively. Tests are synthetic/local evidence and do not substitute for a
+real verified publication.
+
+## Blocker
+
+The remaining M1 blocker is the ORCA/LinkedIn semantic activation seam: a
+completed transport command did not produce an observable LinkedIn control
+transition, acceptance signal, or independently discoverable post. The
+historical UNKNOWN quarantine and no blind retry invariant is preserved.

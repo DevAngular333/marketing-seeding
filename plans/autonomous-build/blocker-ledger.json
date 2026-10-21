@@ -27,27 +27,27 @@
       "status": "EXTERNAL_HARD_BLOCKER",
       "owner_worker": "master",
       "remediation": "Implemented and regression-tested standing bounded delegation; obtain fresh exact authority only in a separately authorized live lane.",
-      "verification": "Product-only bootstrap now resolves Design OS Studio from the bounded reference root and derives exact local authority controls in an isolated state. Canonical runtime remains at schema 8 revision 194 with active authorizations/windows/grants/leases 0/0/0/0; persisted LinkedIn readiness is expired; no live execution or external action.",
+      "verification": "Zero-touch bootstrap derived exact campaign/product/account/profile/target/content/window/grant/request controls and one fresh execution. Execution 39e667ef-f564-4480-bdbb-0247f3213bd0 used one durable submit intent and one autonomous final action; it is now SUBMIT_RESULT_UNKNOWN and quarantined. No retry or historical UNKNOWN mutation. Canonical observation after reconciliation: schema 8 revision 5673, active authorization/window/grant/lease 0/0/0/0.",
       "resolved_at": null,
       "resume_point": "Fresh exact authorized LinkedIn campaign/account/profile/session input and policy permitting one harmless live test",
       "external_dependency": "Authorized campaign objective/content, account/profile, target and policy permitting one harmless live test",
-      "last_checked_at": "2026-10-20T06:10:00Z"
+      "last_checked_at": "2026-10-21T07:14:12Z"
     },
     {
       "blocker_id": "ORCA-TRANSPORT-LIVE-CERT-001",
       "classification": "BROWSER_BLOCKER",
       "milestone": "browser-transport-certification",
-      "root_cause": "ORCA 1.4.229 accessibility and pointer transports each pass 10/10 semantic activation trials on a resettable local browser fixture; real LinkedIn final-submit semantic activation, platform acceptance and independent publication verification remain unproven.",
+      "root_cause": "Local reversible transport activation is repeatable, but the fresh LinkedIn action returned COMMAND_COMPLETED without semantic activation; composer remained OPEN and independent publication discovery found no post.",
       "affected_scope": "certifying the ORCA final-submit transport for irreversible LinkedIn action",
       "detected_at": "2026-10-17T00:00:00Z",
       "status": "OPEN",
       "owner_worker": "master",
       "remediation": "Re-pinned the executable and connected runtime to ORCA 1.4.229, then ran the repeatable certification harness for both accessibility and pointer transports plus a reversible LinkedIn composer control. The transport abstraction remains deterministic and fail-closed for irreversible scope.",
-      "verification": "Pinned ORCA 1.4.229 and local reversible 10/10 evidence remain valid; strict selector still has no IRREVERSIBLE_LINKEDIN_SUBMIT certification. Product-only bootstrap is now ready to reach the existing gate locally, but no real Post activation/acceptance/publication proof was attempted.",
+      "verification": "Fresh execution 39e667ef-f564-4480-bdbb-0247f3213bd0 persisted pre-submit evidence, one click and transport receipt. Activation evidence is CONTROL_NOT_OBSERVED; acceptance and publication are UNKNOWN. The attempt is quarantined and not retried.",
       "resolved_at": null,
       "resume_point": "Use either pinned transport only after a fresh exact live authority and readiness are available; irreversible LinkedIn publication still requires independent acceptance and publication proof.",
       "external_dependency": "Fresh authorized LinkedIn live lane is required for irreversible-submit/publication proof; transport control-activation certification itself is complete.",
-      "last_checked_at": "2026-10-20T06:10:00Z"
+      "last_checked_at": "2026-10-21T07:14:12Z"
     },
     {
       "blocker_id": "METRICS-CHECKPOINT-LIVE-001",
@@ -99,12 +99,13 @@
     }
   ],
   "last_audit": {
-    "at": "2026-10-20T06:10:00Z",
-    "head": "8082312",
-    "result": "FOUNDATION_ONLY_WITH_EXTERNAL_BLOCKERS",
-    "externalSideEffects": false,
-    "canonicalRuntimeMutated": false,
+    "at": "2026-10-21T07:14:12Z",
+    "head": "f71228b",
+    "result": "NOT_PROVEN",
+    "externalSideEffects": true,
+    "canonicalRuntimeMutated": true,
     "historicalUnknownMutated": false,
-    "report": "plans/autonomous-build/zero-touch-authority-bootstrap/report.md"
+    "report": "plans/m1-autonomous-linkedin-publish/report.md",
+    "liveExecutionId": "39e667ef-f564-4480-bdbb-0247f3213bd0"
   }
 }

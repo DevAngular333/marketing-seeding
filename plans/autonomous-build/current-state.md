@@ -1,3 +1,12 @@
+# Fresh M1 live execution reconciliation — 2026-10-21T07:14:12Z
+
+- Fresh exact zero-touch bootstrap execution `39e667ef-f564-4480-bdbb-0247f3213bd0` completed one autonomous ORCA accessibility action after durable submit intent. Pre-submit evidence matched the exact composer, payload and PUBLIC visibility.
+- ORCA returned `COMMAND_COMPLETED`, but LinkedIn semantic activation was `CONTROL_NOT_OBSERVED`: composer remained open, no acceptance signal appeared, and no candidate post ID/permalink was observed.
+- Read-only reconciliation ran once at `2026-10-21T07:14:12.940Z` and found no publication. The post and execution are quarantined as `SUBMIT_RESULT_UNKNOWN`; no retry or second click occurred.
+- Canonical observation after reconciliation: schema 8, revision 5673, SHA-256 `80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72`, active authorization/window/grant/lease counts `0/0/0/0`, six immutable UNKNOWN records, zero published posts.
+- Full `npm test`: **572 total, 570 passed, 0 failed, 2 skipped**. Focused transport/JEV/LinkedIn/authority/recovery gate remains **154/154**; selector/authority/readiness/LinkedIn remains **75/75**; renewal regression passed.
+- M1 remains `NOT_PROVEN`; the active blocker is the ORCA/LinkedIn semantic activation and publication-verification seam.
+
 # Zero-touch authority bootstrap update — 2026-10-20T06:10:00Z (HEAD 8082312)
 
 - Added deterministic product-only repository resolution to the existing campaign bootstrap.

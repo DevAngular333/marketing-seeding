@@ -1,61 +1,79 @@
 {
   "milestone": "M1 autonomous LinkedIn publish + verify",
-  "result": "LIVE_PROOF_BLOCKED",
-  "liveExecutionId": null,
-  "autonomousFinalClick": false,
-  "commandCompleted": false,
+  "result": "NOT_PROVEN",
+  "evidenceClass": "LIVE_REAL_WEBSITE",
+  "liveExecutionId": "39e667ef-f564-4480-bdbb-0247f3213bd0",
+  "campaignId": "campaign-bootstrap-5a1e2b2a9892ce9efe4c6692fb0e822c",
+  "postId": "9cb6b059-5c51-4dee-bbd5-daed236883b3",
+  "authorizationId": "campaign-auth-bootstrap-e08853f015035d85169261dbaa70a1db",
+  "accountId": "linkedin_primary",
+  "profileId": "b27a3bcc-b139-4353-a15b-10e10824291e",
+  "targetId": "f38f2074-7d87-4cb6-8313-8e1b73e2c3fd",
+  "targetUrl": "https://www.linkedin.com/feed/",
+  "autonomousFinalClick": true,
+  "finalClickCount": 1,
+  "controlRef": "e13",
+  "commandCompleted": true,
+  "transport": {
+    "name": "orca-accessibility",
+    "provider": "orca",
+    "providerVersion": "1.4.232",
+    "status": "COMMAND_COMPLETED"
+  },
   "controlActivated": false,
+  "activationStatus": "CONTROL_NOT_OBSERVED",
   "submissionAccepted": false,
+  "submissionStatus": "UNKNOWN",
   "publicationVerified": false,
-  "postId": null,
+  "postIdExternal": null,
   "permalink": null,
-  "authorMatch": null,
-  "contentMatch": null,
-  "timeMatch": null,
-  "canonicalPostStatus": null,
+  "authorMatch": false,
+  "contentMatch": false,
+  "timeMatch": false,
+  "mediaMatch": null,
+  "canonicalPostStatus": "submit_result_unknown",
+  "executionStatus": "SUBMIT_RESULT_UNKNOWN",
+  "quarantined": true,
   "duplicateExecutions": 0,
   "historicalUnknownMutated": false,
-  "canonicalState": {
+  "reconciliation": {
+    "attempts": 1,
+    "lastReadOnlyAt": "2026-10-21T07:14:12.940Z",
+    "publicationObserved": false,
+    "secondClick": false
+  },
+  "preSubmit": {
+    "capturedAt": "2026-10-21T07:07:25.214Z",
+    "url": "https://www.linkedin.com/sharing/compose",
+    "composerState": "OPEN",
+    "payloadMatched": true,
+    "visibilityMatched": true,
+    "controlOwned": true,
+    "controlEnabled": true,
+    "controlActionable": true,
+    "hitTargetMatched": true,
+    "controlIdentityRecorded": true
+  },
+  "canonicalStateObservation": {
     "schemaVersion": 8,
-    "revision": 194,
-    "sha256": "5c439b0bb0f2e2bf5821e13c874530a4be95619f4ffad26558bd99a2660e17e6",
+    "revision": 5673,
+    "sha256": "80aa214755361323dcf635c58d6e8872a11564c4ef57de88f4f994ae4f627d72",
     "activeAuthorizations": 0,
     "activeWindows": 0,
     "activeGrants": 0,
-    "activeLeases": 0
+    "activeLeases": 0,
+    "immutableUnknownCount": 6,
+    "publishedPosts": 0
   },
-  "blocker": "No fresh exact LIVE campaign authorization exists. The user scope still lacks exact campaign/productRepo binding, target ID+URL, account/profile identifiers in the authority, approved LinkedIn content bytes/contentId/SHA-256, explicit media declaration, canonical audience serialization, UTC bounds and schedule fields. Existing terminal controls/readiness cannot be rebound; no new execution controls or live dispatch were created.",
-  "latestReadOnlyOrcaObservation": {
-    "version": "1.4.229",
-    "state": "ready",
-    "connection": "connected",
-    "linkedinFeedObserved": true,
-    "composerOpened": false,
-    "contentEntered": false,
-    "finalPostClicked": false,
-    "socialMutationCount": 0,
-    "identityEvidenceObserved": true,
-    "persistedReadinessRefreshed": false
-  },
-  "focusedRegressionGate": {
-    "command": "node --test test/browser-interaction-transport.test.mjs test/click-transport.test.mjs test/linkedin-verification.test.mjs test/jev-execution-worker.test.mjs test/live-execution-grant.test.mjs test/standing-autonomous-delegation-proof.test.mjs test/authorized-account-candidate-projection.test.mjs",
-    "total": 154,
-    "passed": 154,
-    "failed": 0,
-    "skipped": 0
-  },
-  "selectorGate": {
-    "command": "node --test test/authorized-account-candidate-projection.test.mjs test/campaign-authorization.test.mjs test/standing-campaign-delegation.test.mjs test/readiness-execution.test.mjs test/linkedin-verification.test.mjs",
-    "total": 75,
-    "passed": 75,
-    "failed": 0,
-    "skipped": 0
-  },
-  "fullNodeSuite": {
+  "blocker": "Transport completed but LinkedIn semantic activation was not observed: composer remained OPEN, no acceptance signal appeared, and independent read-only publication discovery found no post. SUBMIT_RESULT_UNKNOWN is quarantined with no automatic retry.",
+  "tests": {
     "command": "npm test",
-    "total": 538,
-    "passed": 536,
+    "total": 572,
+    "passed": 570,
     "failed": 0,
-    "skipped": 2
+    "skipped": 2,
+    "focusedRenewalRegression": "passed",
+    "focusedTransportAuthorityReadiness": "154/154",
+    "focusedSelectorAuthorityReadinessLinkedIn": "75/75"
   }
 }
