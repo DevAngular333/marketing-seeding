@@ -240,7 +240,7 @@ function isSeatbeltCapabilityUsable(capability) {
 }
 
 /** Invoke the frozen System-Agentic_AI typed executor. No shell is involved. */
-export async function invokeSystemAgenticSeatbelt(request, options = {}) {
+async function invokeSystemAgenticSeatbelt(request, options = {}) {
   const runtimeRoot = path.resolve(String(options.runtimeRoot || DEFAULT_SYSTEM_AGENTIC_RUNTIME_ROOT));
   const executorPath = path.join(runtimeRoot, 'products', 'agent-runtime', 'tool_executor.py');
   const python = String(options.python || SEATBELT_PYTHON);
